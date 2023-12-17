@@ -52,7 +52,7 @@ client.on('messageCreate', async message => {
         userChats.set(userID, chat);
 
         // Send an initial response to indicate generation is in progress
-        let responseMessage = await message.reply('```Generating...````');
+        let responseMessage = await message.reply('```Generating...```');
 
         try {
             // Stream the response
