@@ -7,6 +7,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.DirectMessages,
     ],
     partials: [
         Partials.Message,
@@ -43,7 +44,7 @@ client.on('messageCreate', async message => {
         // Get or start a chat session
         let chat = userChats.get(userID) || model.startChat({
             generationConfig: {
-                maxOutputTokens: 4096,
+                maxOutputTokens: 16384,
             },
         });
 
@@ -51,41 +52,40 @@ client.on('messageCreate', async message => {
         userChats.set(userID, chat);
 
         // Send an initial response to indicate generation is in progress
-        let tempMessage = await message.reply('Generating...🤔');
+        let responseMessage = await message.reply('```Generating...````');
 
         try {
             // Stream the response
             const result = await chat.sendMessageStream(messageContent);
-            let fullResponseText = '';
-            
+            let responseText = '';
+
             for await (const chunk of result.stream) {
                 const chunkText = await chunk.text();
-                fullResponseText += chunkText;
+                responseText += chunkText;
 
-                if (fullResponseText.length <= 2000) {
-                    await tempMessage.edit(fullResponseText);
+                // Check if response fits within single message limit
+                if (responseText.length <= 2000) {
+                    await responseMessage.edit(responseText);
                 } else {
-                    // Split message into chunks that Discord can handle
-                    await tempMessage.edit(fullResponseText.slice(0, 2000));
-                    fullResponseText = fullResponseText.slice(2000);
+                    // Edit the current message with the first 2000 characters
+                    const fittingPart = responseText.slice(0, 2000);
+                    await responseMessage.edit(fittingPart);
+                    // Remaining characters will be sent as a new standard message
+                    responseText = responseText.slice(2000);
 
-                    // Send remaining chunks as new messages
-                    while (fullResponseText.length > 2000) {
-                        const part = fullResponseText.slice(0, 2000);
-                        fullResponseText = fullResponseText.slice(2000);
-                        await message.channel.send(part); // Changed from message.reply to message.channel.send
+                    // The rest of the messages will be standard (not as a reply)
+                    responseMessage = await message.channel.send('...');
+                    await responseMessage.edit(fittingPart);
+
+                    // Send the final part of the response as a standard message
+                    if (responseText.length) {
+                        responseMessage = await message.channel.send(responseText);
                     }
-                    // Send any remaining text in a new message
-                    if (fullResponseText.length) {
-                        await message.channel.send(fullResponseText); // Changed from message.reply to message.channel.send
-                    }
-                    // Break from the loop since we've handled all the text
-                    break;
                 }
             }
         } catch (error) {
             console.error("Error while sending message to Gemini Pro:", error);
-            await message.reply("I'm sorry, I've encountered an issue generating a reply."); // This is fine to keep as a reply
+            await message.reply("I'm sorry, I've encountered an issue generating a reply.");
         }
     }
 });
