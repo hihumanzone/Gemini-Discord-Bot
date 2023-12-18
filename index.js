@@ -1,73 +1,93 @@
-const { Client, GatewayIntentBits, Partials, EmbedBuilder, AttachmentBuilder } = require('discord.js');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const fetch = require('node-fetch');
 require('dotenv').config();
+const { Client, GatewayIntentBits, Partials } = require('discord.js');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const discordClient = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
-    partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.DirectMessages,
+    ],
+    partials: [
+        Partials.Message,
+        Partials.Channel,
+        Partials.Reaction,
+    ],
 });
 
-const genAI = new GoogleGenerativeAI(process.env.API_KEY);
-const visionModel = genAI.getGenerativeModel({ model: "gemini-pro-vision" });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
-async function imageAttachmentToGenerativePart(attachment) {
-  const response = await fetch(attachment.url);
-  const buffer = await response.buffer();
-  return {
-      inlineData: {
-          data: buffer.toString("base64"),
-          mimeType: attachment.contentType,
-      },
-  };
-}
+// Store chats per user
+const userChats = new Map(); // key: userID, value: chat state
 
-discordClient.on('messageCreate', async message => {
+client.once('ready', () => {
+    console.log('Bot is ready!');
+});
+
+client.on('messageCreate', async message => {
     if (message.author.bot || !message.content) return;
 
-    const content = message.content.trim();
-    const botMention = `<@${discordClient.user.id}>`;
-    const isMentioned = content.includes(botMention) || content.includes(botMention.replace('@', '@!'));
+    // Check if the bot was mentioned
+    if (message.mentions.users.has(client.user.id)) {
+        const userID = message.author.id;
+        const messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
 
-    if (!isMentioned || message.attachments.size === 0) return; // Continue only if the bot is mentioned and there are attachments
-    
-    if (message.attachments.every(attachment => !attachment.contentType?.startsWith('image/'))) {
-        await message.reply('Please include at least one image attachment.');
-        return;
-    }
-
-    let totalSize = message.attachments.reduce((size, attachment) => size + attachment.size, 0);
-    const totalSizeMB = totalSize / (1024 * 1024);
-
-    if (totalSizeMB > 4) {
-        await message.reply('The size of the image(s) is too large. Please make sure the total size is under 4MB.');
-        return;
-    }
-
-    let userInput = content.replace(new RegExp(botMention.replace('@', '@!') + '|<@!?\\d+>', 'g'), '').trim();
-    userInput = userInput || "What's this?"; // Use a default prompt if no text is provided
-
-    const attachmentsPromises = [...message.attachments.values()].map(imageAttachmentToGenerativePart);
-    let generatingMessage = await message.reply('```Generating...```');
-
-    try {
-        const imageParts = await Promise.all(attachmentsPromises);
-        const result = await visionModel.generateContentStream([userInput, ...imageParts]);
-
-        let text = '';
-        for await (const chunk of result.stream) {
-            const chunkText = await chunk.text();
-            text += chunkText;
-            await generatingMessage.edit(`${text}`); // Edit the original message with the new content
+        // Clear chat command
+        if (messageContent.toLowerCase() === 'clear') {
+            userChats.delete(userID);
+            await message.reply('Your conversation history has been cleared.');
+            return;
         }
-    } catch (error) {
-        console.error('Error generating response:', error);
-        await generatingMessage.edit('Sorry, I was unable to analyze the image(s).');
+
+        // Get or start a chat session
+        let chat = userChats.get(userID) || model.startChat({
+            generationConfig: {
+                maxOutputTokens: 16384,
+            },
+        });
+
+        // Store the updated chat session
+        userChats.set(userID, chat);
+
+        // Send an initial response to indicate generation is in progress
+        let responseMessage = await message.reply('```Generating...```');
+
+        try {
+            // Stream the response
+            const result = await chat.sendMessageStream(messageContent);
+            let responseText = '';
+
+            for await (const chunk of result.stream) {
+                const chunkText = await chunk.text();
+                responseText += chunkText;
+
+                // Check if response fits within single message limit
+                if (responseText.length <= 2000) {
+                    await responseMessage.edit(responseText);
+                } else {
+                    // Edit the current message with the first 2000 characters
+                    const fittingPart = responseText.slice(0, 2000);
+                    await responseMessage.edit(fittingPart);
+                    // Remaining characters will be sent as a new standard message
+                    responseText = responseText.slice(2000);
+
+                    // The rest of the messages will be standard (not as a reply)
+                    responseMessage = await message.channel.send('...');
+                    await responseMessage.edit(fittingPart);
+
+                    // Send the final part of the response as a standard message
+                    if (responseText.length) {
+                        responseMessage = await message.channel.send(responseText);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error while sending message to Gemini Pro:", error);
+            await message.reply("I'm sorry, I've encountered an issue generating a reply.");
+        }
     }
 });
 
-discordClient.once('ready', () => {
-    console.log('Discord bot is ready!');
-});
-
-discordClient.login(process.env.DISCORD_BOT_TOKEN);
+client.login(process.env.DISCORD_BOT_TOKEN);
