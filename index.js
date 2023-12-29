@@ -33,24 +33,24 @@ client.on('messageCreate', async message => {
     if (message.mentions.users.has(client.user.id)) {
         const userID = message.author.id;
         const messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
-
+        
         // Clear chat command
         if (messageContent.toLowerCase() === 'clear') {
             userChats.delete(userID);
             await message.reply('Your conversation history has been cleared.');
             return;
         }
-
+        
         // Get or start a chat session
         let chat = userChats.get(userID) || model.startChat({
             generationConfig: {
                 maxOutputTokens: 16384,
             },
         });
-
+        
         // Store the updated chat session
         userChats.set(userID, chat);
-
+        
         // Send an initial response to indicate generation is in progress
         let responseMessage = await message.reply('```Generating...```');
 
@@ -60,26 +60,24 @@ client.on('messageCreate', async message => {
             let responseText = '';
 
             for await (const chunk of result.stream) {
-                const chunkText = await chunk.text();
-                responseText += chunkText;
+                responseText += await chunk.text();
 
-                // Check if response fits within single message limit
+                // Check if response exceeds single message limit
                 if (responseText.length <= 2000) {
                     await responseMessage.edit(responseText);
-                } else {
-                    // Edit the current message with the first 2000 characters
-                    const fittingPart = responseText.slice(0, 2000);
-                    await responseMessage.edit(fittingPart);
-                    // Remaining characters will be sent as a new standard message
+                    continue;
+                }
+
+                // Send messages in chunks of 2000 characters
+                while (responseText.length > 0) {
+                    const partToSend = responseText.slice(0, 2000);
                     responseText = responseText.slice(2000);
 
-                    // The rest of the messages will be standard (not as a reply)
-                    responseMessage = await message.channel.send('...');
-                    await responseMessage.edit(fittingPart);
-
-                    // Send the final part of the response as a standard message
-                    if (responseText.length) {
-                        responseMessage = await message.channel.send(responseText);
+                    if (responseMessage) {
+                        await responseMessage.edit(partToSend);
+                        responseMessage = null; // Clear so we don't try to edit again
+                    } else {
+                        responseMessage = await message.channel.send(partToSend);
                     }
                 }
             }
