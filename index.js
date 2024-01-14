@@ -30,6 +30,7 @@ const client = new Client({
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 const chatHistories = {};
 const activeChannels = {};
+const activeUsersInChannels = {};
 
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
@@ -48,10 +49,10 @@ client.on('messageCreate', async (message) => {
 
     // Determine if the bot is active for the channel, mentioned, or in a DM
     const isDM = message.channel.type === ChannelType.DM;
-    const isBotMentioned = message.mentions.users.has(client.user.id);
-    const isBotActiveInChannel = activeChannels[message.channelId] || isDM;
-
-    if (isBotActiveInChannel || (isBotMentioned && !isDM)) {
+      const isBotMentioned = message.mentions.users.has(client.user.id);
+      const isUserActiveInChannel = activeUsersInChannels[message.channelId] && activeUsersInChannels[message.channelId][message.author.id];
+      
+      if (isUserActiveInChannel || (isBotMentioned && !isDM)) {
       if (message.attachments.size > 0 && hasImageAttachments(message)) {
         await handleImageMessage(message);
       } else if (message.attachments.size > 0 && hasTextFileAttachments(message)) {
@@ -67,13 +68,19 @@ client.on('messageCreate', async (message) => {
 });
 
 async function toggleChat(message) {
-  // Toggle the state for the current channel
-  if (activeChannels[message.channelId]) {
-    delete activeChannels[message.channelId];
-    await message.reply('Bot response to all messages is turned OFF.');
+  // Ensure the channel is initialized in activeUsersInChannels
+  if (!activeUsersInChannels[message.channelId]) {
+    activeUsersInChannels[message.channelId] = {};
+  }
+
+  // Toggle the state for the current channel and user
+  const userId = message.author.id;
+  if (activeUsersInChannels[message.channelId][userId]) {
+    delete activeUsersInChannels[message.channelId][userId];
+    await message.reply('Bot response to your messages is turned OFF.');
   } else {
-    activeChannels[message.channelId] = true;
-    await message.reply('Bot response to all messages is turned ON.');
+    activeUsersInChannels[message.channelId][userId] = true;
+    await message.reply('Bot response to your messages is turned ON.');
   }
 }
 
