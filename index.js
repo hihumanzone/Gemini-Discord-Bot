@@ -50,7 +50,7 @@ client.on('messageCreate', async (message) => {
     // Determine if the bot is active for the channel, mentioned, or in a DM
     const isDM = message.channel.type === ChannelType.DM;
       const isBotMentioned = message.mentions.users.has(client.user.id);
-      const isUserActiveInChannel = activeUsersInChannels[message.channelId] && activeUsersInChannels[message.channelId][message.author.id];
+      const isUserActiveInChannel = activeUsersInChannels[message.channelId] && activeUsersInChannels[message.channelId][message.author.id] || isDM;
       
       if (isUserActiveInChannel || (isBotMentioned && !isDM)) {
       if (message.attachments.size > 0 && hasImageAttachments(message)) {
