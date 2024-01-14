@@ -41,18 +41,12 @@ client.on('messageCreate', async (message) => {
     // Prevent the bot from responding to itself
     if (message.author.bot) return;
 
-    // Check if this is a command to toggle chat functionality for non-DM channels
-    if (message.content.trim() === '>toggle-chat' && message.channel.type !== ChannelType.DM) {
-      await toggleChat(message);
-      return;
-    }
-
     // Determine if the bot is active for the channel, mentioned, or in a DM
     const isDM = message.channel.type === ChannelType.DM;
-      const isBotMentioned = message.mentions.users.has(client.user.id);
-      const isUserActiveInChannel = activeUsersInChannels[message.channelId] && activeUsersInChannels[message.channelId][message.author.id] || isDM;
-      
-      if (isUserActiveInChannel || (isBotMentioned && !isDM)) {
+    const isBotMentioned = message.mentions.users.has(client.user.id);
+    const isUserActiveInChannel = activeUsersInChannels[message.channelId] && activeUsersInChannels[message.channelId][message.author.id] || isDM;
+  
+    if (isUserActiveInChannel || (isBotMentioned && !isDM)) {
       if (message.attachments.size > 0 && hasImageAttachments(message)) {
         await handleImageMessage(message);
       } else if (message.attachments.size > 0 && hasTextFileAttachments(message)) {
@@ -67,29 +61,69 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-async function toggleChat(message) {
+async function toggleChat(interaction) {
+  const userId = interaction.user.id;
+  const channelId = interaction.channelId;
+
   // Ensure the channel is initialized in activeUsersInChannels
-  if (!activeUsersInChannels[message.channelId]) {
-    activeUsersInChannels[message.channelId] = {};
+  if (!activeUsersInChannels[channelId]) {
+    activeUsersInChannels[channelId] = {};
   }
 
   // Toggle the state for the current channel and user
-  const userId = message.author.id;
-  if (activeUsersInChannels[message.channelId][userId]) {
-    delete activeUsersInChannels[message.channelId][userId];
-    await message.reply('Bot response to your messages is turned OFF.');
+  if (activeUsersInChannels[channelId][userId]) {
+    delete activeUsersInChannels[channelId][userId];
+
+    // Send an ephemeral message to the user who interacted
+    await interaction.reply({ content: '> Bot response to your messages is turned `OFF`.', ephemeral: true });
   } else {
-    activeUsersInChannels[message.channelId][userId] = true;
-    await message.reply('Bot response to your messages is turned ON.');
+    activeUsersInChannels[channelId][userId] = true;
+
+    // Send an ephemeral message to the user who interacted
+    await interaction.reply({ content: '> Bot response to your messages is turned `ON`.', ephemeral: true });
   }
 }
 
+async function clearChatHistory(interaction) {
+  chatHistories[interaction.user.id] = [];
+
+  // Send an ephemeral message to the user who interacted
+  await interaction.reply({ content: '> `Chat history cleared!`', ephemeral: true });
+}
+
 client.on('interactionCreate', async (interaction) => {
-  if (interaction.isButton() && interaction.customId === 'clear') {
-    chatHistories[interaction.user.id] = [];
-    await interaction.reply({ content: 'Chat history cleared!', ephemeral: true });
+  // Check if the interaction is a button click
+  if (!interaction.isButton()) return;
+
+  // Check what button was pressed
+  if (interaction.customId === 'settings') {
+    await showSettings(interaction);
+  } else if (interaction.customId === 'clear') {
+    await clearChatHistory(interaction);
+  } else if (interaction.customId === 'toggle-chat') {
+    await toggleChat(interaction);
   }
 });
+
+async function showSettings(interaction) {
+  const clearButton = new ButtonBuilder()
+    .setCustomId('clear')
+    .setLabel('Clear Chat')
+    .setStyle(ButtonStyle.Secondary);
+
+  const toggleChatButton = new ButtonBuilder()
+    .setCustomId('toggle-chat')
+    .setLabel('Toggle Chat')
+    .setStyle(ButtonStyle.Secondary);
+
+  const actionRow = new ActionRowBuilder().addComponents(clearButton, toggleChatButton);
+
+  await interaction.reply({
+    content: '> ```Settings:```',
+    components: [actionRow],
+    ephemeral: true
+  });
+}
 
 async function handleImageMessage(message) {
   const imageAttachments = message.attachments.filter((attachment) =>
@@ -199,7 +233,7 @@ async function handleTextMessage(message) {
     botMessage = await message.reply('Fetching content from the URLs...');
     await handleUrlsInMessage(urls, messageContent, botMessage, message);
   } else {
-    botMessage = await message.reply('Let me think...');
+    botMessage = await message.reply('> `Let me think...`');
     const chat = model.startChat({
       history: getHistory(message.author.id),
       safetySettings,
@@ -268,7 +302,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
     if (isLargeResponse) {
       await sendAsTextFile(finalResponse, originalMessage);
     } else {
-      await addClearChatComponents(botMessage);
+      await addSettingsButton(botMessage);
     }
 
     updateChatHistory(originalMessage.author.id, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
@@ -299,7 +333,6 @@ async function extractTextFromPDF(url) {
     const response = await fetch(url);
     const buffer = await response.buffer();
 
-    // pdf-parse expects a buffer
     let data = await pdf(buffer);
     return data.text;
   } catch (error) {
@@ -334,12 +367,13 @@ function updateChatHistory(userId, userMessage, modelResponse) {
   chatHistories[userId].push(modelResponse);
 }
 
-async function addClearChatComponents(botMessage) {
-  const clearButton = new ButtonBuilder()
-    .setCustomId('clear')
-    .setEmoji('🧹')
-    .setStyle(ButtonStyle.Secondary)
-  const actionRow = new ActionRowBuilder().addComponents(clearButton);
+async function addSettingsButton(botMessage) {
+  const settingsButton = new ButtonBuilder()
+    .setCustomId('settings')
+    .setEmoji('⚙️')
+    .setStyle(ButtonStyle.Secondary);
+
+  const actionRow = new ActionRowBuilder().addComponents(settingsButton);
   await botMessage.edit({ components: [actionRow] });
 }
 
