@@ -39,7 +39,6 @@ const client = new Client({
 });
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const openai = new OpenAI();
 const chatHistories = {};
 const activeUsersInChannels = {};
 const customInstructions = {};
@@ -238,7 +237,7 @@ async function showSettings(interaction) {
 
   // Split settings into multiple action rows if there are more than 5 buttons
   const actionRows = [];
-  const allButtons = [clearButton, toggleChatButton, customPersonalityButton, removePersonalityButton, generateImageButton, imageToggleButton];
+  const allButtons = [clearButton, toggleChatButton, customPersonalityButton, removePersonalityButton];
 
   while (allButtons.length > 0) {
     const actionRow = new ActionRowBuilder().addComponents(allButtons.splice(0, 5));
