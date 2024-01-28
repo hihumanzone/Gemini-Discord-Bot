@@ -44,10 +44,7 @@ client.once('ready', async () => {
 
 client.on('messageCreate', async (message) => {
   try {
-    // Prevent the bot from responding to itself
     if (message.author.bot) return;
-
-    // Determine if the bot is active for the channel, mentioned, or in a DM
     const isDM = message.channel.type === ChannelType.DM;
     const isBotMentioned = message.mentions.users.has(client.user.id);
     const isUserActiveInChannel = activeUsersInChannels[message.channelId] && activeUsersInChannels[message.channelId][message.author.id] || isDM;
@@ -73,38 +70,25 @@ client.on('messageCreate', async (message) => {
 async function alwaysRespond(interaction) {
   const userId = interaction.user.id;
   const channelId = interaction.channelId;
-
-  // Ensure the channel is initialized in activeUsersInChannels
   if (!activeUsersInChannels[channelId]) {
     activeUsersInChannels[channelId] = {};
   }
-
-  // Toggle the state for the current channel and user
   if (activeUsersInChannels[channelId][userId]) {
     delete activeUsersInChannels[channelId][userId];
-
-    // Send an ephemeral message to the user who interacted
     await interaction.reply({ content: '> Bot response to your messages is turned `OFF`.', ephemeral: true });
   } else {
     activeUsersInChannels[channelId][userId] = true;
-
-    // Send an ephemeral message to the user who interacted
     await interaction.reply({ content: '> Bot response to your messages is turned `ON`.', ephemeral: true });
   }
 }
 
 async function clearChatHistory(interaction) {
   chatHistories[interaction.user.id] = [];
-
-  // Send an ephemeral message to the user who interacted
   await interaction.reply({ content: '> `Chat history cleared!`', ephemeral: true });
 }
 
 client.on('interactionCreate', async (interaction) => {
-  // Check if the interaction is a button click
   if (interaction.isButton()) {
-
-  // Handle the interaction based on the customId of the button clicked
   if (interaction.customId === 'settings') {
     await showSettings(interaction);
   } else if (interaction.customId === 'clear') {
@@ -137,8 +121,6 @@ async function setCustomPersonality(interaction) {
     .setCustomId('custom-personality-modal')
     .setTitle(title)
     .addComponents(new ActionRowBuilder().addComponents(input));
-
-  // Present the modal to the user
   await interaction.showModal(modal);
 }
 
@@ -163,7 +145,6 @@ async function showSettings(interaction) {
     .setLabel('Remove Personality')
     .setStyle(ButtonStyle.Danger);
 
-  // Split settings into multiple action rows if there are more than 5 buttons
   const actionRows = [];
   const allButtons = [clearButton, toggleChatButton, customPersonalityButton, removePersonalityButton];
 
@@ -219,7 +200,6 @@ async function handleImageMessage(message) {
   }
 }
 
-// Function to compress and resize an image
 async function compressImage(buffer) {
   const maxDimension = 3072;
 
@@ -232,7 +212,6 @@ async function compressImage(buffer) {
     .toBuffer();
 }
 
-// handleTextFileMessage function to handle multiple file attachments
 async function handleTextFileMessage(message) {
   let messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim();
 
@@ -249,7 +228,6 @@ async function handleTextFileMessage(message) {
     let botMessage = await message.reply({ content: 'Processing your document(s)...' });
     let formattedMessage = messageContent;
 
-    // Retrieve extracted text from all attachments
     for (const [attachmentId, attachment] of fileAttachments) {
       let extractedText;
       if (attachment.contentType?.startsWith('application/pdf')) {
@@ -260,7 +238,6 @@ async function handleTextFileMessage(message) {
       formattedMessage += `\n\n[${attachment.name}] File Content:\n"${extractedText}"`;
     }
 
-    // Load the text model for handling the conversation
     const model = await genAI.getGenerativeModel({ model: 'gemini-pro' });
 
     const chat = model.startChat({
@@ -307,16 +284,12 @@ async function scrapeWebpageContent(url) {
     const html = await response.text();
     const $ = cheerio.load(html);
 
-    // Remove script and style tags along with their content
     $('script, style').remove();
 
-    // Extract and clean the text content within the <body> tag
     let bodyText = $('body').text();
 
-    // Remove any text that might still be enclosed in angle brackets
     bodyText = bodyText.replace(/<[^>]*>?/gm, '');
 
-    // Trim leading and trailing white-space and return
     return bodyText.trim();
 
   } catch (error) {
@@ -336,7 +309,6 @@ async function handleTextMessage(message) {
   }
   const instructions = customInstructions[message.author.id];
   
-  // Only include instructions if they are set.
   let formattedMessage = instructions
     ? `[Instructions To Follow]: ${instructions}\n\n[User Message]: ${messageContent}`
     : messageContent
@@ -358,10 +330,7 @@ async function handleTextMessage(message) {
 }
 
 async function removeCustomPersonality(interaction) {
-  // Remove the custom instructions for the user
   delete customInstructions[interaction.user.id];
-
-  // Let the user know their custom instructions have been removed
   await interaction.reply({ content: "> Custom personality instructions removed!", ephemeral: true });
 }
 
@@ -382,11 +351,9 @@ async function handleUrlsInMessage(urls, messageContent, botMessage, originalMes
         const transcriptText = transcriptData.map(item => item.text).join(' ');
         contentWithUrls += `\n\n[Transcript of Video ${contentIndex}]:\n"${transcriptText}"`;
       } else {
-        // For non-video URLs, attempt to scrape webpage content
         const webpageContent = await scrapeWebpageContent(url);
         contentWithUrls += `\n\n[Content of URL ${contentIndex}]:\n"${webpageContent}"`;
       }
-      // In both cases, replace the URL with a reference in the text
       contentWithUrls = contentWithUrls.replace(url, `[Reference ${contentIndex}](${url})`);
       contentIndex++;
     } catch (error) {
@@ -394,7 +361,6 @@ async function handleUrlsInMessage(urls, messageContent, botMessage, originalMes
       contentWithUrls += `\n\n[Error]: Can't access content from the [URL ${contentIndex}](${url}), likely due to bot blocking. Mention if you were blocked in your reply.`;
     }
   }
-  // After processing all URLs, continue with the chat response
   await handleModelResponse(botMessage, () => chat.sendMessageStream(contentWithUrls), originalMessage);
 }
 
@@ -449,7 +415,6 @@ async function sendAsTextFile(text, message) {
   await writeFile(filename, text);
   await message.reply({ content: 'Here is the response:', files: [filename] });
 
-  // Cleanup: Remove the file after sending it
   await unlink(filename);
 }
 
@@ -459,7 +424,6 @@ async function attachmentToPart(attachment) {
   return { inlineData: { data: buffer.toString('base64'), mimeType: attachment.contentType } };
 }
 
-// Function to extract text from a PDF file
 async function extractTextFromPDF(url) {
   try {
     const response = await fetch(url);
@@ -473,7 +437,6 @@ async function extractTextFromPDF(url) {
   }
 }
 
-// Function to fetch text from a plaintext file
 async function fetchTextFile(url) {
   try {
     const response = await fetch(url);
