@@ -26,7 +26,7 @@ cd Gemini-Discord-Bot
 Install required packages:
 
 ```bash
-npm install dotenv node-fetch@2.6.1 discord.js @google/generative-ai fs pdf-parse cheerio youtube-transcript
+npm install dotenv discord.js @google/generative-ai fs pdf-parse cheerio youtube-transcript
 ```
 
 ### Configuration
