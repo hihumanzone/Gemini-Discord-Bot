@@ -210,31 +210,37 @@ async function showSettings(interaction) {
   const clearButton = new ButtonBuilder()
     .setCustomId('clear')
     .setLabel('Clear Chat')
+    .setEmoji('🧹')
     .setStyle(ButtonStyle.Danger);
 
   const toggleChatButton = new ButtonBuilder()
     .setCustomId('always-respond')
     .setLabel('Always Respond')
+    .setEmoji('↩️')
     .setStyle(ButtonStyle.Secondary);
     
   const customPersonalityButton = new ButtonBuilder()
     .setCustomId('custom-personality')
     .setLabel('Custom Personality')
+    .setEmoji('🙌')
     .setStyle(ButtonStyle.Primary);
     
   const removePersonalityButton = new ButtonBuilder()
     .setCustomId('remove-personality')
     .setLabel('Remove Personality')
+    .setEmoji('🤖')
     .setStyle(ButtonStyle.Danger);
 
   const generateImageButton = new ButtonBuilder()
     .setCustomId('generate-image')
     .setLabel('Generate Image')
+    .setEmoji('🎨')
     .setStyle(ButtonStyle.Primary);
 
   const imageToggleButton = new ButtonBuilder()
     .setCustomId('change-image-model')
     .setLabel('Change Image Model')
+    .setEmoji('👨‍🎨')
     .setStyle(ButtonStyle.Secondary);
 
   // Split settings into multiple action rows if there are more than 5 buttons
@@ -248,8 +254,7 @@ async function showSettings(interaction) {
 
   await interaction.reply({
     content: '> ```Settings:```',
-    components: actionRows,
-    ephemeral: true
+    components: actionRows
   });
 }
 
