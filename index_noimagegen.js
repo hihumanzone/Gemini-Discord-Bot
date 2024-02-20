@@ -14,7 +14,6 @@ const {
   ModalSubmitInteraction,
 } = require('discord.js');
 const { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } = require('@google/generative-ai');
-const OpenAI = require('openai');
 const { writeFile, unlink } = require('fs/promises');
 const { createWriteStream, mkdtempSync, promises: fsPromises } = require('fs');
 const { tmpdir } = require('os');
@@ -38,7 +37,6 @@ const client = new Client({
 });
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const openai = new OpenAI();
 const chatHistories = {};
 const activeUsersInChannels = {};
 const customInstructions = {};
