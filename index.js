@@ -14,18 +14,13 @@ const {
   ModalSubmitInteraction,
 } = require('discord.js');
 const { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } = require('@google/generative-ai');
-const OpenAI = require('openai');
 const { writeFile, unlink } = require('fs/promises');
-const { createWriteStream, mkdtempSync, promises: fsPromises } = require('fs');
-const { tmpdir } = require('os');
-const { join } = require('path');
-const util = require('util');
-const streamPipeline = util.promisify(require('stream').pipeline);
-const fs = require("fs").promises;
 const sharp = require('sharp');
 const pdf = require('pdf-parse');
 const cheerio = require('cheerio');
 const { YoutubeTranscript } = require('youtube-transcript');
+const axios = require('axios');
+const EventSource = require('eventsource');
 
 const client = new Client({
   intents: [
@@ -38,7 +33,6 @@ const client = new Client({
 });
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const openai = new OpenAI();
 const chatHistories = {};
 const activeUsersInChannels = {};
 const customInstructions = {};
@@ -58,11 +52,18 @@ client.on('messageCreate', async (message) => {
     const isDM = message.channel.type === ChannelType.DM;
     const isBotMentioned = message.mentions.users.has(client.user.id);
     const isUserActiveInChannel = activeUsersInChannels[message.channelId] && activeUsersInChannels[message.channelId][message.author.id] || isDM;
-  
+
     if (isUserActiveInChannel || (isBotMentioned && !isDM)) {
-      if (activeRequests.has(message.author.id)) {
-      await message.reply('> `Please wait until your previous action is complete.`');
-      return;
+      if (message.content.toLowerCase().startsWith(`<@${client.user.id}>generate`) || message.content.toLowerCase().startsWith(`<@${client.user.id}> generate`) || message.content.toLowerCase().startsWith('generate')) {
+        const prompt = message.content.toLowerCase().replace(`<@${client.user.id}> generate`, '').toLowerCase().replace('generate', '').trim();
+        if (prompt) {
+            await genimg(prompt, message);
+        } else {
+            message.channel.send("> `Please provide a valid prompt.`");
+        }
+      } else if (activeRequests.has(message.author.id)) {
+        await message.reply('> `Please wait until your previous action is complete.`');
+        return;
       } else if (message.attachments.size > 0 && hasImageAttachments(message)) {
         await handleImageMessage(message);
       } else if (message.attachments.size > 0 && hasTextFileAttachments(message)) {
@@ -111,25 +112,25 @@ client.on('interactionCreate', async (interaction) => {
   // Check if the interaction is a button click
   if (interaction.isButton()) {
 
-  // Handle the interaction based on the customId of the button clicked
-  if (interaction.customId === 'settings') {
-    await showSettings(interaction);
-  } else if (interaction.customId === 'clear') {
-    await clearChatHistory(interaction);
-  } else if (interaction.customId === 'always-respond') {
-    await alwaysRespond(interaction);
-  } else if (interaction.customId === 'custom-personality') {
-    await setCustomPersonality(interaction);
-  } else if (interaction.customId === 'remove-personality') {
-    await removeCustomPersonality(interaction);
-  } else if (interaction.customId === 'generate-image') {
-    await handleGenerateImageButton(interaction);
-  } else if (interaction.customId === 'change-image-model') {
-    await changeImageModel(interaction);
-  } else if (interaction.customId.startsWith('select-model-')) {
-    const selectedModel = interaction.customId.replace('select-model-', '');
-    await handleSelectModel(interaction, selectedModel);
-  }
+    // Handle the interaction based on the customId of the button clicked
+    if (interaction.customId === 'settings') {
+      await showSettings(interaction);
+    } else if (interaction.customId === 'clear') {
+      await clearChatHistory(interaction);
+    } else if (interaction.customId === 'always-respond') {
+      await alwaysRespond(interaction);
+    } else if (interaction.customId === 'custom-personality') {
+      await setCustomPersonality(interaction);
+    } else if (interaction.customId === 'remove-personality') {
+      await removeCustomPersonality(interaction);
+    } else if (interaction.customId === 'generate-image') {
+      await handleGenerateImageButton(interaction);
+    } else if (interaction.customId === 'change-image-model') {
+      await changeImageModel(interaction);
+    } else if (interaction.customId.startsWith('select-model-')) {
+      const selectedModel = interaction.customId.replace('select-model-', '');
+      await handleSelectModel(interaction, selectedModel);
+    }
   } else if (interaction.isModalSubmit()) {
     await handleModalSubmit(interaction);
   }
@@ -142,16 +143,37 @@ async function handleGenerateImageButton(interaction) {
     .addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
-          .setCustomId('image-prompt-input')
-          .setLabel("Describe the image you'd like to generate:")
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder("Enter your image description here")
-          .setMinLength(1)
-          .setMaxLength(4000)
+        .setCustomId('image-prompt-input')
+        .setLabel("Describe the image you'd like to generate:")
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder("Enter your image description here")
+        .setMinLength(1)
+        .setMaxLength(4000)
       )
     );
 
   await interaction.showModal(modal);
+}
+
+async function genimg(prompt, message) {
+  let msg = `Generating your image, please wait... 🖌️`;
+  
+  const messageReference = await message.reply({ content: msg });
+  
+  try {
+    const imageResult = await generateImageWithPrompt(prompt, message.author.id);
+    const imageUrl = imageResult.images[0].url;
+    const modelUsed = imageResult.modelUsed;
+  
+    message = `> Here is your generated image based on the prompt:\n> \`\`\`${prompt}\`\`\`\n> **Generated by**: \`${message.author.displayName}\`\n> **Model Used**: \`${modelUsed}\``;
+    const botMessage = await messageReference.edit({ content: message, files: [imageUrl] });
+    await addSettingsButton(botMessage);
+  } catch (error) {
+    message = `Sorry, could not generate the image. Please try again later.`;
+    console.log(error)
+    const botMessage = await messageReference.edit({ content: message });
+    await addSettingsButton(botMessage);
+  }
 }
 
 async function handleModalSubmit(interaction) {
@@ -163,23 +185,23 @@ async function handleModalSubmit(interaction) {
 
     setTimeout(() => interaction.deleteReply(), 10000); // Delete after 10 seconds
   } else if (interaction.customId === 'generate-image-modal') {
-  const prompt = interaction.fields.getTextInputValue('image-prompt-input');
-  let message = `${interaction.user}, generating your image, please wait... 🖌️`;
+    const prompt = interaction.fields.getTextInputValue('image-prompt-input');
+    let message = `${interaction.user}, generating your image, please wait... 🖌️`;
 
-  const messageReference = await interaction.reply({ content: message });
+    const messageReference = await interaction.reply({ content: message });
 
-  try {
+    try {
       const imageResult = await generateImageWithPrompt(prompt, interaction.user.id);
       const imageUrl = imageResult.images[0].url;
       const modelUsed = imageResult.modelUsed; // Capture the model used
-    
+
       // Update the message to include the model used
-      message = `> ${interaction.user}, here is your generated image based on the prompt:\n> \`\`\`${prompt}\`\`\`\n> **Generated by**: \`${interaction.user.tag}\`\n> **Model Used**: \`${modelUsed}\``;
+      message = `> ${interaction.user}, here is your generated image based on the prompt:\n> \`\`\`${prompt}\`\`\`\n> **Generated by**: \`${interaction.user.displayName}\`\n> **Model Used**: \`${modelUsed}\``;
       const botMessage = await messageReference.edit({ content: message, files: [imageUrl] });
       await addSettingsButton(botMessage);
     } catch (error) {
       message = `${interaction.user}, sorry, could not generate the image. Please try again later.`;
-      const botMessage =  await messageReference.edit({ content: message });
+      const botMessage = await messageReference.edit({ content: message });
       await addSettingsButton(botMessage);
     }
   }
@@ -218,13 +240,13 @@ async function showSettings(interaction) {
     .setLabel('Always Respond')
     .setEmoji('↩️')
     .setStyle(ButtonStyle.Secondary);
-    
+
   const customPersonalityButton = new ButtonBuilder()
     .setCustomId('custom-personality')
     .setLabel('Custom Personality')
     .setEmoji('🙌')
     .setStyle(ButtonStyle.Primary);
-    
+
   const removePersonalityButton = new ButtonBuilder()
     .setCustomId('remove-personality')
     .setLabel('Remove Personality')
@@ -261,13 +283,10 @@ async function showSettings(interaction) {
 async function changeImageModel(interaction) {
   // Create buttons for each model
   const buttons = [
-    new ButtonBuilder().setCustomId('select-model-kandinsky-3').setLabel('Kandinsky-3').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('select-model-Proteus').setLabel('Proteus').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-model-Dreamshaper-XL').setLabel('Dreamshaper-XL').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-model-Juggernaut-XL').setLabel('Juggernaut-XL').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-model-Dall-E-3-XL').setLabel('Dall-E-3-XL').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-model-Dall-E-3').setLabel('Dall-E-3').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('select-model-SD-XL').setLabel('SD-XL').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('select-model-Stable-Cascade').setLabel('Stable-Cascade').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('select-model-Kandinsky').setLabel('Kandinsky').setStyle(ButtonStyle.Primary),
   ];
 
   // Split buttons into multiple ActionRows if there are more than 5 buttons
@@ -279,7 +298,7 @@ async function changeImageModel(interaction) {
 
   // Reply with the message prompting user to select an image generation model
   await interaction.reply({
-    content: 'Select Image Generation Model:',
+    content: '> `Select Image Generation Model:`',
     components: actionRows,
     ephemeral: true,
   });
@@ -294,71 +313,214 @@ async function handleSelectModel(interaction, model) {
 async function generateImageWithPrompt(prompt, userId) {
   try {
     const selectedModel = userPreferredImageModel[userId] || "SD-XL";
-    
-    if (selectedModel === "kandinsky-3") {
-      return await generateWithKandinsky(prompt);
-    } else if (selectedModel === "Dall-E-3") {
-      return await generateWithDallE3(prompt);
-    }
 
-    // Fallback for other models
-    return await generateWithHuggingFace(prompt, selectedModel);
+    if (selectedModel === "Stable-Cascade") {
+      return await generateWithSC(prompt);
+    } else if (selectedModel === "Proteus") {
+      return await generateWithProteus(prompt);
+    } else if (selectedModel === "SD-XL") {
+      return await generateWithSDXL(prompt);
+    } else if (selectedModel === "Kandinsky") {
+      return await generateWithKandinsky(prompt);
+    }
   } catch (error) {
     console.error('Error generating image:', error);
     throw new Error('Could not generate image');
   }
 }
 
-async function generateWithKandinsky(prompt) {
-  const response = await openai.images.generate({
-    model: "kandinsky-3",
-    prompt: prompt,
-    n: 1,
+function generateWithSC(prompt) {
+  return new Promise((resolve, reject) => {
+    const url = "https://ehristoforu-stable-cascade.hf.space";
+    let session_hash = 'test123';
+
+    // Define the first request URL and data
+    const urlFirstRequest = `${url}/queue/join?`;
+    const dataFirstRequest = {
+      "data": [prompt, "(deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation", 768, 768, true],
+      "event_data": null,
+      "fn_index": 0,
+      "trigger_id": 4,
+      "session_hash": session_hash
+    };
+
+    axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
+      console.log(responseFirst.data);
+
+      const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
+      const eventSource = new EventSource(urlSecondRequest);
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.msg === "process_completed") {
+          eventSource.close();
+          const image_path = data.output.data[0][0].image.path;
+          const full_url = `${url}/file=${image_path}`;
+          console.log(full_url);
+
+          resolve({ images: [{ url: full_url }], modelUsed: "Stable Cascade" });
+        }
+      };
+
+      // In case of an error with EventSource, you may also want to reject the promise
+      eventSource.onerror = (error) => {
+        eventSource.close();
+        console.error("EventSource Error:", error);
+        reject(error);
+      };
+
+    }).catch(error => {
+      console.error("Error:", error);
+      reject(error); // Reject the promise if the first request fails
+    });
   });
-
-  return { images: response.data, modelUsed: "kandinsky-3" };
 }
 
-async function generateWithDallE3(prompt) {
-  const response = await openai.images.generate({
-    model: "dall-e-3",
-    prompt: prompt,
-    n: 1,
+function generateWithProteus(prompt) {
+  return new Promise((resolve, reject) => {
+    const url = "https://ehristoforu-proteus-v0-3.hf.space/--replicas/nwkyh"
+    let session_hash = 'test123';
+
+    // Define the first request URL and data
+    const urlFirstRequest = `${url}/queue/join?`;
+    const dataFirstRequest = {
+      "data": [prompt, "(deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation", true, 0, 768, 768, 7, true],
+      "event_data": null,
+      "fn_index": 3,
+      "trigger_id": 6,
+      "session_hash": session_hash
+    };
+
+    axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
+      console.log(responseFirst.data);
+
+      const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
+      const eventSource = new EventSource(urlSecondRequest);
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.msg === "process_completed") {
+          eventSource.close();
+          const image_path = data.output.data[0][0].image.path;
+          const full_url = `${url}/file=${image_path}`;
+          console.log(full_url);
+
+          resolve({ images: [{ url: full_url }], modelUsed: "Proteus" });
+        }
+      };
+
+      // In case of an error with EventSource, you may also want to reject the promise
+      eventSource.onerror = (error) => {
+        eventSource.close();
+        console.error("EventSource Error:", error);
+        reject(error);
+      };
+
+    }).catch(error => {
+      console.error("Error:", error);
+      reject(error); // Reject the promise if the first request fails
+    });
   });
-
-  return { images: response.data, modelUsed: "dall-e-3" };
 }
 
-async function generateWithHuggingFace(prompt, selectedModel) {
-  const modelNameMap = {
-    "Dreamshaper-XL": "Lykon/dreamshaper-xl-v2-turbo",
-    "Juggernaut-XL": "stablediffusionapi/juggernaut-xl-v8",
-    "Proteus": "dataautogpt3/ProteusV0.3",
-    "SD-XL": "stabilityai/stable-diffusion-xl-base-1.0",
-    "Dall-E-3-XL": "ehristoforu/dalle-3-xl"
-  };
-  const modelName = modelNameMap[selectedModel];
-  const buffer = await huggingFaceImageGeneration(modelName, prompt);
-  const nodeBuffer = Buffer.from(buffer);
-  const tempFilePath = `./temp_${Date.now()}_${selectedModel}.png`;
+function generateWithSDXL(prompt) {
+  return new Promise((resolve, reject) => {
+    const url = "https://ap123-sdxl-lightning.hf.space";
+    let session_hash = 'test123';
 
-  await fs.writeFile(tempFilePath, nodeBuffer);
+    // Define the first request URL and data
+    const urlFirstRequest = `${url}/queue/join?`;
+    const dataFirstRequest = {
+      "data": [prompt, "4-Step"],
+      "event_data": null,
+      "fn_index": 1,
+      "trigger_id": 7,
+      "session_hash": session_hash
+    };
 
-  return { images: [{ url: tempFilePath }], modelUsed: selectedModel };
+    axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
+      console.log(responseFirst.data);
+
+      const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
+      const eventSource = new EventSource(urlSecondRequest);
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.msg === "process_completed") {
+          eventSource.close();
+          const full_url = data["output"]["data"][0]["url"];
+          console.log(full_url);
+
+          resolve({ images: [{ url: full_url }], modelUsed: "SD-XL" });
+        }
+      };
+
+      // In case of an error with EventSource, you may also want to reject the promise
+      eventSource.onerror = (error) => {
+        eventSource.close();
+        console.error("EventSource Error:", error);
+        reject(error);
+      };
+
+    }).catch(error => {
+      console.error("Error:", error);
+      reject(error); // Reject the promise if the first request fails
+    });
+  });
 }
 
-async function huggingFaceImageGeneration(modelName, prompt) {
-  const response = await fetch(
-    `https://api-inference.huggingface.co/models/${modelName}`,
-    {
-      headers: { Authorization: `Bearer ${process.env.HF_AUTH_TOKEN}` },
-      method: "POST",
-      body: JSON.stringify({ inputs: prompt }),
-    }
-  );
+function generateWithKandinsky(prompt) {
+  return new Promise((resolve, reject) => {
+    const url = "https://ehristoforu-kandinsky-api.hf.space";
+    let session_hash = 'test123';
 
-  if (!response.ok) throw new Error(`Unexpected response ${response.statusText}`);
-  return await response.arrayBuffer();
+    // Define the first request URL and data
+    const urlFirstRequest = `${url}/queue/join?`;
+    const dataFirstRequest = {
+      "data": [prompt, 1024, 1024],
+      "event_data": null,
+      "fn_index": 0,
+      "trigger_id": 4,
+      "session_hash": session_hash
+    };
+
+    axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
+      console.log(responseFirst.data);
+
+      const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
+      const eventSource = new EventSource(urlSecondRequest);
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.msg === "process_completed") {
+          eventSource.close();
+          const full_url = data["output"]["data"][0][0]["image"]["url"];
+          console.log(full_url);
+
+          resolve({ images: [{ url: full_url }], modelUsed: "Kandinsky" });
+        }
+      };
+
+      // In case of an error with EventSource, you may also want to reject the promise
+      eventSource.onerror = (error) => {
+        eventSource.close();
+        console.error("EventSource Error:", error);
+        reject(error);
+      };
+
+    }).catch(error => {
+      console.error("Error:", error);
+      reject(error); // Reject the promise if the first request fails
+    });
+  });
 }
 
 async function handleImageMessage(message) {
@@ -379,7 +541,7 @@ async function handleImageMessage(message) {
           try {
 
             const compressedBuffer = await compressImage(buffer);
-            
+
             if (compressedBuffer.length > 4 * 1024 * 1024) {
               throw new Error('Image too large after compression.');
             }
@@ -481,7 +643,7 @@ async function fetchTextContent(url) {
   }
 }
 
-const safetySettings = [  {    category: HarmCategory.HARM_CATEGORY_HARASSMENT,    threshold: HarmBlockThreshold.BLOCK_NONE,  },  {    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,    threshold: HarmBlockThreshold.BLOCK_NONE,  },  {    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,    threshold: HarmBlockThreshold.BLOCK_NONE,  },  {    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,    threshold: HarmBlockThreshold.BLOCK_NONE,  },];
+const safetySettings = [{ category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE, }, { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE, }, { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE, }, { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE, }, ];
 
 async function scrapeWebpageContent(url) {
   try {
@@ -518,11 +680,11 @@ async function handleTextMessage(message) {
     return;
   }
   const instructions = customInstructions[message.author.id];
-  
+
   // Only include instructions if they are set.
-  let formattedMessage = instructions
-    ? `[Instructions To Follow]: ${instructions}\n\n[User]: ${messageContent}`
-    : messageContent
+  let formattedMessage = instructions ?
+    `[Instructions To Follow]: ${instructions}\n\n[User]: ${messageContent}` :
+    messageContent
 
   const urls = extractUrls(messageContent);
   activeRequests.add(userId);
@@ -536,15 +698,12 @@ async function handleTextMessage(message) {
       history: getHistory(message.author.id),
       safetySettings,
     });
-      await handleModelResponse(botMessage, () => chat.sendMessageStream(formattedMessage), message);
+    await handleModelResponse(botMessage, () => chat.sendMessageStream(formattedMessage), message);
   }
 }
 
 async function removeCustomPersonality(interaction) {
-  // Remove the custom instructions for the user
   delete customInstructions[interaction.user.id];
-
-  // Let the user know their custom instructions have been removed
   await interaction.reply({ content: "> `Custom personality instructions removed!`", ephemeral: true });
 }
 
@@ -585,7 +744,7 @@ async function handleUrlsInMessage(urls, messageContent, botMessage, originalMes
 function extractYouTubeVideoId(url) {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
   const match = url.match(regExp);
-  
+
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
