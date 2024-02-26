@@ -1,67 +1,57 @@
-# Gemini Discord Bot
+# Discord Gemini Bot
 
-Gemini Discord Bot is a powerful chatbot for Discord that utilizes Google's Generative AI to provide a wide range of interactive capabilities to Discord servers. It can analyze images, process text files, fetch content from websites, and even fetch YouTube transcripts. 
+This Discord bot leverages the power of Google's Generative AI and other tools to interact with users in unique ways, such as generating images based on prompts, replying to messages with insightful comments, and more. Below you'll find all the information you need to get started with using and contributing to the bot.
 
 ## Features
-- Responds to mentions and direct messages
-- Can be toggled on or off for channels
-- Analyzes images using Google's Generative AI
-- Processes PDF and plain text files
-- Scrapes content from webpages
-- Fetches transcripts from YouTube videos
-- Can manage or clear conversation
+
+- **Image Generation:** Generate images based on prompts using different models like Proteus, SD-XL, Stable-Cascade, and Kandinsky.
+- **Auto-Response:** Optionally set the bot to automatically respond to all messages in a channel.
+- **Conversation History:** Maintains a history of interactions for more context-aware responses.
+- **File Processing:** Ability to process and understand content from images, PDFs, and text files.
+- **URL Content Fetching:** Fetches and understands content from URLs provided in messages.
+- **Customizable:** Users can customize the bot's personality and response behavior.
 
 ## Getting Started
 
-### Prerequisites
-Before you run the bot, make sure you have Node.js installed on your machine. You can download it from [here](https://nodejs.org/).
+1. **Clone this repository**
 
-### Installation
-Clone the repository:
-```
-git clone https://github.com/hihumanzone/Gemini-Discord-Bot.git
-cd Gemini-Discord-Bot
-```
+    Start by cloning this repository to your local machine to get the source code.
 
-Install required packages:
+2. **Install dependencies**
 
-```bash
-npm install dotenv node-fetch@2.6.1 discord.js @google/generative-ai fs sharp pdf-parse cheerio youtube-transcript axios eventsource
-```
+    Navigate to the cloned directory and run the following command to install all necessary packages:
 
-### Configuration
-1. Obtain a Google API Key by following the instructions [here](https://makersuite.google.com/app/apikey).
+    ```bash
+    npm install dotenv node-fetch@2.6.1 discord.js @google/generative-ai fs sharp pdf-parse cheerio youtube-transcript axios eventsource
+    ```
 
-2. Create a new bot in the [Discord Developer Portal](https://discord.com/developers/applications) and get your Discord Bot Token.
+3. **Set Up Environment Variables**
 
-3. Create a `.env` file in the root of your project and add the following:
-```
-DISCORD_BOT_TOKEN=your_discord_bot_token
-GOOGLE_API_KEY=your_google_api_key
-```
+    Create a `.env` file in the root directory and define the following variables:
 
-### Running the bot
-To start the bot, run the following command in your terminal:
-```bash
-node index.js
-```
+    - `DISCORD_BOT_TOKEN`: Your Discord bot token.
+    - `GOOGLE_API_KEY`: Your Google Gemini API key which can be obtained from [Google AI Studio](https://aistudio.google.com/app/apikey).
 
-## Usage
+4. **Run the Bot**
 
-### Commands
-- `>toggle-chat` – Toggle the bot's activity in a server channel. Use this command in the specific channel you wish to enable/disable the bot.
+    Start the bot by running `node index.js` or your preferred command, depending on how you've set up your project structure. Ensure that `index.js` is the entry point where the code provided is located.
 
-### Interactive Responses
-- Mention the bot with `@[bot name]` followed by your message in any server channel where the bot is enabled or in a DM to get a response.
-- Attach images to your message for the bot to analyze and respond.
-- Attach PDF or text files for the bot to process and respond.
+## Additional Resources
+
+- **Website**: For more information, visit the [official website](https://discord-bot-webpage.vercel.app/).
+- **GitHub Repository**: Access the source code on [GitHub](https://github.com/hihumanzone).
+- **Google Gemini API Key**: Obtain your API key [here](https://aistudio.google.com/app/apikey).
 
 ## Contributing
-We welcome contributions! Please feel free to submit a Pull Request or create an issue for any enhancements or bug fixes.
 
-## License
-Gemini Discord Bot is licensed under the MIT License.
+Contributions are what make the open-source community such a fantastic place to learn, inspire, and create. Any contributions you make are greatly appreciated.
 
-## Acknowledgements
-- Thanks to Google for the Generative AI API used in this bot.
-- All contributors and users who have provided valuable feedback.
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+Created by hihumanzone (also known as Impulse). Check out the [GitHub profile](https://github.com/hihumanzone) for more awesome projects!
