@@ -12,6 +12,10 @@ const {
   TextInputStyle,
   ModalBuilder,
   ModalSubmitInteraction,
+  SlashCommandBuilder,
+  PermissionsBitField,
+  REST,
+  Routes,
 } = require('discord.js');
 const { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } = require('@google/generative-ai');
 const { writeFile, unlink } = require('fs/promises');
@@ -38,28 +42,86 @@ const activeUsersInChannels = {};
 const customInstructions = {};
 const userPreferredImageModel = {};
 const activeRequests = new Set();
+const alwaysRespondChannels = {};
+const token = process.env.DISCORD_BOT_TOKEN;
 
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
+  
+  // Define the Slash Command
+  const commands = [
+    new SlashCommandBuilder()
+      .setName('imagine')
+      .setDescription('Generate an image based on a prompt using a selected model.')
+      .addStringOption(option =>
+        option.setName('model')
+          .setDescription('The image generation model to use.')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Proteus', value: 'Proteus' },
+            { name: 'SD-XL', value: 'SD-XL' },
+            { name: 'Stable-Cascade', value: 'Stable-Cascade' },
+            { name: 'Kandinsky', value: 'Kandinsky' }
+          )
+      )
+      .addStringOption(option =>
+        option.setName('prompt')
+          .setDescription('The prompt to generate the image from.')
+          .setRequired(true)
+      ),
+    new SlashCommandBuilder()
+      .setName('respondtoall')
+      .setDescription('Enables the bot to always respond to all messages in this channel.'),
+    new SlashCommandBuilder()
+      .setName('clear')
+      .setDescription('Clears the conversation history.')
+
+  ].map(command => command.toJSON());
+
+  const rest = new REST({ version: '10' }).setToken(token);
+
+  // Register the command
+  try {
+    console.log('Started refreshing application (/) commands.');
+
+    // Registering command globally
+    await rest.put(
+      Routes.applicationCommands(client.user.id),
+      { body: commands },
+    );
+
+    console.log('Successfully reloaded application (/) commands.');
+  } catch (error) {
+    console.error(error);
+  }
 });
 
 client.on('messageCreate', async (message) => {
   try {
-    // Prevent the bot from responding to itself
+    // Prevents the bot from responding to its own messages
     if (message.author.bot) return;
 
-    // Determine if the bot is active for the channel, mentioned, or in a DM
+    // Checks if the bot is required to reply in the channel, if mentioned, or in DMs
     const isDM = message.channel.type === ChannelType.DM;
     const isBotMentioned = message.mentions.users.has(client.user.id);
-    const isUserActiveInChannel = activeUsersInChannels[message.channelId] && activeUsersInChannels[message.channelId][message.author.id] || isDM;
+    const shouldAlwaysRespond = alwaysRespondChannels[message.channelId];
+    const isUserActiveInChannel = activeUsersInChannels[message.channelId]?.[message.author.id] || isDM;
 
-    if (isUserActiveInChannel || (isBotMentioned && !isDM)) {
-      if (message.content.toLowerCase().startsWith(`<@${client.user.id}>generate`) || message.content.toLowerCase().startsWith(`<@${client.user.id}> generate`) || message.content.toLowerCase().startsWith('generate')) {
-        const prompt = message.content.toLowerCase().replace(`<@${client.user.id}> generate`, '').toLowerCase().replace('generate', '').trim();
+    if (isUserActiveInChannel || (isBotMentioned && !isDM) || shouldAlwaysRespond) {
+      if (message.content.toLowerCase().startsWith(`<@${client.user.id}>generate`) || message.content.toLowerCase().startsWith(`<@${client.user.id}> generate`) || message.content.toLowerCase().startsWith('generate') || message.content.toLowerCase().startsWith(`<@${client.user.id}>imagine`) || message.content.toLowerCase().startsWith(`<@${client.user.id}> imagine`) || message.content.toLowerCase().startsWith('imagine')) {
+        const prompt = message.content
+          .toLowerCase()
+          .replace(new RegExp(`<@${client.user.id}> generate`), '')
+          .replace(new RegExp(`<@${client.user.id}>generate`), '')
+          .replace('generate', '')
+          .replace(new RegExp(`<@${client.user.id}> imagine`), '')
+          .replace(new RegExp(`<@${client.user.id}>imagine`), '')
+          .replace('imagine', '')
+          .trim();
         if (prompt) {
-            await genimg(prompt, message);
+          await genimg(prompt, message);
         } else {
-            message.channel.send("> `Please provide a valid prompt.`");
+          await message.channel.send("> `Please provide a valid prompt.`");
         }
       } else if (activeRequests.has(message.author.id)) {
         await message.reply('> `Please wait until your previous action is complete.`');
@@ -73,8 +135,8 @@ client.on('messageCreate', async (message) => {
       }
     }
   } catch (error) {
-    console.error('Error handling a message:', error);
-    message.reply('Sorry, something went wrong!');
+    console.error('Error processing the message:', error);
+    await message.reply('Sorry, something went wrong!');
   }
 });
 
@@ -103,10 +165,39 @@ async function alwaysRespond(interaction) {
 
 async function clearChatHistory(interaction) {
   chatHistories[interaction.user.id] = [];
-
   // Send an ephemeral message to the user who interacted
   await interaction.reply({ content: '> `Chat history cleared!`', ephemeral: true });
 }
+
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isCommand()) return;
+  
+  if (interaction.commandName === 'respondtoall') {
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return interaction.reply({ content: 'You need to be an admin to use this command.', ephemeral: true });
+    }
+  
+    const channelId = interaction.channelId;
+  
+    // Toggle functionality
+    if (alwaysRespondChannels[channelId]) {
+      // It's currently on, so turn it off.
+      delete alwaysRespondChannels[channelId];
+      await interaction.reply({ content: '> **The bot will now stop** responding to all messages in this channel.', ephemeral: false });
+    } else {
+      // It's currently off, so turn it on.
+      alwaysRespondChannels[channelId] = true;
+      await interaction.reply({ content: '> **The bot will now respond** to all messages in this channel.', ephemeral: false });
+    }
+  } else if (interaction.commandName === 'imagine') {
+    const model = interaction.options.getString('model');
+    const prompt = interaction.options.getString('prompt');
+
+    await genimgslash(prompt, model, interaction);
+  } else if (interaction.commandName === 'clear') {
+    await clearChatHistory(interaction);
+  }
+});
 
 client.on('interactionCreate', async (interaction) => {
   // Check if the interaction is a button click
@@ -172,6 +263,28 @@ async function genimg(prompt, message) {
     message = `Sorry, could not generate the image. Please try again later.`;
     console.log(error)
     const botMessage = await messageReference.edit({ content: message });
+    await addSettingsButton(botMessage);
+  }
+}
+
+async function genimgslash(prompt, model, message) {
+  let msg = `Generating your image with ${model}, please wait... 🖌️`;
+
+  const messageReference = await message.reply({ content: msg });
+  userPreferredImageModel[message.user.id] = model; // Save the user's preferred model
+  
+  try {
+    const imageResult = await generateImageWithPrompt(prompt, message.user.id); // Pass the model to the image generation function
+    const imageUrl = imageResult.images[0].url;
+    const modelUsed = imageResult.modelUsed;
+  
+    let responseMessage = `> Here's your generated image based on the prompt:\n> \`\`\`${prompt}\`\`\`\n> **Generated by**: \`${message.user.displayName}\`\n> **Model Used**: \`${modelUsed}\``;
+    const botMessage = await messageReference.edit({ content: responseMessage, files: [imageUrl] });
+    await addSettingsButton(botMessage);
+  } catch (error) {
+    let errorMessage = `Sorry, the image could not be generated. Please try again later.`;
+    console.log(error);
+    const botMessage = await messageReference.edit({ content: errorMessage });
     await addSettingsButton(botMessage);
   }
 }
@@ -306,7 +419,7 @@ async function changeImageModel(interaction) {
 
 async function handleSelectModel(interaction, model) {
   const userId = interaction.user.id;
-  userPreferredImageModel[userId] = model;
+  userPreferredImageModel[userId] = model; 
   await interaction.reply({ content: `**Image Generation Model Selected**: ${model}`, ephemeral: true });
 }
 
@@ -855,4 +968,4 @@ async function addSettingsButton(botMessage) {
   await botMessage.edit({ components: [actionRow] });
 }
 
-client.login(process.env.DISCORD_BOT_TOKEN);
+client.login(token);
