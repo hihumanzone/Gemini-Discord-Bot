@@ -13,28 +13,28 @@ This Discord bot leverages the power of Google's Generative AI and other tools t
 
 ## Screenshots
 
-### Screenshot 1
+### Screenshot 1: Images and text
 ![Screenshot 1](ss/1.jpg)
 
-### Screenshot 2
+### Screenshot 2: Settings
 ![Screenshot 2](ss/2.jpg)
 
-### Screenshot 3
+### Screenshot 3: Change Image Model
 ![Screenshot 3](ss/3.jpg)
 
-### Screenshot 4
+### Screenshot 4: Custom Personality Sample
 ![Screenshot 4](ss/4.jpg)
 
-### Screenshot 5
+### Screenshot 5: Image Generation
 ![Screenshot 5](ss/5.jpg)
 
-### Screenshot 6
+### Screenshot 6: Text File Handling & Big Response Handling
 ![Screenshot 6](ss/6.jpg)
 
-### Screenshot 7
+### Screenshot 7: Reading Websites
 ![Screenshot 7](ss/7.jpg)
 
-### Screenshot 8
+### Screenshot 8: Reading YouTube Videos
 ![Screenshot 8](ss/8.jpg)
 
 ## Getting Started
