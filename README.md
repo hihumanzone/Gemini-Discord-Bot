@@ -72,12 +72,6 @@ This Discord bot leverages the power of Google's Generative AI and other tools t
 
 Contributions are what make the open-source community such a fantastic place to learn, inspire, and create. Any contributions you make are greatly appreciated.
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
 ---
 
 Created by hihumanzone (also known as Impulse). Check out the [GitHub profile](https://github.com/hihumanzone) for more awesome projects!
