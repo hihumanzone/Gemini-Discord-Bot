@@ -22,7 +22,7 @@ This Discord bot leverages the power of Google's Generative AI and other tools t
 ### Screenshot 3: Change Image Model
 ![Screenshot 3](ss/3.jpg)
 
-### Screenshot 4: Custom Personality Sample
+### Screenshot 4: Custom Personality Demo
 ![Screenshot 4](ss/4.jpg)
 
 ### Screenshot 5: Image Generation
