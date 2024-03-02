@@ -612,7 +612,7 @@ function generateWithProteus4(prompt) {
         "prompt": prompt,
         "scheduler": "DPM++2MSDE",
         "num_outputs": 1,
-        "guidance_scale": 7,
+        "guidance_scale": 5,
         "apply_watermark": true,
         "negative_prompt": "nsfw, bad quality, bad anatomy, worst quality, low quality, low resolutions, extra fingers, blur, blurry, ugly, wrongs proportions, watermark, image artifacts, lowres, ugly, jpeg artifacts, deformed, noisy image",
         "prompt_strength": 0.8,
