@@ -60,11 +60,11 @@ client.once('ready', async () => {
           .setDescription('The image generation model to use.')
           .setRequired(true)
           .addChoices(
-            { name: 'Proteus', value: 'Proteus' },
             { name: 'SD-XL', value: 'SD-XL' },
             { name: 'Stable-Cascade', value: 'Stable-Cascade' },
             { name: 'PlaygroundAI', value: 'PlaygroundAI' },
-            { name: 'Kandinsky', value: 'Kandinsky' }
+            { name: 'Kandinsky', value: 'Kandinsky' },
+            { name: 'Replicate', value: 'Proteus-v0.4' }
           )
       )
       .addStringOption(option =>
@@ -443,11 +443,11 @@ async function showSettings(interaction) {
 async function changeImageModel(interaction) {
   // Create buttons for each model
   const buttons = [
-    new ButtonBuilder().setCustomId('select-model-Proteus').setLabel('Proteus').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('select-model-SD-XL').setLabel('SD-XL').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('select-model-Stable-Cascade').setLabel('Stable-Cascade').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('select-model-PlaygroundAI').setLabel('PlaygroundAI').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('select-model-Kandinsky').setLabel('Kandinsky').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('select-model-Proteus-v0.4').setLabel('Proteus-v0.4').setStyle(ButtonStyle.Primary),
   ];
 
   // Split buttons into multiple ActionRows if there are more than 5 buttons
@@ -477,14 +477,14 @@ async function generateImageWithPrompt(prompt, userId) {
 
     if (selectedModel === "Stable-Cascade") {
       return await generateWithSC(prompt);
-    } else if (selectedModel === "Proteus") {
-      return await generateWithProteus(prompt);
     } else if (selectedModel === "SD-XL") {
       return await generateWithSDXL(prompt);
     } else if (selectedModel === "Kandinsky") {
       return await generateWithKandinsky(prompt);
     } else if (selectedModel === "PlaygroundAI") {
       return await generateWithPlaygroundAI(prompt);
+    } else if (selectedModel === "Proteus-v0.4") {
+      return await generateWithProteus4(prompt);
     }
   } catch (error) {
     console.error('Error generating image:', error);
@@ -500,7 +500,7 @@ function generateWithSC(prompt) {
     // Define the first request URL and data
     const urlFirstRequest = `${url}/queue/join?`;
     const dataFirstRequest = {
-      "data": [prompt, "(deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation", 768, 768, true],
+      "data": [prompt, "nsfw, bad quality, bad anatomy, worst quality, low quality, low resolutions, extra fingers, blur, blurry, ugly, wrongs proportions, watermark, image artifacts, lowres, ugly, jpeg artifacts, deformed, noisy image", 768, 768, true],
       "event_data": null,
       "fn_index": 0,
       "trigger_id": 4,
@@ -543,146 +543,182 @@ function generateWithSC(prompt) {
 
 function generateWithPlaygroundAI(prompt) {
   return new Promise((resolve, reject) => {
-    const url = "https://ap123-playground-v2-5.hf.space";
-    let session_hash = 'test123';
-
-    // Define the first request URL and data
-    const urlFirstRequest = `${url}/queue/join?`;
-    const dataFirstRequest = {
-      "data": [prompt, 30, 3],
-      "event_data": null,
-      "fn_index": 0,
-      "trigger_id": 10,
-      "session_hash": session_hash
+    const url = "https://replicate.com/api/predictions";
+    const payload = {
+      "input": {
+        "width": 1024,
+        "height": 1024,
+        "prompt": prompt,
+        "scheduler": "DPMSolver++",
+        "num_outputs": 1,
+        "guidance_scale": 6,
+        "apply_watermark": true,
+        "negative_prompt": "nsfw, bad quality, bad anatomy, worst quality, low quality, low resolutions, extra fingers, blur, blurry, ugly, wrongs proportions, watermark, image artifacts, lowres, ugly, jpeg artifacts, deformed, noisy image",
+        "prompt_strength": 0.8,
+        "num_inference_steps": 50
+      },
+      "is_training": false,
+      "create_model": "0",
+      "stream": false,
+      "version": "419269784d9e00c56e5b09747cfc059a421e0c044d5472109e129b746508c365"
     };
 
-    axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-      console.log(responseFirst.data);
+    const headers = {
+      "Content-Type": "application/json"
+    };
 
-      const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+    axios.post(url, payload, { headers })
+      .then(response => {
+        const predictionId = response.data.id;
+        const urlWithId = `https://replicate.com/api/predictions/${predictionId}`;
 
-      const eventSource = new EventSource(urlSecondRequest);
-
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.msg === "process_completed") {
-          eventSource.close();
-          const full_url = data["output"]["data"][0]["url"];
-          console.log(full_url);
-
-          resolve({ images: [{ url: full_url }], modelUsed: "PlaygroundAI" });
-        }
-      };
-
-      // In case of an error with EventSource, you may also want to reject the promise
-      eventSource.onerror = (error) => {
-        eventSource.close();
-        console.error("EventSource Error:", error);
+        // Polling for the prediction result
+        const checkPrediction = () => {
+          axios.get(urlWithId)
+            .then(res => {
+              const data = res.data;
+              if (data.completed_at) {
+                const outputUrl = data.output;
+                if (outputUrl) {
+                  resolve({ images: [{ url: outputUrl[0] }], modelUsed: "PlaygroundAI" });
+                } else {
+                  reject(new Error("Output URL is not available."));
+                }
+              } else {
+                setTimeout(checkPrediction, 1000);
+              }
+            })
+            .catch(error => {
+              console.error("Error:", error);
+              reject(error);
+            });
+        };
+        checkPrediction();
+      })
+      .catch(error => {
+        console.error("Error:", error);
         reject(error);
-      };
-
-    }).catch(error => {
-      console.error("Error:", error);
-      reject(error); // Reject the promise if the first request fails
-    });
+      });
   });
 }
 
-function generateWithProteus(prompt) {
+function generateWithProteus4(prompt) {
   return new Promise((resolve, reject) => {
-    const url = "https://ehristoforu-proteus-v0-3.hf.space/--replicas/nwkyh"
-    let session_hash = 'test123';
-
-    // Define the first request URL and data
-    const urlFirstRequest = `${url}/queue/join?`;
-    const dataFirstRequest = {
-      "data": [prompt, "(deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation", true, 0, 768, 768, 7, true],
-      "event_data": null,
-      "fn_index": 3,
-      "trigger_id": 6,
-      "session_hash": session_hash
+    const url = "https://replicate.com/api/predictions";
+    const payload = {
+      "input": {
+        "width": 1024,
+        "height": 1024,
+        "prompt": prompt,
+        "scheduler": "DPM++2MSDE",
+        "num_outputs": 1,
+        "guidance_scale": 3,
+        "apply_watermark": true,
+        "negative_prompt": "nsfw, bad quality, bad anatomy, worst quality, low quality, low resolutions, extra fingers, blur, blurry, ugly, wrongs proportions, watermark, image artifacts, lowres, ugly, jpeg artifacts, deformed, noisy image",
+        "prompt_strength": 0.8,
+        "num_inference_steps": 50
+      },
+      "is_training": false,
+      "create_model": "0",
+      "stream": false,
+      "version": "34a427535a3c45552b94369280b823fcd0e5c9710e97af020bf445c033d4569e"
     };
 
-    axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-      console.log(responseFirst.data);
+    const headers = {
+      "Content-Type": "application/json"
+    };
 
-      const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+    axios.post(url, payload, { headers })
+      .then(response => {
+        const predictionId = response.data.id;
+        const urlWithId = `https://replicate.com/api/predictions/${predictionId}`;
 
-      const eventSource = new EventSource(urlSecondRequest);
-
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.msg === "process_completed") {
-          eventSource.close();
-          const image_path = data.output.data[0][0].image.path;
-          const full_url = `${url}/file=${image_path}`;
-          console.log(full_url);
-
-          resolve({ images: [{ url: full_url }], modelUsed: "Proteus" });
-        }
-      };
-
-      // In case of an error with EventSource, you may also want to reject the promise
-      eventSource.onerror = (error) => {
-        eventSource.close();
-        console.error("EventSource Error:", error);
+        // Polling for the prediction result
+        const checkPrediction = () => {
+          axios.get(urlWithId)
+            .then(res => {
+              const data = res.data;
+              if (data.completed_at) {
+                const outputUrl = data.output;
+                if (outputUrl) {
+                  resolve({ images: [{ url: outputUrl[0] }], modelUsed: "Proteus-v0.4" });
+                } else {
+                  reject(new Error("Output URL is not available."));
+                }
+              } else {
+                setTimeout(checkPrediction, 1000);
+              }
+            })
+            .catch(error => {
+              console.error("Error:", error);
+              reject(error);
+            });
+        };
+        checkPrediction();
+      })
+      .catch(error => {
+        console.error("Error:", error);
         reject(error);
-      };
-
-    }).catch(error => {
-      console.error("Error:", error);
-      reject(error); // Reject the promise if the first request fails
-    });
+      });
   });
 }
 
 function generateWithSDXL(prompt) {
   return new Promise((resolve, reject) => {
-    const url = "https://ap123-sdxl-lightning.hf.space";
-    let session_hash = 'test123';
-
-    // Define the first request URL and data
-    const urlFirstRequest = `${url}/queue/join?`;
-    const dataFirstRequest = {
-      "data": [prompt, "4-Step"],
-      "event_data": null,
-      "fn_index": 1,
-      "trigger_id": 7,
-      "session_hash": session_hash
+    const url = "https://replicate.com/api/predictions";
+    const payload = {
+      "input": {
+        "width": 1024,
+        "height": 1024,
+        "prompt": prompt,
+        "scheduler": "K_EULER",
+        "num_outputs": 1,
+        "guidance_scale": 0,
+        "negative_prompt": "nsfw, bad quality, bad anatomy, worst quality, low quality, low resolutions, extra fingers, blur, blurry, ugly, wrongs proportions, watermark, image artifacts, lowres, ugly, jpeg artifacts, deformed, noisy image",
+        "num_inference_steps": 6,
+      },
+      "is_training": false,
+      "create_model": "0",
+      "stream": false,
+      "version": "727e49a643e999d602a896c774a0658ffefea21465756a6ce24b7ea4165eba6a"
     };
 
-    axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-      console.log(responseFirst.data);
+    const headers = {
+      "Content-Type": "application/json"
+    };
 
-      const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+    axios.post(url, payload, { headers })
+      .then(response => {
+        const predictionId = response.data.id;
+        const urlWithId = `https://replicate.com/api/predictions/${predictionId}`;
 
-      const eventSource = new EventSource(urlSecondRequest);
-
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.msg === "process_completed") {
-          eventSource.close();
-          const full_url = data["output"]["data"][0]["url"];
-          console.log(full_url);
-
-          resolve({ images: [{ url: full_url }], modelUsed: "SD-XL" });
-        }
-      };
-
-      // In case of an error with EventSource, you may also want to reject the promise
-      eventSource.onerror = (error) => {
-        eventSource.close();
-        console.error("EventSource Error:", error);
+        // Polling for the prediction result
+        const checkPrediction = () => {
+          axios.get(urlWithId)
+            .then(res => {
+              const data = res.data;
+              if (data.completed_at) {
+                const outputUrl = data.output;
+                if (outputUrl) {
+                  resolve({ images: [{ url: outputUrl[0] }], modelUsed: "SD-XL" });
+                } else {
+                  reject(new Error("Output URL is not available."));
+                }
+              } else {
+                setTimeout(checkPrediction, 1000);
+              }
+            })
+            .catch(error => {
+              console.error("Error:", error);
+              reject(error);
+            });
+        };
+        checkPrediction();
+      })
+      .catch(error => {
+        console.error("Error:", error);
         reject(error);
-      };
-
-    }).catch(error => {
-      console.error("Error:", error);
-      reject(error); // Reject the promise if the first request fails
-    });
+      });
   });
 }
 
