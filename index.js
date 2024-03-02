@@ -64,7 +64,7 @@ client.once('ready', async () => {
             { name: 'Stable-Cascade', value: 'Stable-Cascade' },
             { name: 'PlaygroundAI', value: 'PlaygroundAI' },
             { name: 'Kandinsky', value: 'Kandinsky' },
-            { name: 'Replicate', value: 'Proteus-v0.4' }
+            { name: 'Proteus-v0.4', value: 'Proteus-v0.4' }
           )
       )
       .addStringOption(option =>
