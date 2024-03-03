@@ -1064,14 +1064,14 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
     if (isLargeResponse) {
       await sendAsTextFile(finalResponse, originalMessage);
     } else {
-      await addSettingsButton(botMessage, userId);
+      await addSettingsButton(botMessage);
     }
 
     updateChatHistory(userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
   } catch (error) {
     console.error('Error handling model response:', error);
     await botMessage.edit({ content: '> `Sorry, an error occurred while generating a response.`' });
-    await addSettingsButton(botMessage, userId);
+    await addSettingsButton(botMessage);
   } finally {
     activeRequests.delete(userId);
   }
