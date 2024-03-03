@@ -43,6 +43,7 @@ const chatHistories = {};
 const activeUsersInChannels = {};
 const customInstructions = {};
 const userPreferredImageModel = {};
+const userResponsePreference = {};
 const activeRequests = new Set();
 const alwaysRespondChannels = {};
 const token = process.env.DISCORD_BOT_TOKEN;
@@ -224,6 +225,8 @@ client.on('interactionCreate', async (interaction) => {
     } else if (interaction.customId.startsWith('select-model-')) {
       const selectedModel = interaction.customId.replace('select-model-', '');
       await handleSelectModel(interaction, selectedModel);
+    } if (interaction.customId === 'toggle-response-mode') {
+      await toggleUserPreference(interaction);
     }
   } else if (interaction.isModalSubmit()) {
     await handleModalSubmit(interaction);
@@ -423,10 +426,16 @@ async function showSettings(interaction) {
     .setLabel('Change Image Model')
     .setEmoji('👨‍🎨')
     .setStyle(ButtonStyle.Secondary);
+    
+  const userResponseToggle = new ButtonBuilder()
+    .setCustomId('toggle-response-mode')
+    .setLabel('Toggle Response Mode')
+    .setEmoji('📝')
+    .setStyle(ButtonStyle.Primary);
 
   // Split settings into multiple action rows if there are more than 5 buttons
   const actionRows = [];
-  const allButtons = [clearButton, toggleChatButton, customPersonalityButton, removePersonalityButton, generateImageButton, imageToggleButton];
+  const allButtons = [clearButton, toggleChatButton, customPersonalityButton, removePersonalityButton, generateImageButton, imageToggleButton, userResponseToggle];
 
   while (allButtons.length > 0) {
     const actionRow = new ActionRowBuilder().addComponents(allButtons.splice(0, 5));
@@ -998,6 +1007,20 @@ function extractUrls(text) {
   return text.match(/\bhttps?:\/\/\S+/gi) || [];
 }
 
+// Function to get user preference
+function getUserPreference(userId) {
+  return userResponsePreference[userId] || 'embedded';
+}
+
+// Function to toggle user preference
+async function toggleUserPreference(interaction) {
+  const userId = interaction.user.id;
+  const currentPreference = getUserPreference(userId);
+  userResponsePreference[userId] = currentPreference === 'normal' ? 'embedded' : 'normal';
+  const updatedPreference = getUserPreference(userId);
+  await interaction.reply({ content: `> **Your responses has been switched from \`${currentPreference}\` to \`${updatedPreference}\`.**`, ephemeral: true });
+}
+
 async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   const userId = originalMessage.author.id;
 
@@ -1005,38 +1028,50 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
     const messageResult = await responseFunc();
     let finalResponse = '';
     let isLargeResponse = false;
+    let maxCharacterLimit;
+    if (getUserPreference(userId) === 'embedded') {
+      maxCharacterLimit = 3900;
+    } else {
+      maxCharacterLimit = 1900;
+    }
 
     for await (const chunk of messageResult.stream) {
       const chunkText = await chunk.text();
       finalResponse += chunkText;
-      const embed = new EmbedBuilder()
-        .setColor(0x505050)
-        .setTitle('**Response:**')
-        .setDescription(finalResponse)
-        .addFields(
-          { name: '**Questioned by**', value: `${originalMessage.author.displayName}`, inline: false }
-        )
-        .setTimestamp()
 
-      if (!isLargeResponse && finalResponse.length > 3900) {
+      if (!isLargeResponse && finalResponse.length > maxCharacterLimit) {
         await botMessage.edit('> `The response is too large and will be sent as a text file once it is ready.`');
         isLargeResponse = true;
       } else if (!isLargeResponse) {
-        await botMessage.edit({ content: null, embeds: [embed] });
+        // Check user preference
+        if (getUserPreference(userId) === 'embedded') {
+          const embed = new EmbedBuilder()
+            .setColor(0x505050)
+            .setTitle('📝 **Response:**')
+            .setDescription(finalResponse)
+            .addFields(
+              { name: '❓ **Questioned by:**', value: `${originalMessage.author.displayName}`, inline: false }
+            )
+            .setTimestamp();
+
+          await botMessage.edit({ content: null, embeds: [embed] });
+        } else {
+          await botMessage.edit(finalResponse);
+        }
       }
     }
 
     if (isLargeResponse) {
       await sendAsTextFile(finalResponse, originalMessage);
     } else {
-      await addSettingsButton(botMessage);
+      await addSettingsButton(botMessage, userId);
     }
 
-    updateChatHistory(originalMessage.author.id, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
+    updateChatHistory(userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
   } catch (error) {
     console.error('Error handling model response:', error);
     await botMessage.edit({ content: '> `Sorry, an error occurred while generating a response.`' });
-    await addSettingsButton(botMessage);
+    await addSettingsButton(botMessage, userId);
   } finally {
     activeRequests.delete(userId);
   }
