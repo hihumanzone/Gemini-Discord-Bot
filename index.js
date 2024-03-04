@@ -61,21 +61,6 @@ let activityIndex = 0;
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
   
-  // Set the initial status
-    client.user.setPresence({
-        activities: [activities[activityIndex]],
-        status: 'idle',
-    });
-
-    // Change the activity every 30000ms
-    setInterval(() => {
-        activityIndex = (activityIndex + 1) % activities.length;
-        client.user.setPresence({
-            activities: [activities[activityIndex]],
-            status: 'idle',
-        });
-    }, 30000); // 10000ms
-  
   // Define the Slash Command
   const commands = [
     new SlashCommandBuilder()
@@ -108,34 +93,33 @@ client.once('ready', async () => {
       .setName('speech')
       .setDescription('Generate speech from text.')
       .addStringOption(option =>
-      option.setName('language')
-        .setDescription('The language to use.')
-        .setRequired(true)
-        .addChoices(
-          { name: 'English 🇺🇸', value: 'en' },
-          { name: 'Spanish 🇪🇸', value: 'es' },
-          { name: 'French 🇫🇷', value: 'fr' },
-          { name: 'German 🇩🇪', value: 'de' },
-          { name: 'Italian 🇮🇹', value: 'it' },
-          { name: 'Portuguese 🇵🇹', value: 'pt' },
-          { name: 'Polish 🇵🇱', value: 'pl' },
-          { name: 'Turkish 🇹🇷', value: 'tr' },
-          { name: 'Russian 🇷🇺', value: 'ru' },
-          { name: 'Dutch 🇳🇱', value: 'nl' },
-          { name: 'Czech 🇨🇿', value: 'cs' },
-          { name: 'Arabic 🇸🇦', value: 'ar' },
-          { name: 'Chinese 🇨🇳', value: 'zh' },
-          { name: 'Hungarian 🇭🇺', value: 'hu' },
-          { name: 'Korean 🇰🇷', value: 'ko' },
-          { name: 'Hindi 🇮🇳', value: 'hi' }
-        )
+        option.setName('language')
+          .setDescription('The language to use.')
+          .setRequired(true)
+          .addChoices(
+            { name: 'English 🇺🇸', value: 'en' },
+            { name: 'Spanish 🇪🇸', value: 'es' },
+            { name: 'French 🇫🇷', value: 'fr' },
+            { name: 'German 🇩🇪', value: 'de' },
+            { name: 'Italian 🇮🇹', value: 'it' },
+            { name: 'Portuguese 🇵🇹', value: 'pt' },
+            { name: 'Polish 🇵🇱', value: 'pl' },
+            { name: 'Turkish 🇹🇷', value: 'tr' },
+            { name: 'Russian 🇷🇺', value: 'ru' },
+            { name: 'Dutch 🇳🇱', value: 'nl' },
+            { name: 'Czech 🇨🇿', value: 'cs' },
+            { name: 'Arabic 🇸🇦', value: 'ar' },
+            { name: 'Chinese 🇨🇳', value: 'zh' },
+            { name: 'Hungarian 🇭🇺', value: 'hu' },
+            { name: 'Korean 🇰🇷', value: 'ko' },
+            { name: 'Hindi 🇮🇳', value: 'hi' }
+          )
       )
       .addStringOption(option =>
         option.setName('prompt')
           .setDescription('The text prompt to generate the speech from.')
           .setRequired(true)
       )
-
   ].map(command => command.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(token);
@@ -144,7 +128,6 @@ client.once('ready', async () => {
   try {
     console.log('Started refreshing application (/) commands.');
 
-    // Registering command globally
     await rest.put(
       Routes.applicationCommands(client.user.id),
       { body: commands },
@@ -154,6 +137,21 @@ client.once('ready', async () => {
   } catch (error) {
     console.error(error);
   }
+  
+  // Set the initial status
+  client.user.setPresence({
+    activities: [activities[activityIndex]],
+    status: 'idle',
+  });
+
+  // Change the activity every 30000ms
+  setInterval(() => {
+    activityIndex = (activityIndex + 1) % activities.length;
+    client.user.setPresence({
+      activities: [activities[activityIndex]],
+      status: 'idle',
+    });
+  }, 30000);
 });
 
 client.on('messageCreate', async (message) => {
@@ -281,6 +279,7 @@ client.on('interactionCreate', async interaction => {
       } else {
         const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong or the output URL is not available.` });
         await addSettingsButton(messageReference);
+        await generatingMsg.delete();
       }
     } catch (error) {
       console.log(error)
