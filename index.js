@@ -638,67 +638,11 @@ async function processSpeechGet(interaction) {
     .setLabel("What's your text?")
     .setStyle(TextInputStyle.Paragraph)
     .setMinLength(10)
-    .setMaxLength(4000);
+    .setMaxLength(3900);
 
   modal.addComponents(new ActionRowBuilder().addComponents(textInput));
 
   await interaction.showModal(modal);
-}
-
-async function speechGen(prompt) {
-  const sessionHash = "test123";
-  const urlFirstRequest = 'https://mrfakename-melotts.hf.space/queue/join?';
-  const dataFirstRequest = {
-    data: ["EN-US", prompt, 1, "EN"],
-    event_data: null,
-    fn_index: 1,
-    trigger_id: 8,
-    session_hash: sessionHash
-  };
-
-  try {
-    const responseFirst = await axios.post(urlFirstRequest, dataFirstRequest);
-    console.log(responseFirst.data);
-  } catch (error) {
-    console.error("Error in the first request:", error);
-    return null;
-  }
-
-  const urlSecondRequest = `https://mrfakename-melotts.hf.space/queue/data?session_hash=${sessionHash}`;
-
-  // Return a new Promise that resolves with the URL when found
-  return new Promise((resolve, reject) => {
-    axios.get(urlSecondRequest, {
-      responseType: 'stream'
-    }).then(responseSecond => {
-      let fullData = '';
-
-      responseSecond.data.on('data', (chunk) => {
-        fullData += chunk.toString();
-
-        if (fullData.includes('"msg": "process_completed"')) {
-          const lines = fullData.split('\n');
-          for (const line of lines) {
-            if (line.includes('"msg": "process_completed"')) {
-              try {
-                const dataDict = JSON.parse(line.slice(line.indexOf('{')));
-                const fullUrl = dataDict.output.data[0].url;
-                console.log(fullUrl);
-                resolve(fullUrl); // Resolve the promise with the URL
-                break;
-              } catch (parseError) {
-                console.error("Parsing error:", parseError);
-                reject(parseError);
-              }
-            }
-          }
-        }
-      });
-    }).catch(error => {
-      console.error("Error in second request event stream:", error);
-      reject(error);
-    });
-  });
 }
 
 async function speechGen2(prompt) {
@@ -796,8 +740,7 @@ async function changeSpeechModel(interaction) {
   // Create buttons for each model
   const buttons = [
     new ButtonBuilder().setCustomId('select-speech-model-1').setLabel('1').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-speech-model-2').setLabel('2').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-speech-model-3').setLabel('3').setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId('select-speech-model-2').setLabel('2').setStyle(ButtonStyle.Primary)
   ];
 
   // Split buttons into multiple ActionRows if there are more than 5 buttons
@@ -829,8 +772,6 @@ async function generateSpeechWithPrompt(prompt, userId, language) {
       return await speechGen(prompt);
     } else if (selectedModel === "2") {
       return await speechGen2(prompt);
-    } else if (selectedModel === "3") {
-      return await speechGen3(prompt, language);
     }
   } catch (error) {
     console.error('Error generating image:', error);
