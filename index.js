@@ -42,15 +42,15 @@ const client = new Client({
 });
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+const token = process.env.DISCORD_BOT_TOKEN;
 const chatHistories = {};
 const activeUsersInChannels = {};
 const customInstructions = {};
 const userPreferredImageModel = {};
 const userPreferredSpeechModel = {};
 const userResponsePreference = {};
-const activeRequests = new Set();
 const alwaysRespondChannels = {};
-const token = process.env.DISCORD_BOT_TOKEN;
+const activeRequests = new Set();
 
 const activities = [
     { name: 'With Code', type: ActivityType.Playing },
@@ -60,7 +60,6 @@ const activities = [
 ];
 
 let activityIndex = 0;
-
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
   
@@ -1328,33 +1327,38 @@ async function compressImage(buffer) {
 async function handleTextFileMessage(message) {
   let messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim();
 
-  const fileAttachments = message.attachments.filter((attachment) =>
-    attachment.contentType?.startsWith('application/pdf') ||
-    attachment.contentType?.startsWith('text/plain') ||
-    attachment.contentType?.startsWith('text/html') ||
-    attachment.contentType?.startsWith('text/css') ||
-    attachment.contentType?.startsWith('application/javascript') ||
-    attachment.contentType?.startsWith('application/json')
-  );
+  const supportedMimeTypes = [
+    'application/pdf', 'text/plain', 'text/html', 'text/css',
+    'application/javascript', 'application/json', 'text/x-python',
+    'application/x-yaml', 'text/markdown', 'application/xml'
+  ];
+
+  const supportedFileExtensions = [
+    'md', 'yaml', 'yml', 'xml', 'env', 'sh', 'bat', 'rb', 'c', 'cpp', 'cc',
+    'cxx', 'h', 'hpp', 'java'
+  ];
+
+  // Filter attachments for supported types and extensions
+  const fileAttachments = message.attachments.filter((attachment) => {
+    const fileMimeType = attachment.contentType?.split(';')[0].trim();
+    const fileExtension = attachment.name.split('.').pop().toLowerCase();
+    return supportedMimeTypes.includes(fileMimeType) || supportedFileExtensions.includes(fileExtension);
+  });
 
   if (fileAttachments.size > 0) {
     let botMessage = await message.reply({ content: '> `Processing your document(s)...`' });
     let formattedMessage = messageContent;
 
-    // Retrieve extracted text from all attachments
     for (const [attachmentId, attachment] of fileAttachments) {
-      let extractedText;
-      if (attachment.contentType?.startsWith('application/pdf')) {
-        extractedText = await extractTextFromPDF(attachment.url);
-      } else {
-        extractedText = await fetchTextContent(attachment.url);
-      }
+      let extractedText = await (attachment.contentType?.startsWith('application/pdf') ?
+        extractTextFromPDF(attachment.url) :
+        fetchTextContent(attachment.url));
+
       formattedMessage += `\n\n[${attachment.name}] File Content:\n"${extractedText}"`;
     }
 
-    // Load the text model for handling the conversation
+    // Load the text model and handle the conversation
     const model = await genAI.getGenerativeModel({ model: 'gemini-pro' });
-
     const chat = model.startChat({
       history: getHistory(message.author.id),
       safetySettings,
@@ -1371,14 +1375,23 @@ function hasImageAttachments(message) {
 }
 
 function hasTextFileAttachments(message) {
-  return message.attachments.some((attachment) =>
-    attachment.contentType?.startsWith('application/pdf') ||
-    attachment.contentType?.startsWith('text/plain') ||
-    attachment.contentType?.startsWith('text/html') ||
-    attachment.contentType?.startsWith('text/css') ||
-    attachment.contentType?.startsWith('application/javascript') ||
-    attachment.contentType?.startsWith('application/json')
-  );
+  const supportedMimeTypes = [
+    'application/pdf', 'text/plain', 'text/html', 'text/css',
+    'application/javascript', 'text/x-python', 'application/json',
+    'application/x-yaml', 'text/markdown', 'application/xml'
+  ];
+
+  const supportedFileExtensions = [
+    'md', 'yaml', 'yml', 'xml', 'env', 'sh', 'bat', 'rb', 'c', 'cpp', 'cc',
+    'cxx', 'h', 'hpp', 'java'
+  ];
+
+  return message.attachments.some((attachment) => {
+    const fileMimeType = attachment.contentType?.split(';')[0].trim();
+    const fileExtension = attachment.name.split('.').pop().toLowerCase();
+
+    return supportedMimeTypes.includes(fileMimeType) || supportedFileExtensions.includes(fileExtension);
+  });
 }
 
 async function fetchTextContent(url) {
