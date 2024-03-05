@@ -267,7 +267,7 @@ client.on('interactionCreate', async interaction => {
       const language = interaction.options.getString('language');
       const outputUrl = await generateSpeechWithPrompt(text, userId, language);
       if (outputUrl && outputUrl !== 'Output URL is not available.') {
-        const file = new AttachmentBuilder(outputUrl);
+        const file = new AttachmentBuilder(outputUrl).setName('speech.wav');
         const embed = new EmbedBuilder()
           .setColor(0x0099ff)
           .setTitle('🎙️ **Speech Generated!**')
