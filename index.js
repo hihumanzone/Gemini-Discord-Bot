@@ -29,6 +29,7 @@ const pdf = require('pdf-parse');
 const cheerio = require('cheerio');
 const { YoutubeTranscript } = require('youtube-transcript');
 const axios = require('axios');
+const { SocksProxyAgent } = require('socks-proxy-agent');
 const EventSource = require('eventsource');
 
 const client = new Client({
@@ -645,7 +646,7 @@ async function processSpeechGet(interaction) {
   await interaction.showModal(modal);
 }
 
-async function speechGen2(prompt) {
+async function speechGen(prompt) {
   const sessionHash = "test123";
   const joinQueueUrl = `https://styletts2-styletts2.hf.space/queue/join?fn_index=1&session_hash=${sessionHash}`;
   const response = new EventSource(joinQueueUrl);
@@ -694,7 +695,7 @@ async function speechGen2(prompt) {
   });
 }
 
-async function speechGen3(text, language) {
+async function speechGen2(text, language) {
   try {
     const url = 'https://replicate.com/api/predictions';
     const payload = {
@@ -1080,14 +1081,25 @@ function generateWithSDXL(prompt) {
       "Content-Type": "application/json"
     };
 
-    axios.post(url, payload, { headers })
+    // SOCKS5 proxy configuration
+    const socksProxy = 'socks5://98.178.72.21:10919';
+    const agent = new SocksProxyAgent(socksProxy);
+
+    // Add the proxy agent to the request configuration
+    const config = {
+      headers,
+      httpAgent: agent,
+      httpsAgent: agent
+    };
+
+    axios.post(url, payload, config)
       .then(response => {
         const predictionId = response.data.id;
         const urlWithId = `https://replicate.com/api/predictions/${predictionId}`;
 
         // Polling for the prediction result
         const checkPrediction = () => {
-          axios.get(urlWithId)
+          axios.get(urlWithId, config)
             .then(res => {
               const data = res.data;
               if (data.completed_at) {
@@ -1424,11 +1436,11 @@ async function handleUrlsInMessage(urls, messageContent, botMessage, originalMes
         const videoId = extractYouTubeVideoId(url);
         const transcriptData = await YoutubeTranscript.fetchTranscript(videoId);
         const transcriptText = transcriptData.map(item => item.text).join(' ');
-        contentWithUrls += `\n\n[Transcript Of Video Number ${contentIndex}]:\n"${transcriptText}"`;
+        contentWithUrls += `\n\n[Transcript Of Video ${url}]:\n"${transcriptText}"`;
       } else {
         // For non-video URLs, attempt to scrape webpage content
         const webpageContent = await scrapeWebpageContent(url);
-        contentWithUrls += `\n\n[Content of URL Number ${contentIndex}]:\n"${webpageContent}"`;
+        contentWithUrls += `\n\n[Text Inside The Website ${url}]:\n"${webpageContent}"`;
         console.log(webpageContent)
       }
       // In both cases, replace the URL with a reference in the text
