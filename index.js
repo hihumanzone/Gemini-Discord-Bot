@@ -29,7 +29,6 @@ const pdf = require('pdf-parse');
 const cheerio = require('cheerio');
 const { YoutubeTranscript } = require('youtube-transcript');
 const axios = require('axios');
-const { SocksProxyAgent } = require('socks-proxy-agent');
 const EventSource = require('eventsource');
 
 const client = new Client({
@@ -1081,25 +1080,14 @@ function generateWithSDXL(prompt) {
       "Content-Type": "application/json"
     };
 
-    // SOCKS5 proxy configuration
-    const socksProxy = 'socks5://98.178.72.21:10919';
-    const agent = new SocksProxyAgent(socksProxy);
-
-    // Add the proxy agent to the request configuration
-    const config = {
-      headers,
-      httpAgent: agent,
-      httpsAgent: agent
-    };
-
-    axios.post(url, payload, config)
+    axios.post(url, payload, { headers })
       .then(response => {
         const predictionId = response.data.id;
         const urlWithId = `https://replicate.com/api/predictions/${predictionId}`;
 
         // Polling for the prediction result
         const checkPrediction = () => {
-          axios.get(urlWithId, config)
+          axios.get(urlWithId)
             .then(res => {
               const data = res.data;
               if (data.completed_at) {
