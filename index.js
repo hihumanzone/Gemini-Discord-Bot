@@ -1443,52 +1443,43 @@ function extractUrls(text) {
   return text.match(/\bhttps?:\/\/\S+/gi) || [];
 }
 
+// Function to get user preference
+function getUserPreference(userId) {
+  return userResponsePreference[userId] || 'embedded';
+}
+
 // Function to toggle user preference
 async function toggleUserPreference(interaction) {
   const userId = interaction.user.id;
-  const currentPreference = userResponsePreference[userId] || 'embedded';
+  const currentPreference = getUserPreference(userId);
   userResponsePreference[userId] = currentPreference === 'normal' ? 'embedded' : 'normal';
-  const updatedPreference = userResponsePreference[userId];
+  const updatedPreference = getUserPreference(userId);
   await interaction.reply({ content: `> **Your responses has been switched from \`${currentPreference}\` to \`${updatedPreference}\`.**`, ephemeral: true });
 }
 
 async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   const userId = originalMessage.author.id;
+  const userPreference = getUserPreference(userId);
+  const maxCharacterLimit = userPreference === 'embedded' ? 3900 : 1900;
 
   try {
     const messageResult = await responseFunc();
     let finalResponse = '';
     let isLargeResponse = false;
-    let maxCharacterLimit;
-    if (getUserPreference(userId) === 'embedded') {
-      maxCharacterLimit = 3900;
-    } else {
-      maxCharacterLimit = 1900;
-    }
 
     for await (const chunk of messageResult.stream) {
       const chunkText = await chunk.text();
       finalResponse += chunkText;
 
-      if (!isLargeResponse && finalResponse.length > maxCharacterLimit) {
-        await botMessage.edit('> `The response is too large and will be sent as a text file once it is ready.`');
-        isLargeResponse = true;
-      } else if (!isLargeResponse) {
-        // Check user preference
-        if (getUserPreference(userId) === 'embedded') {
-          const embed = new EmbedBuilder()
-            .setColor(0x505050)
-            .setTitle('📝 **Response:**')
-            .setDescription(finalResponse)
-            .addFields(
-              { name: '❓ **Questioned by:**', value: `${originalMessage.author.displayName}`, inline: false }
-            )
-            .setTimestamp();
-
-          await botMessage.edit({ content: null, embeds: [embed] });
-        } else {
-          await botMessage.edit(finalResponse);
+      if (finalResponse.length > maxCharacterLimit) {
+        if (!isLargeResponse) {
+          isLargeResponse = true;
+          await botMessage.edit('> `The response is too large and will be sent as a text file once it is ready.`');
         }
+      } else if (userPreference === 'embedded') {
+        await updateEmbed(botMessage, finalResponse, originalMessage.author.displayName);
+      } else {
+        await botMessage.edit(finalResponse);
       }
     }
 
@@ -1506,6 +1497,19 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   } finally {
     activeRequests.delete(userId);
   }
+}
+
+async function updateEmbed(botMessage, finalResponse, authorDisplayName) {
+  const embed = new EmbedBuilder()
+    .setColor(0x505050)
+    .setTitle('📝 **Response:**')
+    .setDescription(finalResponse)
+    .addFields(
+      { name: '❓ **Questioned by:**', value: `${authorDisplayName}`, inline: false }
+    )
+    .setTimestamp();
+
+  await botMessage.edit({ content: null, embeds: [embed] });
 }
 
 async function sendAsTextFile(text, message) {
