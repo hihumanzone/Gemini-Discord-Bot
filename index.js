@@ -160,26 +160,24 @@ client.once('ready', async () => {
 
 client.on('messageCreate', async (message) => {
   try {
-    // Prevents the bot from responding to its own messages
     if (message.author.bot) return;
 
-    // Checks if the bot is required to reply in the channel, if mentioned, or in DMs
     const isDM = message.channel.type === ChannelType.DM;
-    const isBotMentioned = message.mentions.users.has(client.user.id);
-    const shouldAlwaysRespond = alwaysRespondChannels[message.channelId];
-    const isUserActiveInChannel = activeUsersInChannels[message.channelId]?.[message.author.id] || isDM;
+    const mentionPattern = new RegExp(`^<@!?${client.user.id}>(?:\\s+)?(generate|imagine)`, 'i');
+    const startsWithPattern = /^generate|^imagine/i;
+    const command = message.content.match(mentionPattern) || message.content.match(startsWithPattern);
 
-    if (isUserActiveInChannel || (isBotMentioned && !isDM) || shouldAlwaysRespond) {
-      if (message.content.toLowerCase().startsWith(`<@${client.user.id}>generate`) || message.content.toLowerCase().startsWith(`<@${client.user.id}> generate`) || message.content.toLowerCase().startsWith('generate') || message.content.toLowerCase().startsWith(`<@${client.user.id}>imagine`) || message.content.toLowerCase().startsWith(`<@${client.user.id}> imagine`) || message.content.toLowerCase().startsWith('imagine')) {
-        const prompt = message.content
-          .toLowerCase()
-          .replace(new RegExp(`<@${client.user.id}> generate`), '')
-          .replace(new RegExp(`<@${client.user.id}>generate`), '')
-          .replace('generate', '')
-          .replace(new RegExp(`<@${client.user.id}> imagine`), '')
-          .replace(new RegExp(`<@${client.user.id}>imagine`), '')
-          .replace('imagine', '')
-          .trim();
+    // Decide if the bot should respond based on channel conditions
+    const shouldRespond = (
+      alwaysRespondChannels[message.channelId] ||
+      message.mentions.users.has(client.user.id) && !isDM ||
+      activeUsersInChannels[message.channelId]?.[message.author.id] || isDM
+    );
+
+    if (shouldRespond) {
+      if (command) {
+        // Extract the command name and the prompt
+        const prompt = message.content.slice(command.index + command[0].length).trim();
         if (prompt) {
           await genimg(prompt, message);
         } else {
@@ -187,7 +185,6 @@ client.on('messageCreate', async (message) => {
         }
       } else if (activeRequests.has(message.author.id)) {
         await message.reply('> `Please wait until your previous action is complete.`');
-        return;
       } else if (message.attachments.size > 0 && hasImageAttachments(message)) {
         await handleImageMessage(message);
       } else if (message.attachments.size > 0 && hasTextFileAttachments(message)) {
@@ -231,68 +228,91 @@ async function clearChatHistory(interaction) {
   await interaction.reply({ content: '> `Chat history cleared!`', ephemeral: true });
 }
 
-client.on('interactionCreate', async interaction => {
+client.on('interactionCreate', async (interaction) => {
   if (!interaction.isCommand()) return;
-  
-  if (interaction.commandName === 'respondtoall') {
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return interaction.reply({ content: 'You need to be an admin to use this command.', ephemeral: true });
+
+  try {
+    switch (interaction.commandName) {
+      case 'respondtoall':
+        await handleRespondToAllCommand(interaction);
+        break;
+      case 'imagine':
+        await handleImagineCommand(interaction);
+        break;
+      case 'clear':
+        await clearChatHistory(interaction);
+        break;
+      case 'speech':
+        await handleSpeechCommand(interaction);
+        break;
+      default:
+        console.log(`Unknown command: ${interaction.commandName}`);
+        break;
     }
-  
-    const channelId = interaction.channelId;
-  
-    // Toggle functionality
-    if (alwaysRespondChannels[channelId]) {
-      // It's currently on, so turn it off.
-      delete alwaysRespondChannels[channelId];
-      await interaction.reply({ content: '> **The bot will now stop** responding to all messages in this channel.', ephemeral: false });
+  } catch (error) {
+    console.error('Error handling command:', error.message);
+    // Consider replying to the interaction with a generic error message
+  }
+});
+
+async function handleRespondToAllCommand(interaction) {
+  if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+    return interaction.reply({ content: 'You need to be an admin to use this command.', ephemeral: true });
+  }
+
+  const channelId = interaction.channelId;
+  if (alwaysRespondChannels[channelId]) {
+    delete alwaysRespondChannels[channelId];
+    await interaction.reply({ content: '> **The bot will now stop** responding to all messages in this channel.', ephemeral: false });
+  } else {
+    alwaysRespondChannels[channelId] = true;
+    await interaction.reply({ content: '> **The bot will now respond** to all messages in this channel.', ephemeral: false });
+  }
+}
+
+async function handleImagineCommand(interaction) {
+  const model = interaction.options.getString('model');
+  const prompt = interaction.options.getString('prompt');
+  await genimgslash(prompt, model, interaction);
+}
+
+async function handleSpeechCommand(interaction) {
+  const generatingMsg = await interaction.reply({ content: `${interaction.user}, generating your speech, please wait... 💽` });
+  try {
+    const userId = interaction.user.id;
+    const text = interaction.options.getString('prompt');
+    const language = interaction.options.getString('language');
+    const outputUrl = await generateSpeechWithPrompt(text, userId, language);
+    if (outputUrl && outputUrl !== 'Output URL is not available.') {
+      handleSuccessfulSpeechGeneration(interaction, text, language, outputUrl);
+      await generatingMsg.delete();
     } else {
-      // It's currently off, so turn it on.
-      alwaysRespondChannels[channelId] = true;
-      await interaction.reply({ content: '> **The bot will now respond** to all messages in this channel.', ephemeral: false });
-    }
-  } else if (interaction.commandName === 'imagine') {
-    const model = interaction.options.getString('model');
-    const prompt = interaction.options.getString('prompt');
-
-    await genimgslash(prompt, model, interaction);
-  } else if (interaction.commandName === 'clear') {
-    await clearChatHistory(interaction);
-  } else if (interaction.commandName === 'speech') {
-    const generatingMsg = await interaction.reply({ content: `${interaction.user}, generating your speech, please wait... 💽` });
-    try {
-      const userId = interaction.user.id;
-      const text = interaction.options.getString('prompt');
-      const language = interaction.options.getString('language');
-      const outputUrl = await generateSpeechWithPrompt(text, userId, language);
-      if (outputUrl && outputUrl !== 'Output URL is not available.') {
-        const file = new AttachmentBuilder(outputUrl).setName('speech.wav');
-        const embed = new EmbedBuilder()
-          .setColor(0x0099ff)
-          .setTitle('🎙️ **Speech Generated!**')
-          .setDescription(`Here Is Your Generated Speech:\n**Prompt:**\n\`\`\`${text}\`\`\``)
-          .addFields(
-            { name: '**Generated by**', value: `\`${interaction.user.displayName}\``, inline: true },
-            { name: '**Language Used:**', value: `\`${language}\``, inline: true }
-          )
-          .setTimestamp()
-
-        const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed],  files: [file] });
-        await addSettingsButton(messageReference);
-        await generatingMsg.delete();
-      } else {
-        const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong or the output URL is not available.` });
-        await addSettingsButton(messageReference);
-        await generatingMsg.delete();
-      }
-    } catch (error) {
-      console.log(error)
-      const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong or the output URL is not available.` });
+      const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong, or the output URL is not available.` });
       await addSettingsButton(messageReference);
       await generatingMsg.delete();
     }
+  } catch (error) {
+    console.log(error);
+    handleFailedSpeechGeneration(interaction);
+    await generatingMsg.delete();
   }
-});
+}
+
+async function handleSuccessfulSpeechGeneration(interaction, text, language, outputUrl) {
+  const file = new AttachmentBuilder(outputUrl).setName('speech.wav');
+  const embed = new EmbedBuilder()
+    .setColor(0x0099ff)
+    .setTitle('🎙️ **Speech Generated!**')
+    .setDescription(`Here Is Your Generated Speech:\n**Prompt:**\n\`\`\`${text}\`\`\``)
+    .addFields(
+      { name: '**Generated by**', value: `\`${interaction.user.displayName}\``, inline: true },
+      { name: '**Language Used:**', value: `\`${language}\``, inline: true }
+    )
+    .setTimestamp();
+
+  const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed], files: [file] });
+  await addSettingsButton(messageReference);
+}
 
 client.on('interactionCreate', async (interaction) => {
   // Check if the interaction is a button click
@@ -397,26 +417,7 @@ async function genimgslash(prompt, model, interaction) {
   userPreferredImageModel[interaction.user.id] = model;
   
   try {
-    const imageResult = await generateImageWithPrompt(prompt, interaction.user.id);
-    const imageUrl = imageResult.images[0].url;
-    const modelUsed = imageResult.modelUsed;
-    
-    const imageBuffer = await fetchImageAsBuffer(imageUrl);
-    const attachment = new AttachmentBuilder(imageBuffer, { name: 'generated-image.png' });
-    const embed = new EmbedBuilder()
-      .setColor(0x0099ff)
-      .setTitle('✨ **Image Generated!**')
-      .setDescription(`Here Is Your Generated Image:`)
-      .addFields(
-        { name: '**Prompt**', value: `\`\`\`${prompt}\`\`\``, inline: false },
-        { name: '**Generated by**', value: `\`${interaction.user.displayName}\``, inline: true },
-        { name: '**Model Used**', value: `\`${modelUsed}\``, inline: true },
-      )
-      .setImage('attachment://generated-image.png')
-      .setTimestamp()
-
-    const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed], files: [attachment]  });
-    await addSettingsButton(messageReference);
+    await generateAndSendImage(prompt, interaction);
     await generatingMsg.delete();
   } catch (error) {
     console.log(error);
@@ -426,6 +427,29 @@ async function genimgslash(prompt, model, interaction) {
   }
 }
 
+async function generateAndSendImage(prompt, interaction) {
+  const imageResult = await generateImageWithPrompt(prompt, interaction.user.id);
+  const imageUrl = imageResult.images[0].url;
+  const modelUsed = imageResult.modelUsed;
+
+  const imageBuffer = await fetchImageAsBuffer(imageUrl);
+  const attachment = new AttachmentBuilder(imageBuffer, { name: 'generated-image.png' });
+  const embed = new EmbedBuilder()
+    .setColor(0x0099ff)
+    .setTitle('✨ **Image Generated!**')
+    .setDescription(`Here Is Your Generated Image:`)
+    .addFields(
+      { name: '**Prompt**', value: `\`\`\`${prompt}\`\`\``, inline: false },
+      { name: '**Generated by**', value: `\`${interaction.user.displayName}\``, inline: true },
+      { name: '**Model Used**', value: `\`${modelUsed}\``, inline: true },
+    )
+    .setImage('attachment://generated-image.png')
+    .setTimestamp();
+
+  const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed], files: [attachment] });
+  await addSettingsButton(messageReference);
+}
+
 async function handleModalSubmit(interaction) {
   if (interaction.customId === 'custom-personality-modal') {
     const customInstructionsInput = interaction.fields.getTextInputValue('custom-personality-input');
@@ -433,7 +457,7 @@ async function handleModalSubmit(interaction) {
 
     await interaction.reply({ content: '> Custom personality instructions saved!' });
 
-    setTimeout(() => interaction.deleteReply(), 10000); // Delete after 10 seconds
+    setTimeout(() => interaction.deleteReply(), 5000); // Delete after 5 seconds
   } else if (interaction.customId === 'text-speech-modal') {
     const generatingMsg = await interaction.reply({ content: `${interaction.user}, generating your speech, please wait... 💽` });
     try {
@@ -441,18 +465,7 @@ async function handleModalSubmit(interaction) {
       const text = interaction.fields.getTextInputValue('text-speech-input');
       const outputUrl = await generateSpeechWithPrompt(text, userId, 'en');
       if (outputUrl && outputUrl !== 'Output URL is not available.') {
-        const file = new AttachmentBuilder(outputUrl).setName('speech.wav');
-        const embed = new EmbedBuilder()
-          .setColor(0x0099ff)
-          .setTitle('🎙️ **Speech Generated!**')
-          .setDescription(`Here Is Your Generated Speech:\n**Prompt:**\n\`\`\`${text}\`\`\``)
-          .addFields(
-            { name: '**Generated by**', value: `\`${interaction.user.displayName}\``, inline: true }
-          )
-          .setTimestamp()
-  
-        const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed],  files: [file] });
-        await addSettingsButton(messageReference);
+        handleSuccessfulSpeechGeneration(interaction, text, "English", outputUrl)
         await generatingMsg.delete();
       } else {
         const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong or the output URL is not available.` });
@@ -471,26 +484,7 @@ async function handleModalSubmit(interaction) {
     const generatingMsg = await interaction.reply({ content: `${interaction.user}, generating your image, please wait... 🖌️` });
 
     try {
-      const imageResult = await generateImageWithPrompt(prompt, interaction.user.id);
-      const imageUrl = imageResult.images[0].url;
-      const modelUsed = imageResult.modelUsed;
-      
-      const imageBuffer = await fetchImageAsBuffer(imageUrl);
-      const attachment = new AttachmentBuilder(imageBuffer, { name: 'generated-image.png' });
-      const embed = new EmbedBuilder()
-        .setColor(0x0099ff)
-        .setTitle('✨ **Image Generated!**')
-        .setDescription(`Here Is Your Generated Image:`)
-        .addFields(
-          { name: '**Prompt**', value: `\`\`\`${prompt}\`\`\``, inline: false },
-          { name: '**Generated by**', value: `\`${interaction.user.displayName}\``, inline: true },
-          { name: '**Model Used**', value: `\`${modelUsed}\``, inline: true },
-        )
-        .setImage('attachment://generated-image.png')
-        .setTimestamp()
-
-      const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed], files: [attachment]  });
-      await addSettingsButton(messageReference);
+      await generateAndSendImage(prompt, interaction);
       await generatingMsg.delete();
     } catch (error) {
       const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, could not generate the image. Please try again later.` });
@@ -553,78 +547,56 @@ async function downloadConversation(interaction) {
 }
 
 async function showSettings(interaction) {
-  const clearButton = new ButtonBuilder()
-    .setCustomId('clear')
-    .setLabel('Clear Memory')
-    .setEmoji('🧹')
-    .setStyle(ButtonStyle.Danger);
+  // Define button configurations in an array
+  const buttonConfigs = [
+    { customId: 'clear', label: 'Clear Memory', emoji: '🧹', style: ButtonStyle.Danger },
+    { customId: 'always-respond', label: 'Always Respond', emoji: '↩️', style: ButtonStyle.Secondary },
+    { customId: 'custom-personality', label: 'Custom Personality', emoji: '🙌', style: ButtonStyle.Primary },
+    { customId: 'remove-personality', label: 'Remove Personality', emoji: '🤖', style: ButtonStyle.Danger },
+    { customId: 'generate-image', label: 'Generate Image', emoji: '🎨', style: ButtonStyle.Primary },
+    { customId: 'change-image-model', label: 'Change Image Model', emoji: '👨‍🎨', style: ButtonStyle.Secondary },
+    { customId: 'toggle-response-mode', label: 'Toggle Response Mode', emoji: '📝', style: ButtonStyle.Primary },
+    { customId: 'generate-speech', label: 'Generate Speech', emoji: '🎤', style: ButtonStyle.Primary },
+    { customId: 'change-speech-model', label: 'Change Speech Model', emoji: '🔈', style: ButtonStyle.Secondary },
+    { customId: 'download-conversation', label: 'Download Conversation', emoji: '🗃️', style: ButtonStyle.Secondary }
+  ];
 
-  const toggleChatButton = new ButtonBuilder()
-    .setCustomId('always-respond')
-    .setLabel('Always Respond')
-    .setEmoji('↩️')
-    .setStyle(ButtonStyle.Secondary);
+  // Generate buttons from configurations
+  const allButtons = buttonConfigs.map(config => new ButtonBuilder()
+    .setCustomId(config.customId)
+    .setLabel(config.label)
+    .setEmoji(config.emoji)
+    .setStyle(config.style)
+  );
 
-  const customPersonalityButton = new ButtonBuilder()
-    .setCustomId('custom-personality')
-    .setLabel('Custom Personality')
-    .setEmoji('🙌')
-    .setStyle(ButtonStyle.Primary);
-
-  const removePersonalityButton = new ButtonBuilder()
-    .setCustomId('remove-personality')
-    .setLabel('Remove Personality')
-    .setEmoji('🤖')
-    .setStyle(ButtonStyle.Danger);
-
-  const generateImageButton = new ButtonBuilder()
-    .setCustomId('generate-image')
-    .setLabel('Generate Image')
-    .setEmoji('🎨')
-    .setStyle(ButtonStyle.Primary);
-
-  const imageToggleButton = new ButtonBuilder()
-    .setCustomId('change-image-model')
-    .setLabel('Change Image Model')
-    .setEmoji('👨‍🎨')
-    .setStyle(ButtonStyle.Secondary);
-    
-  const userResponseToggle = new ButtonBuilder()
-    .setCustomId('toggle-response-mode')
-    .setLabel('Toggle Response Mode')
-    .setEmoji('📝')
-    .setStyle(ButtonStyle.Primary);
-    
-  const generateAudioButton = new ButtonBuilder()
-    .setCustomId('generate-speech')
-    .setLabel('Generate Speech')
-    .setEmoji('🎤')
-    .setStyle(ButtonStyle.Primary);
-    
-  const speechToggleButton = new ButtonBuilder()
-    .setCustomId('change-speech-model')
-    .setLabel('Change Speech Model')
-    .setEmoji('🔈')
-    .setStyle(ButtonStyle.Secondary);
-    
-  const downloadConversation = new ButtonBuilder()
-    .setCustomId('download-conversation')
-    .setLabel('Download Conversation')
-    .setEmoji('🗃️')
-    .setStyle(ButtonStyle.Secondary);
-
-  // Split settings into multiple action rows if there are more than 5 buttons
+  // Split buttons into action rows
   const actionRows = [];
-  const allButtons = [clearButton, toggleChatButton, customPersonalityButton, removePersonalityButton, generateImageButton, imageToggleButton, userResponseToggle, generateAudioButton, speechToggleButton, downloadConversation];
-
   while (allButtons.length > 0) {
-    const actionRow = new ActionRowBuilder().addComponents(allButtons.splice(0, 5));
-    actionRows.push(actionRow);
+    actionRows.push(new ActionRowBuilder().addComponents(allButtons.splice(0, 5)));
   }
 
+  // Reply to the interaction
   await interaction.reply({
     content: '> ```Settings:```',
     components: actionRows
+  });
+}
+
+function retryOperation(operation, retries) {
+  return new Promise((resolve, reject) => {
+    function attempt() {
+      operation().then(resolve).catch((error) => {
+        console.error("Attempt failed, retries left:", retries);
+        if (retries > 0) {
+          retries--;
+          attempt();
+        } else {
+          console.error("All attempts failed.");
+          reject(error);
+        }
+      });
+    }
+    attempt();
   });
 }
 
@@ -647,50 +619,57 @@ async function processSpeechGet(interaction) {
 
 async function speechGen(prompt) {
   const sessionHash = "test123";
-  const joinQueueUrl = `https://styletts2-styletts2.hf.space/queue/join?fn_index=1&session_hash=${sessionHash}`;
-  const response = new EventSource(joinQueueUrl);
+  const urlFirstRequest = 'https://mrfakename-melotts.hf.space/queue/join?';
+  const dataFirstRequest = {
+    data: ["EN-US", prompt, 1, "EN"],
+    event_data: null,
+    fn_index: 1,
+    trigger_id: 8,
+    session_hash: sessionHash
+  };
 
+  try {
+    const responseFirst = await axios.post(urlFirstRequest, dataFirstRequest);
+    console.log(responseFirst.data);
+  } catch (error) {
+    console.error("Error in the first request:", error);
+    return null;
+  }
+
+  const urlSecondRequest = `https://mrfakename-melotts.hf.space/queue/data?session_hash=${sessionHash}`;
+
+  // Return a new Promise that resolves with the URL when found
   return new Promise((resolve, reject) => {
-    response.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
+    axios.get(urlSecondRequest, {
+      responseType: 'stream'
+    }).then(responseSecond => {
+      let fullData = '';
 
-      if (data.msg === "send_data") {
-        const eventId = data.event_id;
-        console.log("Event ID:", eventId);
-        // Send data
-        const urlSecondRequest = 'https://styletts2-styletts2.hf.space/queue/data';
-        const data2request = {
-          "data": [prompt, "m-us-2", 5],
-          "event_data": null,
-          "fn_index": 1,
-          "trigger_id": 8,
-          "session_hash": sessionHash,
-          "event_id": eventId
-        };
-        try {
-          const response = await axios.post(urlSecondRequest, data2request);
-        } catch (error) {
-          console.error("Error sending data:", error.message);
-          reject(error);
-        }
-      } else if (data.msg === "process_completed") {
-        response.close(); // Stop listening for events
-        const imagePath = data.output.data[0].path;
-        if (imagePath !== "Path not found") {
-          const fullUrl = `https://styletts2-styletts2.hf.space/--replicas/w0t4o/file=${imagePath}`;
-          console.log(fullUrl);
-          resolve(fullUrl);
-        } else {
-          reject(new Error("Path not found"));
-        }
-      }
-    };
+      responseSecond.data.on('data', (chunk) => {
+        fullData += chunk.toString();
 
-    response.onerror = (error) => {
-      console.error("EventSource failed:", error);
-      response.close();
+        if (fullData.includes('"msg": "process_completed"')) {
+          const lines = fullData.split('\n');
+          for (const line of lines) {
+            if (line.includes('"msg": "process_completed"')) {
+              try {
+                const dataDict = JSON.parse(line.slice(line.indexOf('{')));
+                const fullUrl = dataDict.output.data[0].url;
+                console.log(fullUrl);
+                resolve(fullUrl); // Resolve the promise with the URL
+                break;
+              } catch (parseError) {
+                console.error("Parsing error:", parseError);
+                reject(parseError);
+              }
+            }
+          }
+        }
+      });
+    }).catch(error => {
+      console.error("Error in second request event stream:", error);
       reject(error);
-    };
+    });
   });
 }
 
@@ -737,24 +716,27 @@ async function speechGen2(text, language) {
 }
 
 async function changeSpeechModel(interaction) {
-  // Create buttons for each model
-  const buttons = [
-    new ButtonBuilder().setCustomId('select-speech-model-1').setLabel('1').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-speech-model-2').setLabel('2').setStyle(ButtonStyle.Primary)
-  ];
+  // Define model numbers in an array
+  const modelNumbers = ['1', '2'];
 
-  // Split buttons into multiple ActionRows if there are more than 5 buttons
+  // Generate buttons using map()
+  const buttons = modelNumbers.map(number =>
+    new ButtonBuilder()
+    .setCustomId(`select-speech-model-${number}`)
+    .setLabel(number)
+    .setStyle(ButtonStyle.Primary)
+  );
+
   const actionRows = [];
-  while (buttons.length > 0) {
-    const actionRow = new ActionRowBuilder().addComponents(buttons.splice(0, 5));
+  for (let i = 0; i < buttons.length; i += 5) {
+    const actionRow = new ActionRowBuilder().addComponents(buttons.slice(i, i + 5));
     actionRows.push(actionRow);
   }
 
-  // Reply with the message prompting user to select an image generation model
   await interaction.reply({
     content: '> `Select Speech Generation Model:`',
     components: actionRows,
-    ephemeral: true,
+    ephemeral: true
   });
 }
 
@@ -764,45 +746,52 @@ async function handleSpeechSelectModel(interaction, model) {
   await interaction.reply({ content: `**Speech Generation Model Selected**: ${model}`, ephemeral: true });
 }
 
+const speechModelFunctions = {
+  "1": speechGen,
+  "2": speechGen2
+};
+
 async function generateSpeechWithPrompt(prompt, userId, language) {
   try {
     const selectedModel = userPreferredSpeechModel[userId] || "1";
+    const generateFunction = speechModelFunctions[selectedModel];
 
-    if (selectedModel === "1") {
-      return await speechGen(prompt);
-    } else if (selectedModel === "2") {
-      return await speechGen2(prompt);
+    if (!generateFunction) {
+      throw new Error(`Unsupported speech model: ${selectedModel}`);
     }
+    return await retryOperation(() => generateFunction(prompt, language), 2);
   } catch (error) {
-    console.error('Error generating image:', error);
-    throw new Error('Could not generate image');
+    console.error('Error generating speech:', error);
+    throw new Error('Could not generate speech after retries');
   }
 }
 
 async function changeImageModel(interaction) {
-  // Create buttons for each model
-  const buttons = [
-    new ButtonBuilder().setCustomId('select-image-model-SD-XL').setLabel('SD-XL').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-image-model-SD-XL-Alt').setLabel('SD-XL-Alt').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-image-model-Stable-Cascade').setLabel('Stable-Cascade').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-image-model-PlaygroundAI').setLabel('PlaygroundAI').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-image-model-PlaygroundAI-Alt').setLabel('PlaygroundAI-Alt').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-image-model-Kandinsky').setLabel('Kandinsky').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('select-image-model-Proteus-v0.4').setLabel('Proteus-v0.4').setStyle(ButtonStyle.Primary),
+  // Define model names in an array
+  const models = [
+    'SD-XL', 'SD-XL-Alt', 'Stable-Cascade', 'PlaygroundAI',
+    'PlaygroundAI-Alt', 'Kandinsky', 'Proteus-v0.4'
   ];
 
-  // Split buttons into multiple ActionRows if there are more than 5 buttons
+  // Generate buttons using map()
+  const buttons = models.map(model =>
+    new ButtonBuilder()
+    .setCustomId(`select-image-model-${model}`)
+    .setLabel(model)
+    .setStyle(ButtonStyle.Primary)
+  );
+
+  // Create action rows by batching the buttons into groups of 5
   const actionRows = [];
-  while (buttons.length > 0) {
-    const actionRow = new ActionRowBuilder().addComponents(buttons.splice(0, 5));
+  for (let i = 0; i < buttons.length; i += 5) {
+    const actionRow = new ActionRowBuilder().addComponents(buttons.slice(i, i + 5));
     actionRows.push(actionRow);
   }
 
-  // Reply with the message prompting user to select an image generation model
   await interaction.reply({
     content: '> `Select Image Generation Model:`',
     components: actionRows,
-    ephemeral: true,
+    ephemeral: true
   });
 }
 
@@ -812,28 +801,28 @@ async function handleImageSelectModel(interaction, model) {
   await interaction.reply({ content: `**Image Generation Model Selected**: ${model}`, ephemeral: true });
 }
 
+const imageModelFunctions = {
+  "Stable-Cascade": generateWithSC,
+  "SD-XL": generateWithSDXL,
+  "SD-XL-Alt": generateWithSDXLAlt,
+  "Kandinsky": generateWithKandinsky,
+  "PlaygroundAI": generateWithPlaygroundAI,
+  "PlaygroundAI-Alt": generateWithPlaygroundAIAlt,
+  "Proteus-v0.4": generateWithProteus4
+};
+
 async function generateImageWithPrompt(prompt, userId) {
   try {
     const selectedModel = userPreferredImageModel[userId] || "SD-XL";
+    const generateFunction = imageModelFunctions[selectedModel];
 
-    if (selectedModel === "Stable-Cascade") {
-      return await generateWithSC(prompt);
-    } else if (selectedModel === "SD-XL") {
-      return await generateWithSDXL(prompt);
-    } else if (selectedModel === "SD-XL-Alt") {
-      return await generateWithSDXLAlt(prompt);
-    } else if (selectedModel === "Kandinsky") {
-      return await generateWithKandinsky(prompt);
-    } else if (selectedModel === "PlaygroundAI") {
-      return await generateWithPlaygroundAI(prompt);
-    } else if (selectedModel === "PlaygroundAI-Alt") {
-      return await generateWithPlaygroundAIAlt(prompt);
-    } else if (selectedModel === "Proteus-v0.4") {
-      return await generateWithProteus4(prompt);
+    if (!generateFunction) {
+      throw new Error(`Unsupported model: ${selectedModel}`);
     }
+    return await retryOperation(() => generateFunction(prompt), 2);
   } catch (error) {
     console.error('Error generating image:', error);
-    throw new Error('Could not generate image');
+    throw new Error('Could not generate image after retries');
   }
 }
 
@@ -1454,17 +1443,12 @@ function extractUrls(text) {
   return text.match(/\bhttps?:\/\/\S+/gi) || [];
 }
 
-// Function to get user preference
-function getUserPreference(userId) {
-  return userResponsePreference[userId] || 'embedded';
-}
-
 // Function to toggle user preference
 async function toggleUserPreference(interaction) {
   const userId = interaction.user.id;
-  const currentPreference = getUserPreference(userId);
+  const currentPreference = userResponsePreference[userId] || 'embedded';
   userResponsePreference[userId] = currentPreference === 'normal' ? 'embedded' : 'normal';
-  const updatedPreference = getUserPreference(userId);
+  const updatedPreference = userResponsePreference[userId];
   await interaction.reply({ content: `> **Your responses has been switched from \`${currentPreference}\` to \`${updatedPreference}\`.**`, ephemeral: true });
 }
 
