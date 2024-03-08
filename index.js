@@ -203,6 +203,12 @@ async function alwaysRespond(interaction) {
   const userId = interaction.user.id;
   const channelId = interaction.channelId;
 
+  // Check if the interaction is in a DM channel and exit if so
+  if (interaction.channel.type === ChannelType.DM) {
+    await interaction.reply({ content: '> `This feature is disabled in DMs.`'});
+    return;
+  }
+
   // Ensure the channel is initialized in activeUsersInChannels
   if (!activeUsersInChannels[channelId]) {
     activeUsersInChannels[channelId] = {};
@@ -347,6 +353,8 @@ client.on('interactionCreate', async (interaction) => {
       await changeSpeechModel(interaction);
     } else if (interaction.customId === 'download-conversation') {
       await downloadConversation(interaction);
+    } else if (interaction.customId === 'download_message') {
+      await downloadMessage(interaction);
     }
   } else if (interaction.isModalSubmit()) {
     await handleModalSubmit(interaction);
@@ -515,50 +523,95 @@ async function setCustomPersonality(interaction) {
   await interaction.showModal(modal);
 }
 
+async function downloadMessage(interaction) {
+  const message = interaction.message;
+  let textContent = message.content;
+  if (!textContent && message.embeds.length > 0) {
+    textContent = message.embeds[0].description;
+  }
+
+  if (!textContent) {
+    await interaction.reply({ content: '> `The message is empty..?`', ephemeral: true });
+    return;
+  }
+
+  const filePath = path.resolve(__dirname, 'messageContent.txt');
+  fs.writeFileSync(filePath, textContent);
+
+  const attachment = new AttachmentBuilder(filePath, { name: 'messageContent.txt' });
+
+  // Check if the interaction is in DMs
+  if (interaction.channel.type === ChannelType.DM) {
+    // If in DMs, send the message directly in the current channel
+    await interaction.reply({ content: '> `Here is the content of the message:`', files: [attachment] });
+  } else {
+    // If not in DMs, try to DM the user first
+    try {
+      await interaction.user.send({ content: '> `Here is the content of the message:`', files: [attachment] });
+      // If DM is successful, confirm with the interaction
+      await interaction.reply({ content: '> `The message content has been sent to your DMs.`', ephemeral: true });
+    } catch (error) {
+      // If DM fails, send in the current channel
+      console.error(`Failed to send DM: ${error}`);
+      await interaction.reply({ content: '> `Here is the content of the message:`', files: [attachment], ephemeral: true });
+    }
+  }
+
+  // Cleanup: Remove the temporary file
+  fs.unlinkSync(filePath);
+}
+
 async function downloadConversation(interaction) {
   const userId = interaction.user.id;
   const conversationHistory = chatHistories[userId];
 
-  // Check if there's a conversation history for the user
   if (!conversationHistory || conversationHistory.length === 0) {
-    await interaction.reply({ content: '> No conversation history found.', ephemeral: true });
+    await interaction.reply({ content: '> `No conversation history found.`', ephemeral: true });
     return;
   }
 
-  // Format the conversation history
   let conversationText = '';
   for (let i = 0; i < conversationHistory.length; i++) {
     const speaker = i % 2 === 0 ? '[User]' : '[Model]';
     conversationText += `${speaker}:\n${conversationHistory[i]}\n\n`;
   }
 
-  // Create a temporary file to hold the conversation text
   const tempFileName = path.join(__dirname, `${userId}_conversation.txt`);
   fs.writeFileSync(tempFileName, conversationText, 'utf8');
 
-  // Create an attachment from the temporary file
   const file = new AttachmentBuilder(tempFileName, { name: 'conversation_history.txt' });
 
-  // Reply with the file
-  await interaction.reply({ content: '> Here\'s your conversation history:', files: [file], ephemeral: true }).then(() => {
-    // Cleanup: Remove the temporary file after sending it
-    fs.unlinkSync(tempFileName);
-  }).catch(console.error);
+  // Check if the interaction is in DMs
+  if (interaction.channel.type === ChannelType.DM) {
+    // If in DMs, send the file directly in the current channel
+    await interaction.reply({ content: '> `Here\'s your conversation history:`', files: [file] });
+  } else {
+    try {
+      // Attempt to send the file as a DM
+      await interaction.user.send({ content: '> `Here\'s your conversation history:`', files: [file] });
+      await interaction.reply({ content: '> `Your conversation history has been sent to your DMs.`', ephemeral: true });
+    } catch (error) {
+      console.error(`Failed to send DM: ${error}`);
+      await interaction.reply({ content: '> `Here\'s your conversation history:`', files: [file], ephemeral: true });
+    }
+  }
+
+  fs.unlinkSync(tempFileName);
 }
 
 async function showSettings(interaction) {
   // Define button configurations in an array
   const buttonConfigs = [
     { customId: 'clear', label: 'Clear Memory', emoji: '🧹', style: ButtonStyle.Danger },
-    { customId: 'always-respond', label: 'Always Respond', emoji: '↩️', style: ButtonStyle.Secondary },
     { customId: 'custom-personality', label: 'Custom Personality', emoji: '🙌', style: ButtonStyle.Primary },
     { customId: 'remove-personality', label: 'Remove Personality', emoji: '🤖', style: ButtonStyle.Danger },
     { customId: 'generate-image', label: 'Generate Image', emoji: '🎨', style: ButtonStyle.Primary },
     { customId: 'change-image-model', label: 'Change Image Model', emoji: '👨‍🎨', style: ButtonStyle.Secondary },
-    { customId: 'toggle-response-mode', label: 'Toggle Response Mode', emoji: '📝', style: ButtonStyle.Primary },
     { customId: 'generate-speech', label: 'Generate Speech', emoji: '🎤', style: ButtonStyle.Primary },
     { customId: 'change-speech-model', label: 'Change Speech Model', emoji: '🔈', style: ButtonStyle.Secondary },
-    { customId: 'download-conversation', label: 'Download Conversation', emoji: '🗃️', style: ButtonStyle.Secondary }
+    { customId: 'always-respond', label: 'Always Respond', emoji: '↩️', style: ButtonStyle.Secondary },
+    { customId: 'toggle-response-mode', label: 'Toggle Response Mode', emoji: '📝', style: ButtonStyle.Primary },
+    { customId: 'download-conversation', label: 'Download Conversation', emoji: '🗃️', style: ButtonStyle.Secondary },
   ];
 
   // Generate buttons from configurations
@@ -769,7 +822,7 @@ async function generateSpeechWithPrompt(prompt, userId, language) {
 async function changeImageModel(interaction) {
   // Define model names in an array
   const models = [
-    'SD-XL', 'SD-XL-Alt', 'Stable-Cascade', 'PlaygroundAI',
+    'SD-XL', 'SD-XL-Alt', 'SD-XL-Alt2', 'Stable-Cascade', 'PlaygroundAI',
     'PlaygroundAI-Alt', 'Kandinsky', 'Proteus-v0.4'
   ];
 
@@ -805,6 +858,7 @@ const imageModelFunctions = {
   "Stable-Cascade": generateWithSC,
   "SD-XL": generateWithSDXL,
   "SD-XL-Alt": generateWithSDXLAlt,
+  "SD-XL-Alt2": generateWithSDXLAlt2,
   "Kandinsky": generateWithKandinsky,
   "PlaygroundAI": generateWithPlaygroundAI,
   "PlaygroundAI-Alt": generateWithPlaygroundAIAlt,
@@ -1135,6 +1189,54 @@ function generateWithSDXLAlt(prompt) {
           console.log(full_url);
 
           resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt" });
+        }
+      };
+
+      // In case of an error with EventSource, you may also want to reject the promise
+      eventSource.onerror = (error) => {
+        eventSource.close();
+        console.error("EventSource Error:", error);
+        reject(error);
+      };
+
+    }).catch(error => {
+      console.error("Error:", error);
+      reject(error); // Reject the promise if the first request fails
+    });
+  });
+}
+
+function generateWithSDXLAlt2(prompt) {
+  return new Promise((resolve, reject) => {
+    const url = "https://h1t-tcd.hf.space";
+    let session_hash = 'test123';
+
+    // Define the first request URL and data
+    const urlFirstRequest = `${url}/queue/join?`;
+    const dataFirstRequest = {
+      "data": [prompt, 10, -1, 0.5],
+      "event_data": null,
+      "fn_index": 2,
+      "trigger_id": 17,
+      "session_hash": session_hash
+    };
+
+    axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
+      console.log(responseFirst.data);
+
+      const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
+      const eventSource = new EventSource(urlSecondRequest);
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.msg === "process_completed") {
+          eventSource.close();
+          const full_url = data["output"]["data"][0]["url"];
+          console.log(full_url);
+
+          resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt2" });
         }
       };
 
@@ -1486,7 +1588,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
     if (isLargeResponse) {
       await sendAsTextFile(finalResponse, originalMessage);
     } else {
-      await addSettingsButton(botMessage);
+      await addDownloadButton(botMessage);
     }
 
     updateChatHistory(userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
@@ -1567,6 +1669,23 @@ function updateChatHistory(userId, userMessage, modelResponse) {
   }
   chatHistories[userId].push(userMessage);
   chatHistories[userId].push(modelResponse);
+}
+
+async function addDownloadButton(botMessage) {
+
+  const settingsButton = new ButtonBuilder()
+    .setCustomId('settings')
+    .setEmoji('⚙️')
+    .setStyle(ButtonStyle.Secondary);
+
+  const downloadButton = new ButtonBuilder()
+    .setCustomId('download_message')
+    .setLabel('Save')
+    .setEmoji('⬇️')
+    .setStyle(ButtonStyle.Secondary);
+
+  const actionRow = new ActionRowBuilder().addComponents(settingsButton, downloadButton);
+  await botMessage.edit({ components: [actionRow] });
 }
 
 async function addSettingsButton(botMessage) {
