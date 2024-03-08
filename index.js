@@ -535,10 +535,10 @@ async function downloadMessage(interaction) {
     return;
   }
 
-  const filePath = path.resolve(__dirname, 'messageContent.txt');
+  const filePath = path.resolve(__dirname, 'message_content.txt');
   fs.writeFileSync(filePath, textContent);
 
-  const attachment = new AttachmentBuilder(filePath, { name: 'messageContent.txt' });
+  const attachment = new AttachmentBuilder(filePath, { name: 'message_content.txt' });
 
   // Check if the interaction is in DMs
   if (interaction.channel.type === ChannelType.DM) {
@@ -1593,8 +1593,9 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
 
     updateChatHistory(userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
   } catch (error) {
-    console.error('Error handling model response:', error);
-    await botMessage.edit({ content: '> `Sorry, an error occurred while generating a response.`' });
+    console.error(error.message);
+    const errormsg = await originalMessage.reply({ content: `Generation Stopped: \`\`\`${error.message}\`\`\`` });
+    await addSettingsButton(errormsg);
     await addSettingsButton(botMessage);
   } finally {
     activeRequests.delete(userId);
