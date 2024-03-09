@@ -681,18 +681,13 @@ async function speechGen(prompt) {
     session_hash: sessionHash
   };
 
-  try {
-    const responseFirst = await axios.post(urlFirstRequest, dataFirstRequest);
-    console.log(responseFirst.data);
-  } catch (error) {
-    console.error("Error in the first request:", error);
-    return null;
-  }
+  // Make the first request and allow errors to bubble up
+  const responseFirst = await axios.post(urlFirstRequest, dataFirstRequest);
+  console.log(responseFirst.data);
 
   const urlSecondRequest = `https://mrfakename-melotts.hf.space/queue/data?session_hash=${sessionHash}`;
 
-  // Return a new Promise that resolves with the URL when found
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     axios.get(urlSecondRequest, {
       responseType: 'stream'
     }).then(responseSecond => {
@@ -701,71 +696,59 @@ async function speechGen(prompt) {
       responseSecond.data.on('data', (chunk) => {
         fullData += chunk.toString();
 
+        // Check for process completion message
         if (fullData.includes('"msg": "process_completed"')) {
           const lines = fullData.split('\n');
           for (const line of lines) {
             if (line.includes('"msg": "process_completed"')) {
-              try {
-                const dataDict = JSON.parse(line.slice(line.indexOf('{')));
-                const fullUrl = dataDict.output.data[0].url;
-                console.log(fullUrl);
-                resolve(fullUrl); // Resolve the promise with the URL
-                break;
-              } catch (parseError) {
-                console.error("Parsing error:", parseError);
-                reject(parseError);
-              }
+              const dataDict = JSON.parse(line.slice(line.indexOf('{')));
+              const fullUrl = dataDict.output.data[0].url;
+              console.log(fullUrl);
+              resolve(fullUrl);
+              break;
             }
           }
         }
       });
-    }).catch(error => {
-      console.error("Error in second request event stream:", error);
-      reject(error);
     });
   });
 }
 
 async function speechGen2(text, language) {
-  try {
-    const url = 'https://replicate.com/api/predictions';
-    const payload = {
-      input: {
-        text: text,
-        speaker: 'https://replicate.delivery/pbxt/Jt79w0xsT64R1JsiJ0LQRL8UcWspg5J4RFrU6YwEKpOT1ukS/male.wav',
-        language: language,
-        cleanup_voice: false
-      },
-      is_training: false,
-      create_model: '0',
-      stream: false,
-      version: '684bc3855b37866c0c65add2ff39c78f3dea3f4ff103a436465326e0f438d55e'
-    };
-    const headers = {
-      'Content-Type': 'application/json'
-    };
-    
-    // Start the prediction
-    const response = await axios.post(url, payload, { headers });
-    const predictionId = response.data.id;
+  const url = 'https://replicate.com/api/predictions';
+  const payload = {
+    input: {
+      text: text,
+      speaker: 'https://replicate.delivery/pbxt/Jt79w0xsT64R1JsiJ0LQRL8UcWspg5J4RFrU6YwEKpOT1ukS/male.wav',
+      language: language,
+      cleanup_voice: false
+    },
+    is_training: false,
+    create_model: '0',
+    stream: false,
+    version: '684bc3855b37866c0c65add2ff39c78f3dea3f4ff103a436465326e0f438d55e'
+  };
+  const headers = {
+    'Content-Type': 'application/json'
+  };
 
-    let outputUrl = null;
-    while (!outputUrl) {
-      const statusResponse = await axios.get(`https://replicate.com/api/predictions/${predictionId}`);
-      const data = statusResponse.data;
-      if (data.completed_at !== null) {
-        outputUrl = data.output ? data.output : 'Output URL is not available.';
-        break;
-      }
-      // Wait for 1 second before making another status check.
-      await new Promise(resolve => setTimeout(resolve, 1000));
+  // Start the prediction
+  const response = await axios.post(url, payload, { headers });
+  const predictionId = response.data.id;
+
+  let outputUrl = null;
+  while (!outputUrl) {
+    const statusResponse = await axios.get(`https://replicate.com/api/predictions/${predictionId}`);
+    const data = statusResponse.data;
+    if (data.completed_at !== null) {
+      outputUrl = data.output ? data.output : 'Output URL is not available.';
+      break;
     }
-
-    return outputUrl;
-  } catch (error) {
-    console.error('An error occurred:', error);
-    return null;
+    // Wait for 1 second before making another status check.
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
+
+  return outputUrl;
 }
 
 async function changeSpeechModel(interaction) {
@@ -881,7 +864,7 @@ async function generateImageWithPrompt(prompt, userId) {
 }
 
 function generateWithSC(prompt) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const url = "https://ehristoforu-stable-cascade.hf.space";
     let session_hash = 'test123';
 
@@ -898,8 +881,8 @@ function generateWithSC(prompt) {
     axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
       console.log(responseFirst.data);
 
+      // Establishing the event source for process completion tracking
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
       const eventSource = new EventSource(urlSecondRequest);
 
       eventSource.onmessage = (event) => {
@@ -915,16 +898,12 @@ function generateWithSC(prompt) {
         }
       };
 
-      // In case of an error with EventSource, you may also want to reject the promise
       eventSource.onerror = (error) => {
         eventSource.close();
         console.error("EventSource Error:", error);
-        reject(error);
+        throw error;
       };
 
-    }).catch(error => {
-      console.error("Error:", error);
-      reject(error); // Reject the promise if the first request fails
     });
   });
 }
@@ -962,36 +941,25 @@ function generateWithPlaygroundAI(prompt) {
 
         // Polling for the prediction result
         const checkPrediction = () => {
-          axios.get(urlWithId)
-            .then(res => {
-              const data = res.data;
-              if (data.completed_at) {
-                const outputUrl = data.output;
-                if (outputUrl) {
-                  resolve({ images: [{ url: outputUrl[0] }], modelUsed: "PlaygroundAI" });
-                } else {
-                  reject(new Error("Output URL is not available."));
-                }
-              } else {
-                setTimeout(checkPrediction, 1000);
-              }
-            })
-            .catch(error => {
-              console.error("Error:", error);
-              reject(error);
-            });
-        };
-        checkPrediction();
-      })
-      .catch(error => {
-        console.error("Error:", error);
-        reject(error);
-      });
+        axios.get(urlWithId).then(res => {
+          const data = res.data;
+          if (data.completed_at && data.output) {
+            resolve({ images: [{ url: data.output[0] }], modelUsed: "PlaygroundAI" });
+          } else if (!data.completed_at) {
+            setTimeout(checkPrediction, 1000);
+          } else {
+            throw new Error("Output URL is not available.");
+          }
+        });
+      };
+
+      checkPrediction();
+    });
   });
 }
 
 function generateWithPlaygroundAIAlt(prompt) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const url = "https://ap123-playground-v2-5.hf.space";
     let session_hash = 'test123';
 
@@ -1008,10 +976,11 @@ function generateWithPlaygroundAIAlt(prompt) {
     axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
       console.log(responseFirst.data);
 
+      // Setup to listen for the process completion
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
       const eventSource = new EventSource(urlSecondRequest);
 
+      // Handle messages indicating process completion
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
@@ -1023,17 +992,11 @@ function generateWithPlaygroundAIAlt(prompt) {
           resolve({ images: [{ url: full_url }], modelUsed: "PlaygroundAI-Alt" });
         }
       };
-
-      // In case of an error with EventSource, you may also want to reject the promise
       eventSource.onerror = (error) => {
         eventSource.close();
         console.error("EventSource Error:", error);
-        reject(error);
+        throw error;
       };
-
-    }).catch(error => {
-      console.error("Error:", error);
-      reject(error); // Reject the promise if the first request fails
     });
   });
 }
@@ -1071,31 +1034,20 @@ function generateWithProteus4(prompt) {
 
         // Polling for the prediction result
         const checkPrediction = () => {
-          axios.get(urlWithId)
-            .then(res => {
-              const data = res.data;
-              if (data.completed_at) {
-                const outputUrl = data.output;
-                if (outputUrl) {
-                  resolve({ images: [{ url: outputUrl[0] }], modelUsed: "Proteus-v0.4" });
-                } else {
-                  reject(new Error("Output URL is not available."));
-                }
-              } else {
-                setTimeout(checkPrediction, 1000);
-              }
-            })
-            .catch(error => {
-              console.error("Error:", error);
-              reject(error);
-            });
-        };
-        checkPrediction();
-      })
-      .catch(error => {
-        console.error("Error:", error);
-        reject(error);
-      });
+        axios.get(urlWithId).then(res => {
+          const data = res.data;
+          if (data.completed_at && data.output) {
+            resolve({ images: [{ url: data.output[0] }], modelUsed: "Proteus-v0.4" });
+          } else if (!data.completed_at) {
+            setTimeout(checkPrediction, 1000);
+          } else {
+            throw new Error("Output URL is not available.");
+          }
+        });
+      };
+
+      checkPrediction();
+    });
   });
 }
 
@@ -1130,36 +1082,25 @@ function generateWithSDXL(prompt) {
 
         // Polling for the prediction result
         const checkPrediction = () => {
-          axios.get(urlWithId)
-            .then(res => {
-              const data = res.data;
-              if (data.completed_at) {
-                const outputUrl = data.output;
-                if (outputUrl) {
-                  resolve({ images: [{ url: outputUrl[0] }], modelUsed: "SD-XL" });
-                } else {
-                  reject(new Error("Output URL is not available."));
-                }
-              } else {
-                setTimeout(checkPrediction, 1000);
-              }
-            })
-            .catch(error => {
-              console.error("Error:", error);
-              reject(error);
-            });
-        };
-        checkPrediction();
-      })
-      .catch(error => {
-        console.error("Error:", error);
-        reject(error);
-      });
+        axios.get(urlWithId).then(res => {
+          const data = res.data;
+          if (data.completed_at && data.output) {
+            resolve({ images: [{ url: data.output[0] }], modelUsed: "SD-XL" });
+          } else if (!data.completed_at) {
+            setTimeout(checkPrediction, 1000);
+          } else {
+            throw new Error("Output URL is not available.", { cause: data });
+          }
+        });
+      };
+
+      checkPrediction();
+    });
   });
 }
 
 function generateWithSDXLAlt(prompt) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const url = "https://ap123-sdxl-lightning.hf.space";
     let session_hash = 'test123';
 
@@ -1173,11 +1114,11 @@ function generateWithSDXLAlt(prompt) {
       "session_hash": session_hash
     };
 
+    // First API call to join the queue
     axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
       console.log(responseFirst.data);
 
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
       const eventSource = new EventSource(urlSecondRequest);
 
       eventSource.onmessage = (event) => {
@@ -1188,26 +1129,22 @@ function generateWithSDXLAlt(prompt) {
           const full_url = data["output"]["data"][0]["url"];
           console.log(full_url);
 
-          resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt" });
+          resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt" }); // Resolve promise
         }
       };
 
-      // In case of an error with EventSource, you may also want to reject the promise
       eventSource.onerror = (error) => {
         eventSource.close();
         console.error("EventSource Error:", error);
-        reject(error);
+        throw error;
       };
 
-    }).catch(error => {
-      console.error("Error:", error);
-      reject(error); // Reject the promise if the first request fails
     });
   });
 }
 
 function generateWithSDXLAlt2(prompt) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const url = "https://h1t-tcd.hf.space";
     let session_hash = 'test123';
 
@@ -1221,13 +1158,14 @@ function generateWithSDXLAlt2(prompt) {
       "session_hash": session_hash
     };
 
+    // Make the first API call
     axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
       console.log(responseFirst.data);
 
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
       const eventSource = new EventSource(urlSecondRequest);
 
+      // Handle messages from the event source
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
@@ -1240,26 +1178,22 @@ function generateWithSDXLAlt2(prompt) {
         }
       };
 
-      // In case of an error with EventSource, you may also want to reject the promise
+      // Handle any errors from the event source
       eventSource.onerror = (error) => {
         eventSource.close();
         console.error("EventSource Error:", error);
-        reject(error);
+        throw error;
       };
 
-    }).catch(error => {
-      console.error("Error:", error);
-      reject(error); // Reject the promise if the first request fails
     });
   });
 }
 
 function generateWithKandinsky(prompt) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const url = "https://ehristoforu-kandinsky-api.hf.space";
     let session_hash = 'test123';
 
-    // Define the first request URL and data
     const urlFirstRequest = `${url}/queue/join?`;
     const dataFirstRequest = {
       "data": [prompt, 1024, 1024],
@@ -1273,7 +1207,6 @@ function generateWithKandinsky(prompt) {
       console.log(responseFirst.data);
 
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
       const eventSource = new EventSource(urlSecondRequest);
 
       eventSource.onmessage = (event) => {
@@ -1288,16 +1221,11 @@ function generateWithKandinsky(prompt) {
         }
       };
 
-      // In case of an error with EventSource, you may also want to reject the promise
       eventSource.onerror = (error) => {
         eventSource.close();
         console.error("EventSource Error:", error);
-        reject(error);
+        throw error;
       };
-
-    }).catch(error => {
-      console.error("Error:", error);
-      reject(error); // Reject the promise if the first request fails
     });
   });
 }
@@ -1563,42 +1491,53 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   const userId = originalMessage.author.id;
   const userPreference = getUserPreference(userId);
   const maxCharacterLimit = userPreference === 'embedded' ? 3900 : 1900;
+  let attempts = 3;
 
-  try {
-    const messageResult = await responseFunc();
-    let finalResponse = '';
-    let isLargeResponse = false;
+  while (attempts > 0) {
+    try {
+      const messageResult = await responseFunc();
+      let finalResponse = '';
+      let isLargeResponse = false;
 
-    for await (const chunk of messageResult.stream) {
-      const chunkText = await chunk.text();
-      finalResponse += chunkText;
+      for await (const chunk of messageResult.stream) {
+        const chunkText = await chunk.text();
+        finalResponse += chunkText;
 
-      if (finalResponse.length > maxCharacterLimit) {
-        if (!isLargeResponse) {
-          isLargeResponse = true;
-          await botMessage.edit('> `The response is too large and will be sent as a text file once it is ready.`');
+        if (finalResponse.length > maxCharacterLimit) {
+          if (!isLargeResponse) {
+            isLargeResponse = true;
+            await botMessage.edit('> `The response is too large and will be sent as a text file once it is ready.`');
+          }
+        } else if (userPreference === 'embedded') {
+          await updateEmbed(botMessage, finalResponse, originalMessage.author.displayName);
+        } else {
+          await botMessage.edit(finalResponse);
         }
-      } else if (userPreference === 'embedded') {
-        await updateEmbed(botMessage, finalResponse, originalMessage.author.displayName);
+      }
+
+      if (isLargeResponse) {
+        await sendAsTextFile(finalResponse, originalMessage);
       } else {
-        await botMessage.edit(finalResponse);
+        await addDownloadButton(botMessage);
+      }
+
+      updateChatHistory(userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
+      activeRequests.delete(userId);
+      break;
+    } catch (error) {
+      console.error(error.message);
+      attempts--;
+
+      // If no attempts left, handle the final error
+      if (attempts === 0) {
+        const errormsg = await originalMessage.reply({ content: `All Generation Attempts Failed :( \`\`\`${error.message}\`\`\`` });
+        await addSettingsButton(errormsg);
+        await addSettingsButton(botMessage);
+      } else {
+        const errormsg = await originalMessage.reply({ content: `Generation Stopped, Retrying.. \`\`\`${error.message}\`\`\`` });
+        setTimeout(() => errormsg.delete().catch(console.error), 5000);
       }
     }
-
-    if (isLargeResponse) {
-      await sendAsTextFile(finalResponse, originalMessage);
-    } else {
-      await addDownloadButton(botMessage);
-    }
-
-    updateChatHistory(userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
-  } catch (error) {
-    console.error(error.message);
-    const errormsg = await originalMessage.reply({ content: `Generation Stopped: \`\`\`${error.message}\`\`\`` });
-    await addSettingsButton(errormsg);
-    await addSettingsButton(botMessage);
-  } finally {
-    activeRequests.delete(userId);
   }
 }
 
