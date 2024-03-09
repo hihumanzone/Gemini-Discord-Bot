@@ -1530,6 +1530,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
 
       // If no attempts left, handle the final error
       if (attempts === 0) {
+        activeRequests.delete(userId);
         const errormsg = await originalMessage.reply({ content: `All Generation Attempts Failed :( \`\`\`${error.message}\`\`\`` });
         await addSettingsButton(errormsg);
         await addSettingsButton(botMessage);
