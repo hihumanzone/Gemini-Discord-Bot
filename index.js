@@ -203,41 +203,32 @@ async function alwaysRespond(interaction) {
   const userId = interaction.user.id;
   const channelId = interaction.channelId;
 
-  // Check if the interaction is in a DM channel and exit if so
   if (interaction.channel.type === ChannelType.DM) {
-    await interaction.reply({ content: '> `This feature is disabled in DMs.`'});
+    await interaction.reply({ content: '> `This feature is disabled in DMs.`', ephemeral: true });
     return;
   }
 
-  // Ensure the channel is initialized in activeUsersInChannels
   if (!activeUsersInChannels[channelId]) {
     activeUsersInChannels[channelId] = {};
   }
 
-  // Toggle the state for the current channel and user
   if (activeUsersInChannels[channelId][userId]) {
     delete activeUsersInChannels[channelId][userId];
-
-    // Send an ephemeral message to the user who interacted
     await interaction.reply({ content: '> Bot response to your messages is turned `OFF`.', ephemeral: true });
   } else {
     activeUsersInChannels[channelId][userId] = true;
-
-    // Send an ephemeral message to the user who interacted
     await interaction.reply({ content: '> Bot response to your messages is turned `ON`.', ephemeral: true });
   }
 }
 
 async function clearChatHistory(interaction) {
   chatHistories[interaction.user.id] = [];
-  // Send an ephemeral message to the user who interacted
   await interaction.reply({ content: '> `Chat history cleared!`', ephemeral: true });
 }
 
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isCommand()) return;
-
   try {
+    if (!interaction.isCommand()) return;
     switch (interaction.commandName) {
       case 'respondtoall':
         await handleRespondToAllCommand(interaction);
@@ -257,11 +248,14 @@ client.on('interactionCreate', async (interaction) => {
     }
   } catch (error) {
     console.error('Error handling command:', error.message);
-    // Consider replying to the interaction with a generic error message
   }
 });
 
 async function handleRespondToAllCommand(interaction) {
+  if (interaction.channel.type === ChannelType.DM) {
+    return interaction.reply({ content: 'This command cannot be used in DMs.', ephemeral: true });
+  }
+
   if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
     return interaction.reply({ content: 'You need to be an admin to use this command.', ephemeral: true });
   }
@@ -321,43 +315,44 @@ async function handleSuccessfulSpeechGeneration(interaction, text, language, out
 }
 
 client.on('interactionCreate', async (interaction) => {
-  // Check if the interaction is a button click
-  if (interaction.isButton()) {
-
-    // Handle the interaction based on the customId of the button clicked
-    if (interaction.customId === 'settings') {
-      await showSettings(interaction);
-    } else if (interaction.customId === 'clear') {
-      await clearChatHistory(interaction);
-    } else if (interaction.customId === 'always-respond') {
-      await alwaysRespond(interaction);
-    } else if (interaction.customId === 'custom-personality') {
-      await setCustomPersonality(interaction);
-    } else if (interaction.customId === 'remove-personality') {
-      await removeCustomPersonality(interaction);
-    } else if (interaction.customId === 'generate-image') {
-      await handleGenerateImageButton(interaction);
-    } else if (interaction.customId === 'change-image-model') {
-      await changeImageModel(interaction);
-    } else if (interaction.customId.startsWith('select-image-model-')) {
-      const selectedModel = interaction.customId.replace('select-image-model-', '');
-      await handleImageSelectModel(interaction, selectedModel);
-    } else if (interaction.customId.startsWith('select-speech-model-')) {
-      const selectedModel = interaction.customId.replace('select-speech-model-', '');
-      await handleSpeechSelectModel(interaction, selectedModel);
-    } else if (interaction.customId === 'toggle-response-mode') {
-      await toggleUserPreference(interaction);
-    } else if (interaction.isButton() && interaction.customId === 'generate-speech') {
-      await processSpeechGet(interaction)
-    } else if (interaction.customId === 'change-speech-model') {
-      await changeSpeechModel(interaction);
-    } else if (interaction.customId === 'download-conversation') {
-      await downloadConversation(interaction);
-    } else if (interaction.customId === 'download_message') {
-      await downloadMessage(interaction);
+  try {
+    if (interaction.isButton()) {
+      if (interaction.customId === 'settings') {
+        await showSettings(interaction);
+      } else if (interaction.customId === 'clear') {
+        await clearChatHistory(interaction);
+      } else if (interaction.customId === 'always-respond') {
+        await alwaysRespond(interaction);
+      } else if (interaction.customId === 'custom-personality') {
+        await setCustomPersonality(interaction);
+      } else if (interaction.customId === 'remove-personality') {
+        await removeCustomPersonality(interaction);
+      } else if (interaction.customId === 'generate-image') {
+        await handleGenerateImageButton(interaction);
+      } else if (interaction.customId === 'change-image-model') {
+        await changeImageModel(interaction);
+      } else if (interaction.customId.startsWith('select-image-model-')) {
+        const selectedModel = interaction.customId.replace('select-image-model-', '');
+        await handleImageSelectModel(interaction, selectedModel);
+      } else if (interaction.customId.startsWith('select-speech-model-')) {
+        const selectedModel = interaction.customId.replace('select-speech-model-', '');
+        await handleSpeechSelectModel(interaction, selectedModel);
+      } else if (interaction.customId === 'toggle-response-mode') {
+        await toggleUserPreference(interaction);
+      } else if (interaction.isButton() && interaction.customId === 'generate-speech') {
+        await processSpeechGet(interaction)
+      } else if (interaction.customId === 'change-speech-model') {
+        await changeSpeechModel(interaction);
+      } else if (interaction.customId === 'download-conversation') {
+        await downloadConversation(interaction);
+      } else if (interaction.customId === 'download_message') {
+        await downloadMessage(interaction);
+      }
+    } else if (interaction.isModalSubmit()) {
+      await handleModalSubmit(interaction);
     }
-  } else if (interaction.isModalSubmit()) {
-    await handleModalSubmit(interaction);
+  } catch (error) {
+    console.error('Error handling command:', error.message);
   }
 });
 
