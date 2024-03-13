@@ -284,7 +284,7 @@ async function handleSpeechCommand(interaction) {
     const language = interaction.options.getString('language');
     const outputUrl = await generateSpeechWithPrompt(text, userId, language);
     if (outputUrl && outputUrl !== 'Output URL is not available.') {
-      handleSuccessfulSpeechGeneration(interaction, text, language, outputUrl);
+      await handleSuccessfulSpeechGeneration(interaction, text, language, outputUrl);
       await generatingMsg.delete();
     } else {
       const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong, or the output URL is not available.` });
@@ -469,7 +469,7 @@ async function handleModalSubmit(interaction) {
       const text = interaction.fields.getTextInputValue('text-speech-input');
       const outputUrl = await generateSpeechWithPrompt(text, userId, 'en');
       if (outputUrl && outputUrl !== 'Output URL is not available.') {
-        handleSuccessfulSpeechGeneration(interaction, text, "English", outputUrl)
+        await handleSuccessfulSpeechGeneration(interaction, text, "English", outputUrl);
         await generatingMsg.delete();
       } else {
         const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong or the output URL is not available.` });
