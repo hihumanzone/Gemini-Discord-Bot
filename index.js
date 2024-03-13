@@ -293,7 +293,8 @@ async function handleSpeechCommand(interaction) {
     }
   } catch (error) {
     console.log(error);
-    handleFailedSpeechGeneration(interaction);
+    const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong and the output is not available.` });
+    await addSettingsButton(messageReference);
     await generatingMsg.delete();
   }
 }
@@ -476,7 +477,7 @@ async function handleModalSubmit(interaction) {
         await generatingMsg.delete();
       }
     } catch (error) {
-      console.log(error)
+      console.log(error);
       const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong or the output URL is not available.` });
       await addSettingsButton(messageReference);
       await generatingMsg.delete();
