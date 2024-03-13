@@ -635,10 +635,11 @@ async function showSettings(interaction) {
 function retryOperation(operation, retries) {
   return new Promise((resolve, reject) => {
     function attempt() {
-      operation().then(resolve).catch((error) => {
+      operation().then(resolve).catch(async (error) => {
         console.error("Attempt failed, retries left:", retries);
         if (retries > 0) {
           retries--;
+          await delay(500);
           attempt();
         } else {
           console.error("All attempts failed.");
@@ -1484,6 +1485,10 @@ async function toggleUserPreference(interaction) {
   await interaction.reply({ content: `> **Your responses has been switched from \`${currentPreference}\` to \`${updatedPreference}\`.**`, ephemeral: true });
 }
 
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   const userId = originalMessage.author.id;
   const userPreference = getUserPreference(userId);
@@ -1519,7 +1524,6 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
       }
 
       updateChatHistory(userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
-      activeRequests.delete(userId);
       break;
     } catch (error) {
       console.error(error.message);
@@ -1527,16 +1531,17 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
 
       // If no attempts left, handle the final error
       if (attempts === 0) {
-        activeRequests.delete(userId);
         const errormsg = await originalMessage.reply({ content: `All Generation Attempts Failed :( \`\`\`${error.message}\`\`\`` });
         await addSettingsButton(errormsg);
         await addSettingsButton(botMessage);
       } else {
-        const errormsg = await originalMessage.reply({ content: `Generation Stopped, Retrying.. \`\`\`${error.message}\`\`\`` });
+        const errormsg = await originalMessage.reply({ content: `Generation Attempts Failed, Retrying.. \`\`\`${error.message}\`\`\`` });
         setTimeout(() => errormsg.delete().catch(console.error), 5000);
+        await delay(500);
       }
     }
   }
+  activeRequests.delete(userId);
 }
 
 async function updateEmbed(botMessage, finalResponse, authorDisplayName) {
