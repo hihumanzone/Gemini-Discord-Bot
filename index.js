@@ -880,7 +880,7 @@ function generateWithSC(prompt) {
     let session_hash = 'test123';
     const urlFirstRequest = `${url}/queue/join?`;
     const dataFirstRequest = {
-      "data": [prompt, "nsfw, bad quality, bad anatomy, worst quality, low quality, low resolutions, extra fingers, blur, blurry, ugly, wrongs proportions, watermark, image artifacts, lowres, ugly, jpeg artifacts, deformed, noisy image", 1024, 1024, false],
+      "data": [prompt, "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, signs or text, body parts out of frame, extra limbs, poorly executed details.", 1024, 1024, false],
       "event_data": null,
       "fn_index": 0,
       "trigger_id": 4,
@@ -928,7 +928,7 @@ function generateWithPlaygroundAI(prompt) {
         "num_outputs": 1,
         "guidance_scale": 6,
         "apply_watermark": true,
-        "negative_prompt": "nsfw, bad quality, bad anatomy, worst quality, low quality, low resolutions, extra fingers, blur, blurry, ugly, wrongs proportions, watermark, image artifacts, lowres, ugly, jpeg artifacts, deformed, noisy image",
+        "negative_prompt": "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, signs or text, body parts out of frame, extra limbs, poorly executed details.",
         "prompt_strength": 0.8,
         "num_inference_steps": 50
       },
@@ -1026,7 +1026,7 @@ function generateWithProteus4(prompt) {
         "num_outputs": 1,
         "guidance_scale": 6,
         "apply_watermark": true,
-        "negative_prompt": "nsfw, bad quality, bad anatomy, worst quality, low quality, low resolutions, extra fingers, blur, blurry, ugly, wrongs proportions, watermark, image artifacts, lowres, ugly, jpeg artifacts, deformed, noisy image",
+        "negative_prompt": "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, signs or text, body parts out of frame, extra limbs, poorly executed details.",
         "prompt_strength": 0.8,
         "num_inference_steps": 50
       },
@@ -1083,7 +1083,7 @@ function generateWithSDXL(prompt) {
         "scheduler": "K_EULER",
         "num_outputs": 1,
         "guidance_scale": 0,
-        "negative_prompt": "nsfw, bad quality, bad anatomy, worst quality, low quality, low resolutions, extra fingers, blur, blurry, ugly, wrongs proportions, watermark, image artifacts, lowres, ugly, jpeg artifacts, deformed, noisy image",
+        "negative_prompt": "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, signs or text, body parts out of frame, extra limbs, poorly executed details.",
         "num_inference_steps": 6,
       },
       "is_training": false,
