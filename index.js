@@ -632,23 +632,24 @@ async function showSettings(interaction) {
   setTimeout(() => interaction.deleteReply().catch(console.error), 30000);
 }
 
-function retryOperation(operation, retries) {
-  return new Promise((resolve, reject) => {
-    function attempt() {
-      operation().then(resolve).catch(async (error) => {
-        console.error("Attempt failed, retries left:", retries);
-        if (retries > 0) {
-          retries--;
-          await delay(500);
-          attempt();
-        } else {
-          console.error("All attempts failed.");
-          reject(error);
-        }
-      });
+async function retryOperation(fn, maxRetries, delayMs = 1000) {
+  let error;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      console.log(`Attempt ${attempt} failed`);
+      error = err;
+      if (attempt < maxRetries) {
+        console.log(`Waiting ${delayMs}ms before next attempt...`);
+        await delay(delayMs);
+      } else {
+        console.log(`All ${maxRetries} Attempts failed`);
+      }
     }
-    attempt();
-  });
+  }
+  throw new Error(`Error.`);
 }
 
 async function processSpeechGet(interaction) {
@@ -679,13 +680,16 @@ async function speechGen(prompt) {
     session_hash: sessionHash
   };
 
-  // Make the first request and allow errors to bubble up
-  const responseFirst = await axios.post(urlFirstRequest, dataFirstRequest);
-  console.log(responseFirst.data);
+  try {
+    const responseFirst = await axios.post(urlFirstRequest, dataFirstRequest);
+    console.log(responseFirst.data);
+  } catch (error) {
+    console.error("Error in the first request:", error);
+    return null;
+  }
 
   const urlSecondRequest = `https://mrfakename-melotts.hf.space/queue/data?session_hash=${sessionHash}`;
-
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     axios.get(urlSecondRequest, {
       responseType: 'stream'
     }).then(responseSecond => {
@@ -694,59 +698,68 @@ async function speechGen(prompt) {
       responseSecond.data.on('data', (chunk) => {
         fullData += chunk.toString();
 
-        // Check for process completion message
         if (fullData.includes('"msg": "process_completed"')) {
           const lines = fullData.split('\n');
           for (const line of lines) {
             if (line.includes('"msg": "process_completed"')) {
-              const dataDict = JSON.parse(line.slice(line.indexOf('{')));
-              const fullUrl = dataDict.output.data[0].url;
-              console.log(fullUrl);
-              resolve(fullUrl);
-              break;
+              try {
+                const dataDict = JSON.parse(line.slice(line.indexOf('{')));
+                const fullUrl = dataDict.output.data[0].url;
+                console.log(fullUrl);
+                resolve(fullUrl);
+                break;
+              } catch (parseError) {
+                console.error("Parsing error:", parseError);
+                reject(parseError);
+              }
             }
           }
         }
       });
+    }).catch(error => {
+      console.error("Error in second request event stream:", error);
+      reject(error);
     });
   });
 }
 
 async function speechGen2(text, language) {
-  const url = 'https://replicate.com/api/predictions';
-  const payload = {
-    input: {
-      text: text,
-      speaker: 'https://replicate.delivery/pbxt/Jt79w0xsT64R1JsiJ0LQRL8UcWspg5J4RFrU6YwEKpOT1ukS/male.wav',
-      language: language,
-      cleanup_voice: false
-    },
-    is_training: false,
-    create_model: '0',
-    stream: false,
-    version: '684bc3855b37866c0c65add2ff39c78f3dea3f4ff103a436465326e0f438d55e'
-  };
-  const headers = {
-    'Content-Type': 'application/json'
-  };
+  try {
+    const url = 'https://replicate.com/api/predictions';
+    const payload = {
+      input: {
+        text: text,
+        speaker: 'https://replicate.delivery/pbxt/Jt79w0xsT64R1JsiJ0LQRL8UcWspg5J4RFrU6YwEKpOT1ukS/male.wav',
+        language: language,
+        cleanup_voice: false
+      },
+      is_training: false,
+      create_model: '0',
+      stream: false,
+      version: '684bc3855b37866c0c65add2ff39c78f3dea3f4ff103a436465326e0f438d55e'
+    };
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    const response = await axios.post(url, payload, { headers });
+    const predictionId = response.data.id;
 
-  // Start the prediction
-  const response = await axios.post(url, payload, { headers });
-  const predictionId = response.data.id;
-
-  let outputUrl = null;
-  while (!outputUrl) {
-    const statusResponse = await axios.get(`https://replicate.com/api/predictions/${predictionId}`);
-    const data = statusResponse.data;
-    if (data.completed_at !== null) {
-      outputUrl = data.output ? data.output : 'Output URL is not available.';
-      break;
+    let outputUrl = null;
+    while (!outputUrl) {
+      const statusResponse = await axios.get(`https://replicate.com/api/predictions/${predictionId}`);
+      const data = statusResponse.data;
+      if (data.completed_at !== null) {
+        outputUrl = data.output ? data.output : 'Output URL is not available.';
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    // Wait for 1 second before making another status check.
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
 
-  return outputUrl;
+    return outputUrl;
+  } catch (error) {
+    console.error('An error occurred:', error);
+    return null;
+  }
 }
 
 async function changeSpeechModel(interaction) {
@@ -793,7 +806,7 @@ async function generateSpeechWithPrompt(prompt, userId, language) {
     if (!generateFunction) {
       throw new Error(`Unsupported speech model: ${selectedModel}`);
     }
-    return await retryOperation(() => generateFunction(prompt, language), 2);
+    return await retryOperation(() => generateFunction(prompt, language), 3);
   } catch (error) {
     console.error('Error generating speech:', error);
     throw new Error('Could not generate speech after retries');
@@ -854,7 +867,7 @@ async function generateImageWithPrompt(prompt, userId) {
     if (!generateFunction) {
       throw new Error(`Unsupported model: ${selectedModel}`);
     }
-    return await retryOperation(() => generateFunction(prompt), 2);
+    return await retryOperation(() => generateFunction(prompt), 3);
   } catch (error) {
     console.error('Error generating image:', error);
     throw new Error('Could not generate image after retries');
@@ -862,11 +875,9 @@ async function generateImageWithPrompt(prompt, userId) {
 }
 
 function generateWithSC(prompt) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const url = "https://ehristoforu-stable-cascade.hf.space";
     let session_hash = 'test123';
-
-    // Define the first request URL and data
     const urlFirstRequest = `${url}/queue/join?`;
     const dataFirstRequest = {
       "data": [prompt, "nsfw, bad quality, bad anatomy, worst quality, low quality, low resolutions, extra fingers, blur, blurry, ugly, wrongs proportions, watermark, image artifacts, lowres, ugly, jpeg artifacts, deformed, noisy image", 1024, 1024, false],
@@ -879,8 +890,8 @@ function generateWithSC(prompt) {
     axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
       console.log(responseFirst.data);
 
-      // Establishing the event source for process completion tracking
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
       const eventSource = new EventSource(urlSecondRequest);
 
       eventSource.onmessage = (event) => {
@@ -895,13 +906,12 @@ function generateWithSC(prompt) {
           resolve({ images: [{ url: full_url }], modelUsed: "Stable Cascade" });
         }
       };
-
       eventSource.onerror = (error) => {
         eventSource.close();
-        console.error("EventSource Error:", error);
-        throw error;
+        reject(error);
       };
-
+    }).catch(error => {
+      reject(error);
     });
   });
 }
@@ -936,32 +946,37 @@ function generateWithPlaygroundAI(prompt) {
       .then(response => {
         const predictionId = response.data.id;
         const urlWithId = `https://replicate.com/api/predictions/${predictionId}`;
-
-        // Polling for the prediction result
         const checkPrediction = () => {
-        axios.get(urlWithId).then(res => {
-          const data = res.data;
-          if (data.completed_at && data.output) {
-            resolve({ images: [{ url: data.output[0] }], modelUsed: "PlaygroundAI" });
-          } else if (!data.completed_at) {
-            setTimeout(checkPrediction, 1000);
-          } else {
-            throw new Error("Output URL is not available.");
-          }
-        });
-      };
-
-      checkPrediction();
-    });
+          axios.get(urlWithId)
+            .then(res => {
+              const data = res.data;
+              if (data.completed_at) {
+                const outputUrl = data.output;
+                if (outputUrl) {
+                  resolve({ images: [{ url: outputUrl[0] }], modelUsed: "PlaygroundAI" });
+                } else {
+                  reject(new Error("Output URL is not available."));
+                }
+              } else {
+                setTimeout(checkPrediction, 1000);
+              }
+            })
+            .catch(error => {
+              reject(error);
+            });
+        };
+        checkPrediction();
+      })
+      .catch(error => {
+        reject(error);
+      });
   });
 }
 
 function generateWithPlaygroundAIAlt(prompt) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const url = "https://ap123-playground-v2-5.hf.space";
     let session_hash = 'test123';
-
-    // Define the first request URL and data
     const urlFirstRequest = `${url}/queue/join?`;
     const dataFirstRequest = {
       "data": [prompt, 50, 6],
@@ -974,11 +989,10 @@ function generateWithPlaygroundAIAlt(prompt) {
     axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
       console.log(responseFirst.data);
 
-      // Setup to listen for the process completion
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
       const eventSource = new EventSource(urlSecondRequest);
 
-      // Handle messages indicating process completion
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
@@ -992,9 +1006,10 @@ function generateWithPlaygroundAIAlt(prompt) {
       };
       eventSource.onerror = (error) => {
         eventSource.close();
-        console.error("EventSource Error:", error);
-        throw error;
+        reject(error);
       };
+    }).catch(error => {
+      reject(error);
     });
   });
 }
@@ -1030,22 +1045,30 @@ function generateWithProteus4(prompt) {
         const predictionId = response.data.id;
         const urlWithId = `https://replicate.com/api/predictions/${predictionId}`;
 
-        // Polling for the prediction result
         const checkPrediction = () => {
-        axios.get(urlWithId).then(res => {
-          const data = res.data;
-          if (data.completed_at && data.output) {
-            resolve({ images: [{ url: data.output[0] }], modelUsed: "Proteus-v0.4" });
-          } else if (!data.completed_at) {
-            setTimeout(checkPrediction, 1000);
-          } else {
-            throw new Error("Output URL is not available.");
-          }
-        });
-      };
-
-      checkPrediction();
-    });
+          axios.get(urlWithId)
+            .then(res => {
+              const data = res.data;
+              if (data.completed_at) {
+                const outputUrl = data.output;
+                if (outputUrl) {
+                  resolve({ images: [{ url: outputUrl[0] }], modelUsed: "Proteus-v0.4" });
+                } else {
+                  reject(new Error("Output URL is not available."));
+                }
+              } else {
+                setTimeout(checkPrediction, 1000);
+              }
+            })
+            .catch(error => {
+              reject(error);
+            });
+        };
+        checkPrediction();
+      })
+      .catch(error => {
+        reject(error);
+      });
   });
 }
 
@@ -1080,29 +1103,36 @@ function generateWithSDXL(prompt) {
 
         // Polling for the prediction result
         const checkPrediction = () => {
-        axios.get(urlWithId).then(res => {
-          const data = res.data;
-          if (data.completed_at && data.output) {
-            resolve({ images: [{ url: data.output[0] }], modelUsed: "SD-XL" });
-          } else if (!data.completed_at) {
-            setTimeout(checkPrediction, 1000);
-          } else {
-            throw new Error("Output URL is not available.", { cause: data });
-          }
-        });
-      };
-
-      checkPrediction();
-    });
+          axios.get(urlWithId)
+            .then(res => {
+              const data = res.data;
+              if (data.completed_at) {
+                const outputUrl = data.output;
+                if (outputUrl) {
+                  resolve({ images: [{ url: outputUrl[0] }], modelUsed: "SD-XL" });
+                } else {
+                  reject(new Error("Output URL is not available."));
+                }
+              } else {
+                setTimeout(checkPrediction, 1000);
+              }
+            })
+            .catch(error => {
+              reject(error);
+            });
+        };
+        checkPrediction();
+      })
+      .catch(error => {
+        reject(error);
+      });
   });
 }
 
 function generateWithSDXLAlt(prompt) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const url = "https://ap123-sdxl-lightning.hf.space";
     let session_hash = 'test123';
-
-    // Define the first request URL and data
     const urlFirstRequest = `${url}/queue/join?`;
     const dataFirstRequest = {
       "data": [prompt, "8-Step"],
@@ -1112,11 +1142,11 @@ function generateWithSDXLAlt(prompt) {
       "session_hash": session_hash
     };
 
-    // First API call to join the queue
     axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
       console.log(responseFirst.data);
 
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
       const eventSource = new EventSource(urlSecondRequest);
 
       eventSource.onmessage = (event) => {
@@ -1127,26 +1157,23 @@ function generateWithSDXLAlt(prompt) {
           const full_url = data["output"]["data"][0]["url"];
           console.log(full_url);
 
-          resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt" }); // Resolve promise
+          resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt" });
         }
       };
-
       eventSource.onerror = (error) => {
         eventSource.close();
-        console.error("EventSource Error:", error);
-        throw error;
+        reject(error);
       };
-
+    }).catch(error => {
+      reject(error);
     });
   });
 }
 
 function generateWithSDXLAlt2(prompt) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const url = "https://h1t-tcd.hf.space";
     let session_hash = 'test123';
-
-    // Define the first request URL and data
     const urlFirstRequest = `${url}/queue/join?`;
     const dataFirstRequest = {
       "data": [prompt, 10, -1, 0.5],
@@ -1156,14 +1183,13 @@ function generateWithSDXLAlt2(prompt) {
       "session_hash": session_hash
     };
 
-    // Make the first API call
     axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
       console.log(responseFirst.data);
 
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
       const eventSource = new EventSource(urlSecondRequest);
 
-      // Handle messages from the event source
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
@@ -1175,23 +1201,20 @@ function generateWithSDXLAlt2(prompt) {
           resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt2" });
         }
       };
-
-      // Handle any errors from the event source
       eventSource.onerror = (error) => {
         eventSource.close();
-        console.error("EventSource Error:", error);
-        throw error;
+        reject(error);
       };
-
+    }).catch(error => {
+      reject(error);
     });
   });
 }
 
 function generateWithKandinsky(prompt) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const url = "https://ehristoforu-kandinsky-api.hf.space";
     let session_hash = 'test123';
-
     const urlFirstRequest = `${url}/queue/join?`;
     const dataFirstRequest = {
       "data": [prompt, 1024, 1024],
@@ -1205,6 +1228,7 @@ function generateWithKandinsky(prompt) {
       console.log(responseFirst.data);
 
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
       const eventSource = new EventSource(urlSecondRequest);
 
       eventSource.onmessage = (event) => {
@@ -1218,12 +1242,12 @@ function generateWithKandinsky(prompt) {
           resolve({ images: [{ url: full_url }], modelUsed: "Kandinsky" });
         }
       };
-
       eventSource.onerror = (error) => {
         eventSource.close();
-        console.error("EventSource Error:", error);
-        throw error;
+        reject(error);
       };
+    }).catch(error => {
+      reject(error);
     });
   });
 }
