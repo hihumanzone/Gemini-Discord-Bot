@@ -1266,12 +1266,12 @@ async function handleImageMessage(message) {
         const response = await fetch(attachment.url);
         const buffer = await response.buffer();
 
-        if (buffer.length > 4 * 1024 * 1024) {
+        if (buffer.length > 3 * 1024 * 1024) {
           try {
 
             const compressedBuffer = await compressImage(buffer);
 
-            if (compressedBuffer.length > 4 * 1024 * 1024) {
+            if (compressedBuffer.length > 3.9 * 1024 * 1024) {
               throw new Error('Image too large after compression.');
             }
 
@@ -1519,6 +1519,19 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   const maxCharacterLimit = userPreference === 'embedded' ? 3900 : 1900;
   let attempts = 3;
 
+  let updateTimeout;
+  let tempResponse = '';
+
+  const updateMessage = async () => {
+    if (userPreference === 'embedded') {
+      await updateEmbed(botMessage, finalResponse, originalMessage.author.displayName);
+    } else {
+      await botMessage.edit(tempResponse);
+    }
+    clearTimeout(updateTimeout);
+    updateTimeout = null;
+  };
+
   while (attempts > 0) {
     try {
       const messageResult = await responseFunc();
@@ -1534,11 +1547,13 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
             isLargeResponse = true;
             await botMessage.edit('> `The response is too large and will be sent as a text file once it is ready.`');
           }
-        } else if (userPreference === 'embedded') {
-          await updateEmbed(botMessage, finalResponse, originalMessage.author.displayName);
-        } else {
-          await botMessage.edit(finalResponse);
+        } else if (!updateTimeout) {
+          updateTimeout = setTimeout(updateMessage, 500);
         }
+      }
+
+      if (updateTimeout) {
+        await updateMessage();
       }
 
       if (isLargeResponse) {
@@ -1553,7 +1568,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
       console.error(error.message);
       attempts--;
 
-      // If no attempts left, handle the final error
+      // Handle error scenarios
       if (attempts === 0) {
         const errormsg = await originalMessage.reply({ content: `All Generation Attempts Failed :( \`\`\`${error.message}\`\`\`` });
         await addSettingsButton(errormsg);
