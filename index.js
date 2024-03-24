@@ -74,12 +74,11 @@ client.once('ready', async () => {
           .setDescription('The image generation model to use.')
           .setRequired(true)
           .addChoices(
-            { name: 'SD-XL', value: 'SD-XL' },
             { name: 'SD-XL-Alt', value: 'SD-XL-Alt' },
             { name: 'SD-XL-Alt2', value: 'SD-XL-Alt2' },
-            { name: 'PlaygroundAI', value: 'PlaygroundAI' },
-            { name: 'Kandinsky', value: 'Kandinsky' },
-            { name: 'Proteus-v0.4', value: 'Proteus-v0.4' }
+            { name: 'DallE-XL', value: 'DallE-XL' },
+            { name: 'Anime', value: 'Anime' },
+            { name: 'Kandinsky', value: 'Kandinsky' }
           )
       )
       .addStringOption(option =>
@@ -673,8 +672,21 @@ async function processSpeechGet(interaction) {
   await interaction.showModal(modal);
 }
 
+function generateSessionHash() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let result = '';
+  for (let i = 0; i < 5; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+function generateRandomDigits() {
+  return Math.floor(Math.random() * (999999999 - 100000000 + 1) + 100000000);
+}
+
 async function speechGen(prompt) {
-  const sessionHash = Math.floor(10000 + Math.random() * 90000).toString();
+  const sessionHash = generateSessionHash();
   const urlFirstRequest = 'https://mrfakename-melotts.hf.space/queue/join?';
   const dataFirstRequest = {
     data: ["EN-US", prompt, 1, "EN"],
@@ -824,7 +836,7 @@ async function generateSpeechWithPrompt(prompt, userId, language) {
 async function changeImageModel(interaction) {
   // Define model names in an array
   const models = [
-    'SD-XL', 'SD-XL-Alt', 'SD-XL-Alt2', 'PlaygroundAI', 'Kandinsky', 'Proteus-v0.4'
+    'SD-XL-Alt', 'SD-XL-Alt2', 'Kandinsky', 'DallE-XL', 'Anime'
   ];
 
   // Generate buttons using map()
@@ -853,7 +865,7 @@ async function changeImageResolution(interaction) {
   const userId = interaction.user.id;
   const selectedModel = userPreferredImageModel[userId];
   let supportedResolution;
-  const supportedModels = ['SD-XL', 'Kandinsky', 'Proteus-v0.4'];
+  const supportedModels = ['Kandinsky', 'DallE-XL', 'Anime'];
   if (supportedModels.includes(selectedModel)) {
     supportedResolution = [ 'Square', 'Portrait', 'Wide' ];
   } else {
@@ -876,7 +888,7 @@ async function changeImageResolution(interaction) {
   }
 
   await interaction.reply({
-    content: '> **Supported Models:** `SD-XL`, `Kandinsky`, `PlaygroundAI` And `Proteus-4`\n\n> `Select Image Generation Resolution.:`',
+    content: '> **Supported Models:** `Kandinsky`, `Anime` And `DallE-XL`\n\n> `Select Image Generation Resolution.:`',
     components: actionRows,
     ephemeral: true
   });
@@ -895,12 +907,11 @@ async function handleImageSelectModel(interaction, model) {
 }
 
 const imageModelFunctions = {
-  "SD-XL": generateWithSDXL,
   "SD-XL-Alt": generateWithSDXLAlt,
   "SD-XL-Alt2": generateWithSDXLAlt2,
   "Kandinsky": generateWithKandinsky,
-  "PlaygroundAI": generateWithPlaygroundAI,
-  "Proteus-v0.4": generateWithProteus4
+  "DallE-XL": generateWithDallEXL,
+  "Anime": generateWithAnime
 };
 
 async function generateImageWithPrompt(prompt, userId) {
@@ -919,217 +930,107 @@ async function generateImageWithPrompt(prompt, userId) {
   }
 }
 
-function generateWithPlaygroundAI(prompt, resolution) {
+function generateWithDallEXL(prompt, resolution) {
   let width, height;
   if (resolution == 'Square') {
-    width = '1024';
-    height = '1024';
+    width = 1024;
+    height = 1024;
   } else if (resolution == 'Wide') {
-    width = '1280';
-    height = '768';
+    width = 1280;
+    height = 768;
   } else if (resolution == 'Portrait') {
-    width = '768';
-    height = '1280';
+    width = 768;
+    height = 1280;
   }
-  return new Promise((resolve, reject) => {
-    try {
-    const url = "https://replicate.com/api/predictions";
-    const payload = {
-      "input": {
-        "width": width,
-        "height": height,
-        "prompt": prompt,
-        "scheduler": "DPMSolver++",
-        "num_outputs": 1,
-        "guidance_scale": 6,
-        "apply_watermark": true,
-        "negative_prompt": "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, signs or text, body parts out of frame, extra limbs, poorly executed details.",
-        "prompt_strength": 0.8,
-        "num_inference_steps": 50
-      },
-      "is_training": false,
-      "create_model": "0",
-      "stream": false,
-      "version": "419269784d9e00c56e5b09747cfc059a421e0c044d5472109e129b746508c365"
-    };
+    return new Promise(async (resolve, reject) => {
+        try {
+            const randomDigits = generateRandomDigits();
+            const sessionHash = generateSessionHash();
 
-    const headers = {
-      "Content-Type": "application/json"
-    };
-
-    axios.post(url, payload, { headers })
-      .then(response => {
-        const predictionId = response.data.id;
-        const urlWithId = `https://replicate.com/api/predictions/${predictionId}`;
-        const checkPrediction = () => {
-          axios.get(urlWithId)
-            .then(res => {
-              const data = res.data;
-              if (data.completed_at) {
-                const outputUrl = data.output;
-                if (outputUrl) {
-                  resolve({ images: [{ url: outputUrl[0] }], modelUsed: "PlaygroundAI" });
-                } else {
-                  reject(new Error("Output URL is not available."));
-                }
-              } else {
-                setTimeout(checkPrediction, 1000);
-              }
-            })
-            .catch(error => {
-              reject(error);
+            // First request to join the queue
+            await fetch("https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/join?", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    data: [prompt, "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, signs or text, body parts out of frame, extra limbs, poorly executed details.", true, randomDigits, width, height, 6, true], 
+                    event_data: null, 
+                    fn_index: 3, 
+                    trigger_id: 6, 
+                    session_hash: sessionHash 
+                }),
             });
-        };
-        checkPrediction();
-      })
-      .catch(error => {
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
+
+            // Replace this part to use EventSource for listening to the event stream
+            const es = new EventSource(`https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/data?session_hash=${sessionHash}`);
+            
+            es.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.msg === 'process_completed') {
+                    es.close();
+                    const outputUrl = data.output.data[0][0].image.url;
+                    resolve({ images: [{ url: outputUrl }], modelUsed: "DallE-XL" });
+                }
+            };
+
+            es.onerror = (error) => {
+                es.close();
+                reject(error);
+            };
+        } catch (error) {
+            reject(error);
+        }
+    });
 }
 
-function generateWithProteus4(prompt, resolution) {
-  let width, height;
+function generateWithAnime(prompt, resolution) {
+  let size;
   if (resolution == 'Square') {
-    width = '1024';
-    height = '1024';
+    size = '1024 x 1024';
   } else if (resolution == 'Wide') {
-    width = '1280';
-    height = '768';
+    size = '1152 x 896';
   } else if (resolution == 'Portrait') {
-    width = '768';
-    height = '1280';
+    size = '896 x 1152';
   }
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
+    const randomDigit = generateRandomDigits();
+    const sessionHash = generateSessionHash();
+
     try {
-    const url = "https://replicate.com/api/predictions";
-    const payload = {
-      "input": {
-        "width": width,
-        "height": height,
-        "prompt": prompt,
-        "scheduler": "DPM++2MSDE",
-        "num_outputs": 1,
-        "guidance_scale": 6,
-        "apply_watermark": true,
-        "negative_prompt": "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, signs or text, body parts out of frame, extra limbs, poorly executed details.",
-        "prompt_strength": 0.8,
-        "num_inference_steps": 50
-      },
-      "is_training": false,
-      "create_model": "0",
-      "stream": false,
-      "version": "34a427535a3c45552b94369280b823fcd0e5c9710e97af020bf445c033d4569e"
-    };
-
-    const headers = {
-      "Content-Type": "application/json"
-    };
-
-    axios.post(url, payload, { headers })
-      .then(response => {
-        const predictionId = response.data.id;
-        const urlWithId = `https://replicate.com/api/predictions/${predictionId}`;
-
-        const checkPrediction = () => {
-          axios.get(urlWithId)
-            .then(res => {
-              const data = res.data;
-              if (data.completed_at) {
-                const outputUrl = data.output;
-                if (outputUrl) {
-                  resolve({ images: [{ url: outputUrl[0] }], modelUsed: "Proteus-v0.4" });
-                } else {
-                  reject(new Error("Output URL is not available."));
-                }
-              } else {
-                setTimeout(checkPrediction, 1000);
-              }
-            })
-            .catch(error => {
-              reject(error);
-            });
-        };
-        checkPrediction();
-      })
-      .catch(error => {
-        reject(error);
+      // First request to initiate the process
+      await fetch("https://cagliostrolab-animagine-xl-3-1.hf.space/queue/join?", {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data: [
+            prompt, "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, signs or text, body parts out of frame, extra limbs, poorly executed details.", randomDigit, 1024, 1024, 7, 28, "Euler a", size,
+            "(None)", "Standard v3.1", false, 0.55, 1.5, true
+          ],
+          event_data: null,
+          fn_index: 5,
+          trigger_id: 49,
+          session_hash: sessionHash,
+        }),
       });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
 
-function generateWithSDXL(prompt, resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = '1024';
-    height = '1024';
-  } else if (resolution == 'Wide') {
-    width = '1280';
-    height = '768';
-  } else if (resolution == 'Portrait') {
-    width = '768';
-    height = '1280';
-  }
-  return new Promise((resolve, reject) => {
-    try {
-    const url = "https://replicate.com/api/predictions";
-    const payload = {
-      "input": {
-        "width": width,
-        "height": height,
-        "prompt": prompt,
-        "scheduler": "K_EULER",
-        "num_outputs": 1,
-        "guidance_scale": 0,
-        "negative_prompt": "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, signs or text, body parts out of frame, extra limbs, poorly executed details.",
-        "num_inference_steps": 6,
-      },
-      "is_training": false,
-      "create_model": "0",
-      "stream": false,
-      "version": "727e49a643e999d602a896c774a0658ffefea21465756a6ce24b7ea4165eba6a"
-    };
+      // Using EventSource to listen for server-sent events
+      const es = new EventSource(`https://cagliostrolab-animagine-xl-3-1.hf.space/queue/data?session_hash=${sessionHash}`);
 
-    const headers = {
-      "Content-Type": "application/json"
-    };
+      es.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.msg === 'process_completed') {
+          es.close();
+          const outputUrl = data.output.data[0][0].image.url;
+          resolve({ images: [{ url: outputUrl }], modelUsed: "Anime" });
+        }
+      };
 
-    axios.post(url, payload, { headers })
-      .then(response => {
-        const predictionId = response.data.id;
-        const urlWithId = `https://replicate.com/api/predictions/${predictionId}`;
-
-        // Polling for the prediction result
-        const checkPrediction = () => {
-          axios.get(urlWithId)
-            .then(res => {
-              const data = res.data;
-              if (data.completed_at) {
-                const outputUrl = data.output;
-                if (outputUrl) {
-                  resolve({ images: [{ url: outputUrl[0] }], modelUsed: "SD-XL" });
-                } else {
-                  reject(new Error("Output URL is not available."));
-                }
-              } else {
-                setTimeout(checkPrediction, 1000);
-              }
-            })
-            .catch(error => {
-              reject(error);
-            });
-        };
-        checkPrediction();
-      })
-      .catch(error => {
+      es.onerror = (error) => {
+        es.close();
         reject(error);
-      });
+      };
+
     } catch (error) {
       reject(error);
     }
@@ -1140,7 +1041,7 @@ function generateWithSDXLAlt(prompt) {
   return new Promise((resolve, reject) => {
     try {
     const url = "https://ap123-sdxl-lightning.hf.space";
-    const session_hash = Math.floor(10000 + Math.random() * 90000).toString();
+    const session_hash = generateSessionHash();
     const urlFirstRequest = `${url}/queue/join?`;
     const dataFirstRequest = {
       "data": [prompt, "8-Step"],
@@ -1185,7 +1086,7 @@ function generateWithSDXLAlt2(prompt) {
   return new Promise((resolve, reject) => {
     try {
     const url = "https://h1t-tcd.hf.space";
-    const session_hash = Math.floor(10000 + Math.random() * 90000).toString();
+    const session_hash = generateSessionHash();
     const urlFirstRequest = `${url}/queue/join?`;
     const dataFirstRequest = {
       "data": [prompt, 10, -1, 0.5],
@@ -1241,7 +1142,7 @@ function generateWithKandinsky(prompt, resolution) {
   return new Promise((resolve, reject) => {
     try {
     const url = "https://ehristoforu-kandinsky-api.hf.space";
-    const session_hash = Math.floor(10000 + Math.random() * 90000).toString();
+    const session_hash = generateSessionHash();
     const urlFirstRequest = `${url}/queue/join?`;
     const dataFirstRequest = {
       "data": [prompt, width, height],
