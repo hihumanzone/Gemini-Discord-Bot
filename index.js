@@ -76,6 +76,7 @@ client.once('ready', async () => {
           .addChoices(
             { name: 'SD-XL-Alt', value: 'SD-XL-Alt' },
             { name: 'SD-XL-Alt2', value: 'SD-XL-Alt2' },
+            { name: 'Stable-Cascade', value: 'Stable-Cascade'},
             { name: 'DallE-XL', value: 'DallE-XL' },
             { name: 'Anime', value: 'Anime' },
             { name: 'Kandinsky', value: 'Kandinsky' }
@@ -836,7 +837,7 @@ async function generateSpeechWithPrompt(prompt, userId, language) {
 async function changeImageModel(interaction) {
   // Define model names in an array
   const models = [
-    'SD-XL-Alt', 'SD-XL-Alt2', 'Kandinsky', 'DallE-XL', 'Anime'
+    'SD-XL-Alt', 'SD-XL-Alt2', 'Kandinsky', 'DallE-XL', 'Anime', 'Stable-Cascade'
   ];
 
   // Generate buttons using map()
@@ -865,7 +866,7 @@ async function changeImageResolution(interaction) {
   const userId = interaction.user.id;
   const selectedModel = userPreferredImageModel[userId];
   let supportedResolution;
-  const supportedModels = ['Kandinsky', 'DallE-XL', 'Anime'];
+  const supportedModels = ['Kandinsky', 'DallE-XL', 'Anime', 'Stable-Cascade'];
   if (supportedModels.includes(selectedModel)) {
     supportedResolution = [ 'Square', 'Portrait', 'Wide' ];
   } else {
@@ -888,7 +889,7 @@ async function changeImageResolution(interaction) {
   }
 
   await interaction.reply({
-    content: '> **Supported Models:** `Kandinsky`, `Anime` And `DallE-XL`\n\n> `Select Image Generation Resolution.:`',
+    content: '> **Supported Models:** `Kandinsky`, `Stable-Cascade`, `Anime` And `DallE-XL`\n\n> `Select Image Generation Resolution.:`',
     components: actionRows,
     ephemeral: true
   });
@@ -911,7 +912,8 @@ const imageModelFunctions = {
   "SD-XL-Alt2": generateWithSDXLAlt2,
   "Kandinsky": generateWithKandinsky,
   "DallE-XL": generateWithDallEXL,
-  "Anime": generateWithAnime
+  "Anime": generateWithAnime,
+  "Stable-Cascade": generateWithSC
 };
 
 async function generateImageWithPrompt(prompt, userId) {
@@ -928,6 +930,69 @@ async function generateImageWithPrompt(prompt, userId) {
     console.error('Error generating image:', error);
     throw new Error('Could not generate image after retries');
   }
+}
+
+function generateWithSC(prompt,  resolution) {
+  let width, height;
+  if (resolution == 'Square') {
+    width = 1024;
+    height = 1024;
+  } else if (resolution == 'Wide') {
+    width = 1280;
+    height = 768;
+  } else if (resolution == 'Portrait') {
+    width = 768;
+    height = 1280;
+  }
+  return new Promise(async (resolve, reject) => {
+    try {
+      const randomDigit = generateRandomDigits();
+      const sessionHash = generateSessionHash();
+
+      await fetch("https://multimodalart-stable-cascade.hf.space/run/predict", {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          "data": [0, true],
+          "event_data": null,
+          "fn_index": 2,
+          "trigger_id": 6,
+          "session_hash": sessionHash
+        })
+      });
+
+      // Second request to initiate the image generation
+      const queueResponse = await fetch("https://multimodalart-stable-cascade.hf.space/queue/join?", {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          "data": [prompt, "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, body parts out of frame, extra limbs, poorly executed details.", randomDigit, width, height, 30, 4, 12, 0, 1],
+          "event_data": null,
+          "fn_index": 3,
+          "trigger_id": 6,
+          "session_hash": sessionHash
+        })
+      });
+
+      // Setting up event source for listening to the progress
+      const es = new EventSource(`https://multimodalart-stable-cascade.hf.space/queue/data?session_hash=${sessionHash}`);
+      es.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.msg === 'process_completed') {
+          es.close();
+          const outputUrl = data.output.data[0].url;
+          resolve({ images: [{ url: outputUrl }], modelUsed: "Stable-Cascade" });
+        }
+      };
+
+      es.onerror = (error) => {
+        es.close();
+        reject(error);
+      };
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
 function generateWithDallEXL(prompt, resolution) {
@@ -1004,7 +1069,7 @@ function generateWithAnime(prompt, resolution) {
         },
         body: JSON.stringify({
           data: [
-            prompt, "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, body parts out of frame, extra limbs, poorly executed details.", randomDigit, 1024, 1024, 7, 28, "Euler a", size,
+            prompt, "(rating_explicit:1.2), very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, body parts out of frame, extra limbs, poorly executed details.", randomDigit, 1024, 1024, 7, 28, "Euler a", size,
             "(None)", "Standard v3.1", false, 0.55, 1.5, true
           ],
           event_data: null,
