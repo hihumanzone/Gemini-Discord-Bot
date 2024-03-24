@@ -952,7 +952,7 @@ function generateWithDallEXL(prompt, resolution) {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ 
-                    data: [prompt, "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, signs or text, body parts out of frame, extra limbs, poorly executed details.", true, randomDigits, width, height, 6, true], 
+                    data: [prompt, "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, body parts out of frame, extra limbs, poorly executed details.", true, randomDigits, width, height, 6, true], 
                     event_data: null, 
                     fn_index: 3, 
                     trigger_id: 6, 
@@ -1004,7 +1004,7 @@ function generateWithAnime(prompt, resolution) {
         },
         body: JSON.stringify({
           data: [
-            prompt, "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, signs or text, body parts out of frame, extra limbs, poorly executed details.", randomDigit, 1024, 1024, 7, 28, "Euler a", size,
+            prompt, "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, body parts out of frame, extra limbs, poorly executed details.", randomDigit, 1024, 1024, 7, 28, "Euler a", size,
             "(None)", "Standard v3.1", false, 0.55, 1.5, true
           ],
           event_data: null,
