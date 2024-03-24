@@ -916,7 +916,7 @@ const imageModelFunctions = {
 
 async function generateImageWithPrompt(prompt, userId) {
   try {
-    const selectedModel = userPreferredImageModel[userId] || "SD-XL-Alt2";
+    const selectedModel = userPreferredImageModel[userId] || "DallE-XL";
     const generateFunction = imageModelFunctions[selectedModel];
     const resolution = userPreferredImageResolution[userId] || 'Square';
 
