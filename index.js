@@ -53,6 +53,8 @@ const userResponsePreference = {};
 const alwaysRespondChannels = {};
 const activeRequests = new Set();
 
+const nevPrompt = "(deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation, (NSFW:1.25)";
+
 const activities = [
     { name: 'With Code', type: ActivityType.Playing },
     { name: 'Something', type: ActivityType.Listening },
@@ -101,22 +103,12 @@ client.once('ready', async () => {
           .setDescription('The language to use.')
           .setRequired(true)
           .addChoices(
-            { name: 'English', value: 'en' },
-            { name: 'Spanish', value: 'es' },
-            { name: 'French', value: 'fr' },
-            { name: 'German', value: 'de' },
-            { name: 'Italian', value: 'it' },
-            { name: 'Portuguese', value: 'pt' },
-            { name: 'Polish', value: 'pl' },
-            { name: 'Turkish', value: 'tr' },
-            { name: 'Russian', value: 'ru' },
-            { name: 'Dutch', value: 'nl' },
-            { name: 'Czech', value: 'cs' },
-            { name: 'Arabic', value: 'ar' },
-            { name: 'Chinese', value: 'zh' },
-            { name: 'Hungarian', value: 'hu' },
-            { name: 'Korean', value: 'ko' },
-            { name: 'Hindi', value: 'hi' }
+            { name: 'English', value: 'English' },
+            { name: 'Spanish', value: 'Spanish' },
+            { name: 'French', value: 'French' },
+            { name: 'Chinese', value: 'Chinese' },
+            { name: 'Korean', value: 'Korean' },
+            { name: 'Japanese', value: 'Japanese' }
           )
       )
       .addStringOption(option =>
@@ -318,41 +310,57 @@ async function handleSuccessfulSpeechGeneration(interaction, text, language, out
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isButton()) {
-      if (interaction.customId === 'settings') {
-        await showSettings(interaction);
-      } else if (interaction.customId === 'clear') {
-        await clearChatHistory(interaction);
-      } else if (interaction.customId === 'always-respond') {
-        await alwaysRespond(interaction);
-      } else if (interaction.customId === 'custom-personality') {
-        await setCustomPersonality(interaction);
-      } else if (interaction.customId === 'remove-personality') {
-        await removeCustomPersonality(interaction);
-      } else if (interaction.customId === 'generate-image') {
-        await handleGenerateImageButton(interaction);
-      } else if (interaction.customId === 'change-image-model') {
-        await changeImageModel(interaction);
-      } else if (interaction.customId === 'change-image-resolution') {
-        await changeImageResolution(interaction);
-      } else if (interaction.customId.startsWith('select-image-model-')) {
-        const selectedModel = interaction.customId.replace('select-image-model-', '');
-        await handleImageSelectModel(interaction, selectedModel);
-      } else if (interaction.customId.startsWith('select-image-resolution-')) {
-        const resolution = interaction.customId.replace('select-image-resolution-', '');
-        await handleImageSelectResolution(interaction, resolution);
-      } else if (interaction.customId.startsWith('select-speech-model-')) {
-        const selectedModel = interaction.customId.replace('select-speech-model-', '');
-        await handleSpeechSelectModel(interaction, selectedModel);
-      } else if (interaction.customId === 'toggle-response-mode') {
-        await toggleUserPreference(interaction);
-      } else if (interaction.isButton() && interaction.customId === 'generate-speech') {
-        await processSpeechGet(interaction)
-      } else if (interaction.customId === 'change-speech-model') {
-        await changeSpeechModel(interaction);
-      } else if (interaction.customId === 'download-conversation') {
-        await downloadConversation(interaction);
-      } else if (interaction.customId === 'download_message') {
-        await downloadMessage(interaction);
+      switch (interaction.customId) {
+        case 'settings':
+          await showSettings(interaction);
+          break;
+        case 'clear':
+          await clearChatHistory(interaction);
+          break;
+        case 'always-respond':
+          await alwaysRespond(interaction);
+          break;
+        case 'custom-personality':
+          await setCustomPersonality(interaction);
+          break;
+        case 'remove-personality':
+          await removeCustomPersonality(interaction);
+          break;
+        case 'generate-image':
+          await handleGenerateImageButton(interaction);
+          break;
+        case 'change-image-model':
+          await changeImageModel(interaction);
+          break;
+        case 'change-image-resolution':
+          await changeImageResolution(interaction);
+          break;
+        case 'toggle-response-mode':
+          await toggleUserPreference(interaction);
+          break;
+        case 'generate-speech':
+          await processSpeechGet(interaction);
+          break;
+        case 'change-speech-model':
+          await changeSpeechModel(interaction);
+          break;
+        case 'download-conversation':
+          await downloadConversation(interaction);
+          break;
+        case 'download_message':
+          await downloadMessage(interaction);
+          break;
+        default:
+          if (interaction.customId.startsWith('select-image-model-')) {
+            const selectedModel = interaction.customId.replace('select-image-model-', '');
+            await handleImageSelectModel(interaction, selectedModel);
+          } else if (interaction.customId.startsWith('select-image-resolution-')) {
+            const resolution = interaction.customId.replace('select-image-resolution-', '');
+            await handleImageSelectResolution(interaction, resolution);
+          } else if (interaction.customId.startsWith('select-speech-model-')) {
+            const selectedModel = interaction.customId.replace('select-speech-model-', '');
+            await handleSpeechSelectModel(interaction, selectedModel);
+          }
       }
     } else if (interaction.isModalSubmit()) {
       await handleModalSubmit(interaction);
@@ -686,11 +694,37 @@ function generateRandomDigits() {
   return Math.floor(Math.random() * (999999999 - 100000000 + 1) + 100000000);
 }
 
-async function speechGen(prompt) {
+async function speechGen(prompt, language) {
+  let x, y;
+  if (language == 'English') {
+    x = 'EN';
+    y = 'EN-US';
+  } else {
+    switch (language) {
+      case 'Spanish':
+        x = y = 'ES';
+        break;
+      case 'French':
+        x = y = 'FR';
+        break;
+      case 'Chinese':
+        x = y = 'ZH';
+        break;
+      case 'Korean':
+        x = y = 'KR';
+        break;
+      case 'Japanese':
+        x = y = 'JP';
+        break;
+      default:
+        x = 'EN';
+        y = 'EN-US';
+    }
+  }
   const sessionHash = generateSessionHash();
   const urlFirstRequest = 'https://mrfakename-melotts.hf.space/queue/join?';
   const dataFirstRequest = {
-    data: ["EN-US", prompt, 1, "EN"],
+    data: [y, prompt, 1, x],
     event_data: null,
     fn_index: 1,
     trigger_id: 8,
@@ -699,7 +733,6 @@ async function speechGen(prompt) {
 
   try {
     const responseFirst = await axios.post(urlFirstRequest, dataFirstRequest);
-    console.log(responseFirst.data);
   } catch (error) {
     console.error("Error in the first request:", error);
     return null;
@@ -722,8 +755,7 @@ async function speechGen(prompt) {
             if (line.includes('"msg": "process_completed"')) {
               try {
                 const dataDict = JSON.parse(line.slice(line.indexOf('{')));
-                const fullUrl = dataDict.output.data[0].url;
-                console.log(fullUrl);
+                const fullUrl = dataDict?.output?.data?.[0]?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.mp3";
                 resolve(fullUrl);
                 break;
               } catch (parseError) {
@@ -744,48 +776,9 @@ async function speechGen(prompt) {
   });
 }
 
-async function speechGen2(text, language) {
-  try {
-    const url = 'https://replicate.com/api/predictions';
-    const payload = {
-      input: {
-        text: text,
-        speaker: 'https://replicate.delivery/pbxt/Jt79w0xsT64R1JsiJ0LQRL8UcWspg5J4RFrU6YwEKpOT1ukS/male.wav',
-        language: language,
-        cleanup_voice: false
-      },
-      is_training: false,
-      create_model: '0',
-      stream: false,
-      version: '684bc3855b37866c0c65add2ff39c78f3dea3f4ff103a436465326e0f438d55e'
-    };
-    const headers = {
-      'Content-Type': 'application/json'
-    };
-    const response = await axios.post(url, payload, { headers });
-    const predictionId = response.data.id;
-
-    let outputUrl = null;
-    while (!outputUrl) {
-      const statusResponse = await axios.get(`https://replicate.com/api/predictions/${predictionId}`);
-      const data = statusResponse.data;
-      if (data.completed_at !== null) {
-        outputUrl = data.output ? data.output : 'Output URL is not available.';
-        break;
-      }
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-
-    return outputUrl;
-  } catch (error) {
-    console.error('An error occurred:', error);
-    return null;
-  }
-}
-
 async function changeSpeechModel(interaction) {
   // Define model numbers in an array
-  const modelNumbers = ['1', '2'];
+  const modelNumbers = ['1'];
 
   // Generate buttons using map()
   const buttons = modelNumbers.map(number =>
@@ -815,8 +808,7 @@ async function handleSpeechSelectModel(interaction, model) {
 }
 
 const speechModelFunctions = {
-  "1": speechGen,
-  "2": speechGen2
+  "1": speechGen
 };
 
 async function generateSpeechWithPrompt(prompt, userId, language) {
@@ -966,7 +958,7 @@ function generateWithSC(prompt,  resolution) {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          "data": [prompt, "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, body parts out of frame, extra limbs, poorly executed details.", randomDigit, width, height, 30, 4, 12, 0, 1],
+          "data": [prompt, nevPrompt, randomDigit, width, height, 30, 4, 12, 0, 1],
           "event_data": null,
           "fn_index": 3,
           "trigger_id": 6,
@@ -980,7 +972,7 @@ function generateWithSC(prompt,  resolution) {
         const data = JSON.parse(event.data);
         if (data.msg === 'process_completed') {
           es.close();
-          const outputUrl = data.output.data[0].url;
+          const outputUrl = data?.output?.data?.[0]?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
           resolve({ images: [{ url: outputUrl }], modelUsed: "Stable-Cascade" });
         }
       };
@@ -1017,7 +1009,7 @@ function generateWithDallEXL(prompt, resolution) {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ 
-                    data: [prompt, "nsfw, very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, body parts out of frame, extra limbs, poorly executed details.", true, randomDigits, width, height, 6, true], 
+                    data: [prompt, nevPrompt, true, randomDigits, width, height, 6, true], 
                     event_data: null, 
                     fn_index: 3, 
                     trigger_id: 6, 
@@ -1032,7 +1024,7 @@ function generateWithDallEXL(prompt, resolution) {
                 const data = JSON.parse(event.data);
                 if (data.msg === 'process_completed') {
                     es.close();
-                    const outputUrl = data.output.data[0][0].image.url;
+                    const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
                     resolve({ images: [{ url: outputUrl }], modelUsed: "DallE-XL" });
                 }
             };
@@ -1069,8 +1061,7 @@ function generateWithAnime(prompt, resolution) {
         },
         body: JSON.stringify({
           data: [
-            prompt, "(rating_explicit:1.2), very low quality, bad anatomy, extra fingers, blurry, ugly, wrong proportions, watermarks, image artifacts, jpeg noise, deformed, noisy, oversaturated, grainy, mutated, missing limb, floating limbs, out of focus, long neck, disgusting, childish, mutilated, old, surreal, body parts out of frame, extra limbs, poorly executed details.", randomDigit, 1024, 1024, 7, 28, "Euler a", size,
-            "(None)", "Standard v3.1", false, 0.55, 1.5, true
+            prompt, `(rating_explicit:1.2), ${nevPrompt}`, randomDigit, 1024, 1024, 7, 28, "Euler a", size,"(None)", "Standard v3.1", false, 0.55, 1.5, true
           ],
           event_data: null,
           fn_index: 5,
@@ -1086,7 +1077,7 @@ function generateWithAnime(prompt, resolution) {
         const data = JSON.parse(event.data);
         if (data.msg === 'process_completed') {
           es.close();
-          const outputUrl = data.output.data[0][0].image.url;
+          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
           resolve({ images: [{ url: outputUrl }], modelUsed: "Anime" });
         }
       };
@@ -1117,7 +1108,6 @@ function generateWithSDXLAlt(prompt) {
     };
 
     axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-      console.log(responseFirst.data);
 
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
 
@@ -1129,7 +1119,6 @@ function generateWithSDXLAlt(prompt) {
         if (data.msg === "process_completed") {
           eventSource.close();
           const full_url = data["output"]["data"][0]["url"];
-          console.log(full_url);
 
           resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt" });
         }
@@ -1162,7 +1151,6 @@ function generateWithSDXLAlt2(prompt) {
     };
 
     axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-      console.log(responseFirst.data);
 
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
 
@@ -1173,8 +1161,7 @@ function generateWithSDXLAlt2(prompt) {
 
         if (data.msg === "process_completed") {
           eventSource.close();
-          const full_url = data["output"]["data"][0]["url"];
-          console.log(full_url);
+          const full_url = data?.["output"]?.["data"]?.[0]?.["url"] ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
 
           resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt2" });
         }
@@ -1218,7 +1205,6 @@ function generateWithKandinsky(prompt, resolution) {
     };
 
     axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-      console.log(responseFirst.data);
 
       const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
 
@@ -1229,8 +1215,7 @@ function generateWithKandinsky(prompt, resolution) {
 
         if (data.msg === "process_completed") {
           eventSource.close();
-          const full_url = data["output"]["data"][0][0]["image"]["url"];
-          console.log(full_url);
+          const full_url = data?.["output"]?.["data"]?.[0]?.[0]?.["image"]?.["url"] ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
 
           resolve({ images: [{ url: full_url }], modelUsed: "Kandinsky" });
         }
@@ -1466,7 +1451,6 @@ async function handleUrlsInMessage(urls, messageContent, botMessage, originalMes
         // For non-video URLs, attempt to scrape webpage content
         const webpageContent = await scrapeWebpageContent(url);
         contentWithUrls += `\n\n[Text Inside The Website ${url}]:\n"${webpageContent}"`;
-        console.log(webpageContent)
       }
       // In both cases, replace the URL with a reference in the text
       contentWithUrls = contentWithUrls.replace(url, `[Reference Number ${contentIndex}](${url})`);
