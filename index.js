@@ -1551,11 +1551,11 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
 
       // Handle error scenarios
       if (attempts === 0) {
-        const errormsg = await originalMessage.reply({ content: `All Generation Attempts Failed :( \`\`\`${error.message}\`\`\`` });
+        const errormsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>, All Generation Attempts Failed :( \`\`\`${error.message}\`\`\`` });
         await addSettingsButton(errormsg);
         await addSettingsButton(botMessage);
       } else {
-        const errormsg = await originalMessage.reply({ content: `Generation Attempts Failed, Retrying.. \`\`\`${error.message}\`\`\`` });
+        const errormsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>, Generation Attempts Failed, Retrying.. \`\`\`${error.message}\`\`\`` });
         setTimeout(() => errormsg.delete().catch(console.error), 5000);
         await delay(500);
       }
@@ -1578,14 +1578,18 @@ async function updateEmbed(botMessage, finalResponse, authorDisplayName) {
 }
 
 async function sendAsTextFile(text, message) {
-  const filename = `response-${Date.now()}.txt`;
-  await writeFile(filename, text);
-
-  const botMessage = await message.reply({ content: 'Here is the response:', files: [filename] });
-  await addSettingsButton(botMessage);
-
-  // Cleanup: Remove the file after sending it
-  await unlink(filename);
+  try {
+    const filename = `response-${Date.now()}.txt`;
+    await writeFile(filename, text);
+    
+    const botMessage = await message.channel.send({ content: `<@${message.author.id}>, Here is the response:`, files: [filename] });
+    await addSettingsButton(botMessage);
+    
+    // Cleanup: Remove the file after sending it
+    await unlink(filename);
+  } catch (error) {
+    console.error('An error occurred:', error);
+  }
 }
 
 async function attachmentToPart(attachment) {
