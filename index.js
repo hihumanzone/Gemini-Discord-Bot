@@ -650,7 +650,13 @@ async function showSettings(interaction) {
     content: `> **This Message Will Get Deleted In 30 Seconds**\n> \`\`\`Settings:\`\`\``,
     components: actionRows
   });
-  setTimeout(() => interaction.deleteReply().catch(), 30000);
+  setTimeout(async () => {
+    try {
+      await interaction.deleteReply();
+    } catch (error) {
+      console.error("Failed to delete settings message:", error);
+    }
+  }, 30000);
 }
 
 async function retryOperation(fn, maxRetries, delayMs = 1000) {
