@@ -628,7 +628,7 @@ async function showSettings(interaction) {
     { customId: 'toggle-response-mode', label: 'Toggle Response Mode', emoji: '📝', style: ButtonStyle.Primary },
     { customId: 'toggle-url-mode', label: 'Toggle URL Mode', emoji: '🌐', style: ButtonStyle.Primary },
     { customId: 'download-conversation', label: 'Download Conversation', emoji: '🗃️', style: ButtonStyle.Secondary },
-    { customId: 'exit-settings', label: 'Exit Settings', emoji: '❌', style: ButtonStyle.Danger }
+    { customId: 'exit-settings', label: 'Exit Settings', emoji: '✖', style: ButtonStyle.Danger }
   ];
 
   // Generate buttons from configurations
@@ -653,9 +653,7 @@ async function showSettings(interaction) {
   setTimeout(async () => {
     try {
       await interaction.deleteReply();
-    } catch (error) {
-      console.error("Failed to delete settings message:", error);
-    }
+    } catch (error) {}
   }, 30000);
 }
 
