@@ -17,6 +17,7 @@ const {
   EmbedBuilder,
   AttachmentBuilder,
   ActivityType,
+  StringSelectMenuBuilder,
   REST,
   Routes,
 } = require('discord.js');
@@ -358,13 +359,7 @@ client.on('interactionCreate', async (interaction) => {
           await interaction.message.delete();
           break;
         default:
-          if (interaction.customId.startsWith('select-image-model-')) {
-            const selectedModel = interaction.customId.replace('select-image-model-', '');
-            await handleImageSelectModel(interaction, selectedModel);
-          } else if (interaction.customId.startsWith('select-image-resolution-')) {
-            const resolution = interaction.customId.replace('select-image-resolution-', '');
-            await handleImageSelectResolution(interaction, resolution);
-          } else if (interaction.customId.startsWith('select-speech-model-')) {
+          if (interaction.customId.startsWith('select-speech-model-')) {
             const selectedModel = interaction.customId.replace('select-speech-model-', '');
             await handleSpeechSelectModel(interaction, selectedModel);
           }
@@ -374,6 +369,21 @@ client.on('interactionCreate', async (interaction) => {
     }
   } catch (error) {
     console.error('Error handling command:', error.message);
+  }
+});
+
+client.on('interactionCreate', async (interaction) => {
+  try {
+    if (!interaction.isSelectMenu()) return;
+    if (interaction.customId === 'select-image-model') {
+      const selectedModel = interaction.values[0];
+      await handleImageSelectModel(interaction, selectedModel);
+    } else if (interaction.customId === 'select-image-resolution') {
+      const selectedResolution = interaction.values[0];
+      await handleImageSelectResolution(interaction, selectedResolution);
+    }
+  } catch (error) {
+    console.error('Error handling select menu interaction:', error.message);
   }
 });
 
@@ -616,45 +626,129 @@ async function downloadConversation(interaction) {
 async function showSettings(interaction) {
   // Define button configurations in an array
   const buttonConfigs = [
-    { customId: 'clear', label: 'Clear Memory', emoji: '🧹', style: ButtonStyle.Danger },
-    { customId: 'custom-personality', label: 'Custom Personality', emoji: '🙌', style: ButtonStyle.Primary },
-    { customId: 'remove-personality', label: 'Remove Personality', emoji: '🤖', style: ButtonStyle.Danger },
-    { customId: 'generate-image', label: 'Generate Image', emoji: '🎨', style: ButtonStyle.Primary },
-    { customId: 'change-image-model', label: 'Change Image Model', emoji: '👨‍🎨', style: ButtonStyle.Secondary },
-    { customId: 'change-image-resolution', label: 'Change Image Resolution', emoji: '🖼️', style: ButtonStyle.Secondary },
-    { customId: 'generate-speech', label: 'Generate Speech', emoji: '🎤', style: ButtonStyle.Primary },
-    { customId: 'change-speech-model', label: 'Change Speech Model', emoji: '🔈', style: ButtonStyle.Secondary },
-    { customId: 'always-respond', label: 'Always Respond', emoji: '↩️', style: ButtonStyle.Secondary },
-    { customId: 'toggle-response-mode', label: 'Toggle Response Mode', emoji: '📝', style: ButtonStyle.Primary },
-    { customId: 'toggle-url-mode', label: 'Toggle URL Mode', emoji: '🌐', style: ButtonStyle.Primary },
-    { customId: 'download-conversation', label: 'Download Conversation', emoji: '🗃️', style: ButtonStyle.Secondary },
-    { customId: 'exit-settings', label: 'Exit Settings', emoji: '✖', style: ButtonStyle.Danger }
+    {
+      customId: "clear",
+      label: "Clear Memory",
+      emoji: "🧹",
+      style: ButtonStyle.Danger,
+    },
+    {
+      customId: "custom-personality",
+      label: "Custom Personality",
+      emoji: "🙌",
+      style: ButtonStyle.Primary,
+    },
+    {
+      customId: "remove-personality",
+      label: "Remove Personality",
+      emoji: "🤖",
+      style: ButtonStyle.Danger,
+    },
+    {
+      customId: "generate-image",
+      label: "Generate Image",
+      emoji: "🎨",
+      style: ButtonStyle.Primary,
+    },
+    {
+      customId: "change-image-model",
+      label: "Change Image Model",
+      emoji: "👨‍🎨",
+      style: ButtonStyle.Secondary,
+    },
+    {
+      customId: "change-image-resolution",
+      label: "Change Image Resolution",
+      emoji: "🖼️",
+      style: ButtonStyle.Secondary,
+    },
+    {
+      customId: "generate-speech",
+      label: "Generate Speech",
+      emoji: "🎤",
+      style: ButtonStyle.Primary,
+    },
+    {
+      customId: "change-speech-model",
+      label: "Change Speech Model",
+      emoji: "🔈",
+      style: ButtonStyle.Secondary,
+    },
+    {
+      customId: "always-respond",
+      label: "Always Respond",
+      emoji: "↩️",
+      style: ButtonStyle.Secondary,
+    },
+    {
+      customId: "toggle-response-mode",
+      label: "Toggle Response Mode",
+      emoji: "📝",
+      style: ButtonStyle.Primary,
+    },
+    {
+      customId: "toggle-url-mode",
+      label: "Toggle URL Mode",
+      emoji: "🌐",
+      style: ButtonStyle.Primary,
+    },
+    {
+      customId: "download-conversation",
+      label: "Download Conversation",
+      emoji: "🗃️",
+      style: ButtonStyle.Secondary,
+    },
+    {
+      customId: "exit-settings",
+      label: "Exit Settings",
+      emoji: "✖",
+      style: ButtonStyle.Danger,
+    },
   ];
 
   // Generate buttons from configurations
-  const allButtons = buttonConfigs.map(config => new ButtonBuilder()
-    .setCustomId(config.customId)
-    .setLabel(config.label)
-    .setEmoji(config.emoji)
-    .setStyle(config.style)
+  const allButtons = buttonConfigs.map((config) =>
+    new ButtonBuilder()
+      .setCustomId(config.customId)
+      .setLabel(config.label)
+      .setEmoji(config.emoji)
+      .setStyle(config.style)
   );
 
   // Split buttons into action rows
   const actionRows = [];
   while (allButtons.length > 0) {
-    actionRows.push(new ActionRowBuilder().addComponents(allButtons.splice(0, 5)));
+    actionRows.push(
+      new ActionRowBuilder().addComponents(allButtons.splice(0, 5))
+    );
   }
 
   // Reply to the interaction
+  let secondsLeft = 30;
+  const countdownMessage = `> **This Message Will Get Deleted In: ${secondsLeft}s**\n> \`\`\`Settings:\`\`\``;
+  
   await interaction.reply({
-    content: `> **This Message Will Get Deleted In 30 Seconds**\n> \`\`\`Settings:\`\`\``,
-    components: actionRows
+    content: countdownMessage,
+    components: actionRows,
   });
-  setTimeout(async () => {
-    try {
-      await interaction.deleteReply();
-    } catch (error) {}
-  }, 30000);
+  const countdownInterval = setInterval(async () => {
+    secondsLeft--;
+    if (secondsLeft > 0) {
+      try {
+        await interaction.editReply({
+          content: `> **This Message Will Get Deleted In: ${secondsLeft}s**\n> \`\`\`Settings:\`\`\``,
+          components: actionRows,
+        });
+      } catch (error) {
+        clearInterval(countdownInterval);
+      }
+    } else {
+      clearInterval(countdownInterval);
+      try {
+        interaction.deleteReply();
+      } catch (error) {}
+    }
+  }, 1000);
 }
 
 async function retryOperation(fn, maxRetries, delayMs = 1000) {
@@ -845,24 +939,30 @@ async function changeImageModel(interaction) {
     'SD-XL-Alt', 'SD-XL-Alt2', 'Kandinsky', 'DallE-XL', 'Anime', 'Stable-Cascade'
   ];
 
-  // Generate buttons using map()
-  const buttons = models.map(model =>
-    new ButtonBuilder()
-    .setCustomId(`select-image-model-${model}`)
-    .setLabel(model)
-    .setStyle(ButtonStyle.Primary)
-  );
+  // Create a select menu
+  let selectMenu = new StringSelectMenuBuilder()
+    .setCustomId('select-image-model')
+    .setPlaceholder('Select Image Generation Model')
+    .setMinValues(1)
+    .setMaxValues(1);
 
-  // Create action rows by batching the buttons into groups of 5
-  const actionRows = [];
-  for (let i = 0; i < buttons.length; i += 5) {
-    const actionRow = new ActionRowBuilder().addComponents(buttons.slice(i, i + 5));
-    actionRows.push(actionRow);
-  }
+  // Add options to select menu
+  models.forEach((model) => {
+    selectMenu.addOptions([
+      {
+        label: model,
+        value: model,
+        description: `Select to use ${model} model.`,
+      },
+    ]);
+  });
+
+  // Create an action row and add the select menu to it
+  const actionRow = new ActionRowBuilder().addComponents(selectMenu);
 
   await interaction.reply({
     content: '> `Select Image Generation Model:`',
-    components: actionRows,
+    components: [actionRow],
     ephemeral: true
   });
 }
@@ -873,29 +973,33 @@ async function changeImageResolution(interaction) {
   let supportedResolution;
   const supportedModels = ['Kandinsky', 'DallE-XL', 'Anime', 'Stable-Cascade'];
   if (supportedModels.includes(selectedModel)) {
-    supportedResolution = [ 'Square', 'Portrait', 'Wide' ];
+    supportedResolution = ['Square', 'Portrait', 'Wide'];
   } else {
-    supportedResolution = [ 'Square' ];
+    supportedResolution = ['Square'];
   }
 
-  // Resolution buttons using map()
-  const buttons = supportedResolution.map(resolution =>
-    new ButtonBuilder()
-    .setCustomId(`select-image-resolution-${resolution}`)
-    .setLabel(resolution)
-    .setStyle(ButtonStyle.Primary)
-  );
+  // Create a select menu
+  let selectMenu = new StringSelectMenuBuilder()
+    .setCustomId('select-image-resolution')
+    .setPlaceholder('Select Image Generation Resolution')
+    .setMinValues(1)
+    .setMaxValues(1);
 
-  // Create action rows by batching the buttons into groups of 5
-  const actionRows = [];
-  for (let i = 0; i < buttons.length; i += 5) {
-    const actionRow = new ActionRowBuilder().addComponents(buttons.slice(i, i + 5));
-    actionRows.push(actionRow);
-  }
+  // Add options to select menu based on the supported resolutions
+  supportedResolution.forEach((resolution) => {
+    selectMenu.addOptions([{
+      label: resolution,
+      value: resolution,
+      description: `Generate images in ${resolution} resolution.`,
+    }]);
+  });
+
+  // Create an action row and add the select menu to it
+  const actionRow = new ActionRowBuilder().addComponents(selectMenu);
 
   await interaction.reply({
-    content: '> **Supported Models:** `Kandinsky`, `Stable-Cascade`, `Anime` And `DallE-XL`\n\n> `Select Image Generation Resolution.:`',
-    components: actionRows,
+    content: '> **Supported Models:** `Kandinsky`, `Stable-Cascade`, `Anime`, and `DallE-XL`\n\n> `Select Image Generation Resolution:`',
+    components: [actionRow],
     ephemeral: true
   });
 }
