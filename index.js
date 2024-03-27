@@ -49,6 +49,7 @@ const customInstructions = {};
 const userPreferredImageModel = {};
 const userPreferredImageResolution = {};
 const userPreferredSpeechModel = {};
+const userPreferredUrlHandle = {};
 const userResponsePreference = {};
 const alwaysRespondChannels = {};
 const activeRequests = new Set();
@@ -65,7 +66,7 @@ const activities = [
 let activityIndex = 0;
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
-  
+
   // Define the Slash Command
   const commands = [
     new SlashCommandBuilder()
@@ -133,7 +134,7 @@ client.once('ready', async () => {
   } catch (error) {
     console.error(error);
   }
-  
+
   // Set the initial status
   client.user.setPresence({
     activities: [activities[activityIndex]],
@@ -338,6 +339,9 @@ client.on('interactionCreate', async (interaction) => {
         case 'toggle-response-mode':
           await toggleUserPreference(interaction);
           break;
+       case 'toggle-url-mode':
+          await toggleUrlUserPreference(interaction);
+          break;
         case 'generate-speech':
           await processSpeechGet(interaction);
           break;
@@ -403,7 +407,7 @@ async function genimg(prompt, message) {
     const imageResult = await generateImageWithPrompt(prompt, message.author.id);
     const imageUrl = imageResult.images[0].url; 
     const modelUsed = imageResult.modelUsed;
-    
+
     const imageBuffer = await fetchImageAsBuffer(imageUrl);
     const attachment = new AttachmentBuilder(imageBuffer, { name: 'generated-image.png' });
     const embed = new EmbedBuilder()
@@ -416,7 +420,7 @@ async function genimg(prompt, message) {
       )
       .setImage('attachment://generated-image.png')
       .setTimestamp()
-  
+
     const messageReference = await message.reply({ content: null, embeds: [embed], files: [attachment] });
     await addSettingsButton(messageReference);
     await generatingMsg.delete();
@@ -431,7 +435,7 @@ async function genimg(prompt, message) {
 async function genimgslash(prompt, model, interaction) {
   const generatingMsg = await interaction.reply({ content: `Generating your image with ${model}, please wait... 🖌️` });
   userPreferredImageModel[interaction.user.id] = model;
-  
+
   try {
     await generateAndSendImage(prompt, interaction);
     await generatingMsg.delete();
@@ -619,6 +623,7 @@ async function showSettings(interaction) {
     { customId: 'change-speech-model', label: 'Change Speech Model', emoji: '🔈', style: ButtonStyle.Secondary },
     { customId: 'always-respond', label: 'Always Respond', emoji: '↩️', style: ButtonStyle.Secondary },
     { customId: 'toggle-response-mode', label: 'Toggle Response Mode', emoji: '📝', style: ButtonStyle.Primary },
+    { customId: 'toggle-url-mode', label: 'Toggle URL Mode', emoji: '🌐', style: ButtonStyle.Primary },
     { customId: 'download-conversation', label: 'Download Conversation', emoji: '🗃️', style: ButtonStyle.Secondary },
   ];
 
@@ -668,7 +673,7 @@ async function processSpeechGet(interaction) {
   const modal = new ModalBuilder()
     .setCustomId('text-speech-modal')
     .setTitle('Input your text');
-        
+
   const textInput = new TextInputBuilder()
     .setCustomId('text-speech-input')
     .setLabel("What's your text?")
@@ -864,7 +869,7 @@ async function changeImageResolution(interaction) {
   } else {
     supportedResolution = [ 'Square' ];
   }
-  
+
   // Resolution buttons using map()
   const buttons = supportedResolution.map(resolution =>
     new ButtonBuilder()
@@ -1019,7 +1024,7 @@ function generateWithDallEXL(prompt, resolution) {
 
             // Replace this part to use EventSource for listening to the event stream
             const es = new EventSource(`https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/data?session_hash=${sessionHash}`);
-            
+
             es.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 if (data.msg === 'process_completed') {
@@ -1371,25 +1376,26 @@ const safetySettings = [{ category: HarmCategory.HARM_CATEGORY_HARASSMENT, thres
 
 async function scrapeWebpageContent(url) {
   try {
-    const response = await fetch(url);
+    const timeoutPromise = new Promise((resolve, reject) => {
+      setTimeout(() => reject(new Error("Timeout")), 8000);
+    });
+    const response = await Promise.race([
+      fetch(url),
+      timeoutPromise
+    ]);
     const html = await response.text();
     const $ = cheerio.load(html);
-
-    // Remove script and style tags along with their content
     $('script, style').remove();
-
-    // Extract and clean the text content within the <body> tag
     let bodyText = $('body').text();
-
-    // Remove any text that might still be enclosed in angle brackets
     bodyText = bodyText.replace(/<[^>]*>?/gm, '');
-
-    // Trim leading and trailing white-space and return
     return bodyText.trim();
-
   } catch (error) {
-    console.error('Error scraping webpage content:', error);
-    throw new Error('Could not scrape content from webpage');
+    console.error('Error:', error);
+    if (error.message === 'Timeout') {
+      return "ERROR: The website is not responding..";
+    } else {
+      throw new Error('Could not scrape content from webpage');
+    }
   }
 }
 
@@ -1413,7 +1419,7 @@ async function handleTextMessage(message) {
   const urls = extractUrls(messageContent);
   activeRequests.add(userId);
   const videoTranscripts = {};
-  if (urls.length > 0) {
+  if (urls.length > 0 && getUrlUserPreference(userId) === "ON") {
     botMessage = await message.reply('Fetching content from the URLs...');
     await handleUrlsInMessage(urls, formattedMessage, botMessage, message);
   } else {
@@ -1429,6 +1435,18 @@ async function handleTextMessage(message) {
 async function removeCustomPersonality(interaction) {
   delete customInstructions[interaction.user.id];
   await interaction.reply({ content: "> `Custom personality instructions removed!`", ephemeral: true });
+}
+
+function getUrlUserPreference(userId) {
+  return userPreferredUrlHandle[userId] || 'ON';
+}
+
+async function toggleUrlUserPreference(interaction) {
+  const userId = interaction.user.id;
+  const currentPreference = getUrlUserPreference(userId);
+    userPreferredUrlHandle[userId] = currentPreference === 'OFF' ? 'ON' : 'OFF';
+  const updatedPreference = getUrlUserPreference(userId);
+  await interaction.reply({ content: `> **URL handling has been switched from \`${currentPreference}\` to \`${updatedPreference}\`.**`, ephemeral: true });
 }
 
 async function handleUrlsInMessage(urls, messageContent, botMessage, originalMessage) {
@@ -1502,26 +1520,51 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   let updateTimeout;
   let tempResponse = '';
 
+  const row = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId('stopGenerating')
+        .setLabel('Stop Generating')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+  await botMessage.edit({components: [row] });
+
+  let stopGeneration = false;
+
+  const filter = (interaction) => interaction.customId === 'stopGenerating' && interaction.user.id === originalMessage.author.id;
+  const collector = botMessage.createMessageComponentCollector({ filter, time: 300000 });
+
+  collector.on('collect', async (interaction) => {
+    await interaction.reply({ content: 'Response generation stopped by the user.', ephemeral: true });
+    stopGeneration = true;
+  });
+
   const updateMessage = async () => {
+    if (stopGeneration) {
+      return;
+    }
     if (tempResponse.trim() === "") {
       return;
     }
     if (userPreference === 'embedded') {
       await updateEmbed(botMessage, tempResponse, originalMessage.author.displayName);
     } else {
-      await botMessage.edit(tempResponse);
+      await botMessage.edit({ content: tempResponse });
     }
     clearTimeout(updateTimeout);
     updateTimeout = null;
   };
 
-  while (attempts > 0) {
+  while (attempts > 0 && !stopGeneration) {
     try {
       const messageResult = await responseFunc();
       let finalResponse = '';
       let isLargeResponse = false;
 
       for await (const chunk of messageResult.stream) {
+        if (stopGeneration) break;
+
         const chunkText = await chunk.text();
         finalResponse += chunkText;
         tempResponse += chunkText;
@@ -1529,19 +1572,20 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
         if (finalResponse.length > maxCharacterLimit) {
           if (!isLargeResponse) {
             isLargeResponse = true;
-            await botMessage.edit('> `The response is too large and will be sent as a text file once it is ready.`');
+            await botMessage.edit({ content: '> `The response is too large and will be sent as a text file once it is ready.`' });
           }
         } else if (!updateTimeout) {
           updateTimeout = setTimeout(updateMessage, 500);
         }
       }
-
+      
       if (updateTimeout) {
         await updateMessage();
       }
 
       if (isLargeResponse) {
         await sendAsTextFile(finalResponse, originalMessage);
+        await addSettingsButton(botMessage);
       } else {
         await addDownloadButton(botMessage);
       }
@@ -1552,14 +1596,16 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
       console.error(error.message);
       attempts--;
 
-      // Handle error scenarios
-      if (attempts === 0) {
-        const errormsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>, All Generation Attempts Failed :( \`\`\`${error.message}\`\`\`` });
-        await addSettingsButton(errormsg);
-        await addSettingsButton(botMessage);
+      if (attempts === 0 || stopGeneration) {
+        if (!stopGeneration) {
+          const errorMsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>, All Generation Attempts Failed :( \`\`\`${error.message}\`\`\`` });
+          await addSettingsButton(errorMsg);
+          await addSettingsButton(botMessage);
+        }
+        break;
       } else {
-        const errormsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>, Generation Attempts Failed, Retrying.. \`\`\`${error.message}\`\`\`` });
-        setTimeout(() => errormsg.delete().catch(console.error), 5000);
+        const errorMsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>, Generation Attempts Failed, Retrying.. \`\`\`${error.message}\`\`\`` });
+        setTimeout(() => errorMsg.delete().catch(console.error), 5000);
         await delay(500);
       }
     }
@@ -1584,10 +1630,10 @@ async function sendAsTextFile(text, message) {
   try {
     const filename = `response-${Date.now()}.txt`;
     await writeFile(filename, text);
-    
+
     const botMessage = await message.channel.send({ content: `<@${message.author.id}>, Here is the response:`, files: [filename] });
     await addSettingsButton(botMessage);
-    
+
     // Cleanup: Remove the file after sending it
     await unlink(filename);
   } catch (error) {
