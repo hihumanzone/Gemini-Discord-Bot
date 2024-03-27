@@ -1503,6 +1503,9 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   let tempResponse = '';
 
   const updateMessage = async () => {
+    if (tempResponse.trim() === "") {
+      return;
+    }
     if (userPreference === 'embedded') {
       await updateEmbed(botMessage, tempResponse, originalMessage.author.displayName);
     } else {
