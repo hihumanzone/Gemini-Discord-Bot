@@ -354,6 +354,9 @@ client.on('interactionCreate', async (interaction) => {
         case 'download_message':
           await downloadMessage(interaction);
           break;
+        case 'exit-settings':
+          await interaction.message.delete();
+          break;
         default:
           if (interaction.customId.startsWith('select-image-model-')) {
             const selectedModel = interaction.customId.replace('select-image-model-', '');
@@ -625,6 +628,7 @@ async function showSettings(interaction) {
     { customId: 'toggle-response-mode', label: 'Toggle Response Mode', emoji: '📝', style: ButtonStyle.Primary },
     { customId: 'toggle-url-mode', label: 'Toggle URL Mode', emoji: '🌐', style: ButtonStyle.Primary },
     { customId: 'download-conversation', label: 'Download Conversation', emoji: '🗃️', style: ButtonStyle.Secondary },
+    { customId: 'exit-settings', label: 'Exit Settings', emoji: '❌', style: ButtonStyle.Danger }
   ];
 
   // Generate buttons from configurations
@@ -646,7 +650,7 @@ async function showSettings(interaction) {
     content: `> **This Message Will Get Deleted In 30 Seconds**\n> \`\`\`Settings:\`\`\``,
     components: actionRows
   });
-  setTimeout(() => interaction.deleteReply().catch(console.error), 30000);
+  setTimeout(() => interaction.deleteReply().catch(), 30000);
 }
 
 async function retryOperation(fn, maxRetries, delayMs = 1000) {
