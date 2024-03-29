@@ -48,7 +48,7 @@ This Discord bot leverages the power of Google's Generative AI and other tools t
     Navigate to the cloned directory and run the following command to install all necessary packages:
 
     ```bash
-    npm install dotenv node-fetch@2.6.1 discord.js @google/generative-ai fs sharp pdf-parse cheerio youtube-transcript axios eventsource
+    npm install dotenv node-fetch@2.6.1 discord.js @google/generative-ai ws fs sharp pdf-parse cheerio youtube-transcript axios eventsource
     ```
 
 3. **Set Up Environment Variables**
