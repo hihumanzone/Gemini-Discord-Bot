@@ -1344,7 +1344,6 @@ function filterPrompt(text) {
     const regexPattern = new RegExp(word.split('').join('\\W*'), 'gi');
     text = text.replace(regexPattern, '');
   });
-  console.log(text);
   return text;
 }
 
