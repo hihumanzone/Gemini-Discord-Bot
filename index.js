@@ -1132,7 +1132,7 @@ const speechMusicModelFunctions = {
   "MusicGen": musicGen
 };
 
-async function generateSpeechWithPrompt(prompt, userId) {
+async function generateSpeechWithPrompt(prompt, userId, language) {
   try {
     const selectedModel = userPreferredSpeechModel[userId] || "1";
     const generateFunction = speechMusicModelFunctions[selectedModel];
