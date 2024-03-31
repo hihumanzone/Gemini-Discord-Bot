@@ -1831,7 +1831,7 @@ async function handleTextMessage(message) {
 
   // Only include instructions if they are set.
   let formattedMessage = instructions ?
-    `[Instructions To Follow]: ${instructions}\n\n[User]: ${messageContent}` :
+    `[Instructions To Follow]: ${instructions}\n\nuser: ${messageContent}` :
     messageContent
 
   const urls = extractUrls(messageContent);
