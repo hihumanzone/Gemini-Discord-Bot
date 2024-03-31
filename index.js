@@ -265,6 +265,9 @@ client.on('interactionCreate', async (interaction) => {
       case 'speech':
         await handleSpeechCommand(interaction);
         break;
+      case 'video':
+        await handleVideoCommand(interaction);
+        break;
       case 'music':
         await handleMusicCommand(interaction);
         break;
