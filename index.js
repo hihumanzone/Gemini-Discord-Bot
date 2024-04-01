@@ -209,8 +209,7 @@ client.on('messageCreate', async (message) => {
       }
     }
   } catch (error) {
-    console.error('Error processing the message:', error);
-    await message.reply('Sorry, something went wrong!');
+    console.error('Error processing the message:', error.message);
   }
 });
 
