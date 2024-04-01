@@ -54,7 +54,7 @@ const userPreferredSpeechModel = {};
 const userPreferredUrlHandle = {};
 const userResponsePreference = {};
 const alwaysRespondChannels = {};
-const blacklistedUsers = [];
+const blacklistedUsers = {};
 const activeRequests = new Set();
 
 // Configuration
@@ -207,7 +207,8 @@ client.on('messageCreate', async (message) => {
     );
 
     if (shouldRespond) {
-      if (blacklistedUsers.includes(message.author.id)) {
+      initializeBlacklistForGuild(message.guildId);
+      if (message.guildId && blacklistedUsers[message.guildId].includes(message.author.id)) {
         return message.reply({ content: 'You are blacklisted and cannot use this bot.' });
       }
       if (command) {
@@ -305,6 +306,12 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+function initializeBlacklistForGuild(guildId) {
+  if (!blacklistedUsers[guildId]) {
+    blacklistedUsers[guildId] = [];
+  }
+}
+
 async function handleBlacklistCommand(interaction) {
   try {
     if (interaction.channel.type === ChannelType.DM) {
@@ -317,8 +324,9 @@ async function handleBlacklistCommand(interaction) {
     const userId = interaction.options.getUser('user').id;
 
     // Add the user to the blacklist if not already present
-    if (!blacklistedUsers.includes(userId)) {
-      blacklistedUsers.push(userId);
+    initializeBlacklistForGuild(interaction.guildId);
+    if (!blacklistedUsers[interaction.guildId].includes(userId)) {
+      blacklistedUsers[interaction.guildId].push(userId);
       await interaction.reply(`<@${userId}> has been blacklisted.`);
     } else {
       await interaction.reply(`<@${userId}> is already blacklisted.`);
@@ -340,9 +348,10 @@ async function handleWhitelistCommand(interaction) {
     const userId = interaction.options.getUser('user').id;
     
     // Remove the user from the blacklist if present
-    const index = blacklistedUsers.indexOf(userId);
+    initializeBlacklistForGuild(interaction.guildId);
+    const index = blacklistedUsers[interaction.guildId].indexOf(userId);
     if (index > -1) {
-      blacklistedUsers.splice(index, 1);
+      blacklistedUsers[interaction.guildId].splice(index, 1);
       await interaction.reply(`<@${userId}> has been removed from the blacklist.`);
     } else {
       await interaction.reply(`<@${userId}> is not in the blacklist.`);
@@ -513,7 +522,8 @@ async function handleSuccessfulSpeechGeneration(interaction, text, language, out
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isButton()) {
-      if (blacklistedUsers.includes(interaction.user.id)) {
+      initializeBlacklistForGuild(interaction.guildId);
+      if (interaction.guildId && blacklistedUsers[interaction.guildId].includes(interaction.user.id)) {
         return interaction.reply({ content: 'You are blacklisted and cannot use this interaction.', ephemeral: true });
       }
       switch (interaction.customId) {
@@ -894,7 +904,8 @@ async function downloadConversation(interaction) {
 }
 
 async function showSettings(interaction) {
-  if (blacklistedUsers.includes(interaction.user.id)) {
+  initializeBlacklistForGuild(interaction.guildId);
+  if (interaction.guildId && blacklistedUsers[interaction.guildId].includes(interaction.user.id)) {
     return interaction.reply({ content: 'You are blacklisted and cannot use this interaction.', ephemeral: true });
   }
   // Define button configurations in an array
