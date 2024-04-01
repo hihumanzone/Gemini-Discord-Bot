@@ -307,9 +307,11 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 function initializeBlacklistForGuild(guildId) {
-  if (!blacklistedUsers[guildId]) {
-    blacklistedUsers[guildId] = [];
-  }
+  try {
+    if (!blacklistedUsers[guildId]) {
+      blacklistedUsers[guildId] = [];
+    }
+  } catch(error) {}
 }
 
 async function handleBlacklistCommand(interaction) {
