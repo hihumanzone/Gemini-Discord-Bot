@@ -54,6 +54,7 @@ const userPreferredSpeechModel = {};
 const userPreferredUrlHandle = {};
 const userResponsePreference = {};
 const alwaysRespondChannels = {};
+const blacklistedUsers = [];
 const activeRequests = new Set();
 
 // Configuration
@@ -139,6 +140,22 @@ client.once('ready', async () => {
           .setDescription('The prompt to generate the video from.')
           .setRequired(true)
       ),
+    new SlashCommandBuilder()
+      .setName('blacklist')
+      .setDescription('Blacklists a user from using certain interactions')
+      .addUserOption(option =>
+        option.setName('user')
+          .setDescription('The user to blacklist')
+          .setRequired(true)
+      ),
+    new SlashCommandBuilder()
+      .setName('whitelist')
+      .setDescription('Removes a user from the blacklist')
+      .addUserOption(option =>
+        option.setName('user')
+          .setDescription('The user to whitelist')
+          .setRequired(true)
+      ),
   ].map(command => command.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(token);
@@ -190,6 +207,9 @@ client.on('messageCreate', async (message) => {
     );
 
     if (shouldRespond) {
+      if (blacklistedUsers.includes(message.author.id)) {
+        return message.reply({ content: 'You are blacklisted and cannot use this bot.' });
+      }
       if (command) {
         // Extract the command name and the prompt
         const prompt = message.content.slice(command.index + command[0].length).trim();
@@ -255,6 +275,12 @@ client.on('interactionCreate', async (interaction) => {
       case 'respondtoall':
         await handleRespondToAllCommand(interaction);
         break;
+      case 'whitelist':
+        await handleWhitelistCommand(interaction);
+        break;
+      case 'blacklist':
+        await handleBlacklistCommand(interaction);
+        break;
       case 'imagine':
         await handleImagineCommand(interaction);
         break;
@@ -278,6 +304,53 @@ client.on('interactionCreate', async (interaction) => {
     console.error('Error handling command:', error.message);
   }
 });
+
+async function handleBlacklistCommand(interaction) {
+  try {
+    if (interaction.channel.type === ChannelType.DM) {
+      return interaction.reply({ content: 'This command cannot be used in DMs.', ephemeral: true });
+    }
+
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return interaction.reply({ content: 'You need to be an admin to use this command.', ephemeral: true });
+    }
+    const userId = interaction.options.getUser('user').id;
+
+    // Add the user to the blacklist if not already present
+    if (!blacklistedUsers.includes(userId)) {
+      blacklistedUsers.push(userId);
+      await interaction.reply(`<@${userId}> has been blacklisted.`);
+    } else {
+      await interaction.reply(`<@${userId}> is already blacklisted.`);
+    }
+  } catch(error) {
+    console.log(error.message);
+  }
+}
+
+async function handleWhitelistCommand(interaction) {
+  try {
+    if (interaction.channel.type === ChannelType.DM) {
+      return interaction.reply({ content: 'This command cannot be used in DMs.', ephemeral: true });
+    }
+
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return interaction.reply({ content: 'You need to be an admin to use this command.', ephemeral: true });
+    }
+    const userId = interaction.options.getUser('user').id;
+    
+    // Remove the user from the blacklist if present
+    const index = blacklistedUsers.indexOf(userId);
+    if (index > -1) {
+      blacklistedUsers.splice(index, 1);
+      await interaction.reply(`<@${userId}> has been removed from the blacklist.`);
+    } else {
+      await interaction.reply(`<@${userId}> is not in the blacklist.`);
+    }
+  } catch(error) {
+    console.log(error.message);
+  }
+}
 
 async function handleRespondToAllCommand(interaction) {
   try {
@@ -440,6 +513,9 @@ async function handleSuccessfulSpeechGeneration(interaction, text, language, out
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isButton()) {
+      if (blacklistedUsers.includes(interaction.user.id)) {
+        return interaction.reply({ content: 'You are blacklisted and cannot use this interaction.', ephemeral: true });
+      }
       switch (interaction.customId) {
         case 'settings':
           await showSettings(interaction);
@@ -818,6 +894,9 @@ async function downloadConversation(interaction) {
 }
 
 async function showSettings(interaction) {
+  if (blacklistedUsers.includes(interaction.user.id)) {
+    return interaction.reply({ content: 'You are blacklisted and cannot use this interaction.', ephemeral: true });
+  }
   // Define button configurations in an array
   const buttonConfigs = [
     {
