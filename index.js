@@ -2470,6 +2470,8 @@ async function handleTextMessage(message) {
     await addSettingsButton(botMessage);
     return;
   }
+  const nickname = message.author.displayName;
+  const channelName = message.channel.name;
   const instructions = message.guild ?
     (serverSettings[message.guild.id]?.customServerPersonality && customInstructions[message.guild.id] ?
       customInstructions[message.guild.id] :
@@ -2478,7 +2480,7 @@ async function handleTextMessage(message) {
 
   // Only include instructions if they are set.
   let formattedMessage = instructions ?
-    `[Instructions To Follow]: ${instructions}\n\n<===>\n${messageContent}` :
+    `[Instructions To Follow]: ${instructions}\n\n${nickname}'s message in #${channelName} channel:\n<===>\n${messageContent}` :
     messageContent
 
   const urls = extractUrls(messageContent);
