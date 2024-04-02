@@ -45,17 +45,75 @@ const client = new Client({
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 const token = process.env.DISCORD_BOT_TOKEN;
-const chatHistories = {};
-const activeUsersInChannels = {};
-const customInstructions = {};
-const userPreferredImageModel = {};
-const userPreferredImageResolution = {};
-const userPreferredSpeechModel = {};
-const userPreferredUrlHandle = {};
-const userResponsePreference = {};
-const alwaysRespondChannels = {};
-const blacklistedUsers = {};
 const activeRequests = new Set();
+
+// Define your objects
+let chatHistories = {};
+let activeUsersInChannels = {};
+let customInstructions = {};
+let serverSettings = {};
+let userPreferredImageModel = {};
+let userPreferredImageResolution = {};
+let userPreferredSpeechModel = {};
+let userPreferredUrlHandle = {};
+let userResponsePreference = {};
+let alwaysRespondChannels = {};
+let blacklistedUsers = {};
+
+// Path to your file
+const DATA_FILE = path.join(__dirname, 'serverData.json');
+loadStateFromFile();
+
+// Function to save current state to file
+function saveStateToFile() {
+  const state = {
+    chatHistories,
+    activeUsersInChannels,
+    customInstructions,
+    serverSettings,
+    userPreferredImageModel,
+    userPreferredImageResolution,
+    userPreferredSpeechModel,
+    userPreferredUrlHandle,
+    userResponsePreference,
+    alwaysRespondChannels,
+    blacklistedUsers,
+  };
+
+  fs.writeFile(DATA_FILE, JSON.stringify(state, null, 2), (err) => {
+    if (err) {
+      console.error('Error saving state:', err);
+    }
+  });
+}
+
+// Function to load state from file
+function loadStateFromFile() {
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const data = fs.readFileSync(DATA_FILE);
+      const state = JSON.parse(data);
+
+      chatHistories = state.chatHistories;
+      activeUsersInChannels = state.activeUsersInChannels;
+      customInstructions = state.customInstructions;
+      serverSettings = state.serverSettings;
+      userPreferredImageModel = state.userPreferredImageModel;
+      userPreferredImageResolution = state.userPreferredImageResolution;
+      userPreferredSpeechModel = state.userPreferredSpeechModel;
+      userPreferredUrlHandle = state.userPreferredUrlHandle;
+      userResponsePreference = state.userResponsePreference;
+      alwaysRespondChannels = state.alwaysRespondChannels;
+      blacklistedUsers = state.blacklistedUsers;
+
+      console.log('State loaded successfully.');
+    } else {
+      console.log('No previous state to load.');
+    }
+  } catch (err) {
+    console.error('Error loading state:', err);
+  }
+}
 
 // Configuration
 const defaultResponseFormat = 'embedded'; //OR 'normal'
@@ -103,6 +161,12 @@ client.once('ready', async () => {
     new SlashCommandBuilder()
       .setName('clear')
       .setDescription('Clears the conversation history.'),
+    new SlashCommandBuilder()
+      .setName('settings')
+      .setDescription('Opens Up Settings.'),
+    new SlashCommandBuilder()
+      .setName('dashboard')
+      .setDescription('Opens Up The Dashboard.'),
     new SlashCommandBuilder()
       .setName('speech')
       .setDescription('Generate speech from text.')
@@ -207,9 +271,11 @@ client.on('messageCreate', async (message) => {
     );
 
     if (shouldRespond) {
-      initializeBlacklistForGuild(message.guildId);
-      if (message.guildId && blacklistedUsers[message.guildId].includes(message.author.id)) {
-        return message.reply({ content: 'You are blacklisted and cannot use this bot.' });
+      if (message.guild) {
+        initializeBlacklistForGuild(message.guild.id);
+        if (blacklistedUsers[message.guild.id].includes(message.author.id)) {
+          return message.reply({ content: 'You are blacklisted and cannot use this bot.' });
+        }
       }
       if (command) {
         // Extract the command name and the prompt
@@ -291,6 +357,12 @@ client.on('interactionCreate', async (interaction) => {
       case 'speech':
         await handleSpeechCommand(interaction);
         break;
+      case 'settings':
+        await showSettings(interaction);
+        break;
+      case 'dashboard':
+        await showDashboard(interaction);
+        break;
       case 'video':
         await handleVideoCommand(interaction);
         break;
@@ -311,6 +383,15 @@ function initializeBlacklistForGuild(guildId) {
     if (!blacklistedUsers[guildId]) {
       blacklistedUsers[guildId] = [];
     }
+    if (!serverSettings[guildId]) {
+      serverSettings[guildId] = {
+        serverChatHistory: false,
+        settingsSaveButton: true,
+        customServerPersonality: false,
+        serverResponsePreference:false,
+        responseStyle: "embedded"
+      };
+    }
   } catch(error) {}
 }
 
@@ -326,9 +407,9 @@ async function handleBlacklistCommand(interaction) {
     const userId = interaction.options.getUser('user').id;
 
     // Add the user to the blacklist if not already present
-    initializeBlacklistForGuild(interaction.guildId);
-    if (!blacklistedUsers[interaction.guildId].includes(userId)) {
-      blacklistedUsers[interaction.guildId].push(userId);
+    initializeBlacklistForGuild(interaction.guild.id);
+    if (!blacklistedUsers[interaction.guild.id].includes(userId)) {
+      blacklistedUsers[interaction.guild.id].push(userId);
       await interaction.reply(`<@${userId}> has been blacklisted.`);
     } else {
       await interaction.reply(`<@${userId}> is already blacklisted.`);
@@ -350,10 +431,10 @@ async function handleWhitelistCommand(interaction) {
     const userId = interaction.options.getUser('user').id;
     
     // Remove the user from the blacklist if present
-    initializeBlacklistForGuild(interaction.guildId);
-    const index = blacklistedUsers[interaction.guildId].indexOf(userId);
+    initializeBlacklistForGuild(interaction.guild.id);
+    const index = blacklistedUsers[interaction.guild.id].indexOf(userId);
     if (index > -1) {
-      blacklistedUsers[interaction.guildId].splice(index, 1);
+      blacklistedUsers[interaction.guild.id].splice(index, 1);
       await interaction.reply(`<@${userId}> has been removed from the blacklist.`);
     } else {
       await interaction.reply(`<@${userId}> is not in the blacklist.`);
@@ -524,11 +605,37 @@ async function handleSuccessfulSpeechGeneration(interaction, text, language, out
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isButton()) {
-      initializeBlacklistForGuild(interaction.guildId);
-      if (interaction.guildId && blacklistedUsers[interaction.guildId].includes(interaction.user.id)) {
-        return interaction.reply({ content: 'You are blacklisted and cannot use this interaction.', ephemeral: true });
+      if (interaction.guild) {
+        initializeBlacklistForGuild(interaction.guild.id);
+        if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
+          return interaction.reply({ content: 'You are blacklisted and cannot use this interaction.', ephemeral: true });
+        }
       }
       switch (interaction.customId) {
+        case 'server-chat-history':
+          await toggleServerWideChatHistory(interaction);
+          break;
+        case 'clear-server':
+          await clearServerChatHistory(interaction);
+          break;
+        case 'settings-save-buttons':
+          await toggleSettingSaveButton(interaction);
+          break;
+        case 'custom-server-personality':
+          await serverPersonality(interaction);
+          break;
+        case 'toggle-server-personality':
+          await toggleServerPersonality(interaction);
+          break;
+        case 'download-server-conversation':
+          await downloadServerConversation(interaction);
+          break;
+        case 'response-server-mode':
+          await toggleServerPreference(interaction);
+          break;
+        case 'toggle-response-server-mode':
+          await toggleServerResponcePreference(interaction);
+          break;
         case 'settings':
           await showSettings(interaction);
           break;
@@ -577,7 +684,7 @@ client.on('interactionCreate', async (interaction) => {
         case 'download_message':
           await downloadMessage(interaction);
           break;
-        case 'exit-settings':
+        case 'exit':
           await interaction.message.delete();
           break;
         default:
@@ -608,6 +715,160 @@ client.on('interactionCreate', async (interaction) => {
     console.error('Error handling select menu interaction:', error.message);
   }
 });
+
+async function toggleServerWideChatHistory(interaction) {
+  try {
+    if (!interaction.guild) {
+      await interaction.reply("This command can only be used in a server.");
+      return;
+    }
+    const serverId = interaction.guild.id;
+    serverSettings[serverId].serverChatHistory = !serverSettings[serverId].serverChatHistory;
+    await interaction.reply({content: `Server-wide Chat History Is Now \`${serverSettings[serverId].serverChatHistory}\`` , ephemeral: true});
+
+  } catch (error) {
+    console.log(error.message);
+  }
+}
+
+async function toggleServerPersonality(interaction) {
+  try {
+    if (!interaction.guild) {
+      await interaction.reply("This command can only be used in a server.");
+      return;
+    }
+    const serverId = interaction.guild.id;
+    serverSettings[serverId].customServerPersonality = !serverSettings[serverId].customServerPersonality;
+    await interaction.reply({content: `Server-wide Personality Is Now \`${serverSettings[serverId].customServerPersonality}\`` , ephemeral: true});
+
+  } catch (error) {
+    console.log(error.message);
+  }
+}
+
+async function toggleServerResponcePreference(interaction) {
+  try {
+    if (!interaction.guild) {
+      await interaction.reply("This command can only be used in a server.");
+      return;
+    }
+    const serverId = interaction.guild.id;
+    serverSettings[serverId].serverResponcePreference = !serverSettings[serverId].serverResponcePreference;
+    await interaction.reply({content: `Server-wide Response Following Is Now \`${serverSettings[serverId].serverResponcePreference}\`` , ephemeral: true});
+
+  } catch (error) {
+    console.log(error.message);
+  }
+}
+
+async function toggleSettingSaveButton(interaction) {
+  try {
+    if (!interaction.guild) {
+      await interaction.reply("This command can only be used in a server.");
+      return;
+    }
+    const serverId = interaction.guild.id;
+    serverSettings[serverId].settingsSaveButton = !serverSettings[serverId].settingsSaveButton;
+    await interaction.reply({content: `Server-wide "Settings And Save Button" Is Now \`${serverSettings[serverId].settingsSaveButton}\`` , ephemeral: true});
+
+  } catch (error) {
+    console.log(error.message);
+  }
+}
+
+async function serverPersonality(interaction) {
+  const customId = 'custom-server-personality-input';
+  const title = 'Enter Custom Personality Instructions';
+
+  const input = new TextInputBuilder()
+    .setCustomId(customId)
+    .setLabel("What should the bot's personality be like?")
+    .setStyle(TextInputStyle.Paragraph)
+    .setPlaceholder("Enter the custom instructions here...")
+    .setMinLength(10)
+    .setMaxLength(4000);
+
+  const modal = new ModalBuilder()
+    .setCustomId('custom-server-personality-modal')
+    .setTitle(title)
+    .addComponents(new ActionRowBuilder().addComponents(input));
+
+  // Present the modal to the user
+  await interaction.showModal(modal);
+}
+
+async function clearServerChatHistory(interaction) {
+  try {
+    if (!interaction.guild) {
+      await interaction.reply("This command can only be used in a server.");
+      return;
+    }
+    if (serverSettings[interaction.guild.id].serverChatHistory) {
+      chatHistories[interaction.guild.id] = [];
+      await interaction.reply({ content: 'Server-Wide Chat History Cleared!', ephemeral: true });
+    } else {
+      await interaction.reply({ content: 'Server-Wide Chat History Is Disabled For This Server.', ephemeral: true });
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+}
+
+async function downloadServerConversation(interaction) {
+  try {
+    const guild = interaction.guild.id;
+    const conversationHistory = chatHistories[guild];
+
+    if (!conversationHistory || conversationHistory.length === 0) {
+      await interaction.reply({ content: '> `No conversation history found.`', ephemeral: true });
+      return;
+    }
+
+    let conversationText = '';
+    for (let i = 0; i < conversationHistory.length; i++) {
+      const speaker = i % 2 === 0 ? '[User]' : '[Model]';
+      conversationText += `${speaker}:\n${conversationHistory[i]}\n\n`;
+    }
+
+    const tempFileName = path.join(__dirname, `${userId}_conversation.txt`);
+    fs.writeFileSync(tempFileName, conversationText, 'utf8');
+
+    const file = new AttachmentBuilder(tempFileName, { name: 'conversation_history.txt' });
+
+    // Check if the interaction is in DMs
+    if (interaction.channel.type === ChannelType.DM) {
+      // If in DMs, send the file directly in the current channel
+      await interaction.reply({ content: '> `Here\'s your conversation history:`', files: [file] });
+    } else {
+      try {
+        // Attempt to send the file as a DM
+        await interaction.user.send({ content: '> `Here\'s The Server-Wide conversation history:`', files: [file] });
+        await interaction.reply({ content: '> `Server-Wide conversation history has been sent to your DMs.`', ephemeral: true });
+      } catch (error) {
+        console.error(`Failed to send DM: ${error}`);
+        await interaction.reply({ content: '> `Here\'s The Server-Wide conversation history:`', files: [file], ephemeral: true });
+      }
+    }
+
+    fs.unlinkSync(tempFileName);
+  } catch (error) {
+    console.log(error.message);
+  }
+}
+
+async function toggleServerPreference(interaction) {
+  try {
+    const guildId = interaction.guild.id;
+    if (serverSettings[guildId].responseStyle === "embedded") {
+      serverSettings[guildId].responseStyle = "normal";
+    } else {
+      serverSettings[guildId].responseStyle = "embedded";
+    }
+    await interaction.reply({ content: `Server response style updated to: ${serverSettings[guildId].responseStyle}`, ephemeral: true});
+  } catch (error) {
+    console.log(error.message);
+  }
+}
 
 async function handleGenerateImageButton(interaction) {
   const modal = new ModalBuilder()
@@ -718,9 +979,16 @@ async function handleModalSubmit(interaction) {
       const customInstructionsInput = interaction.fields.getTextInputValue('custom-personality-input');
       customInstructions[interaction.user.id] = customInstructionsInput.trim();
   
-      await interaction.reply({ content: '> Custom personality instructions saved!' });
+      await interaction.reply({ content: '> Custom Personality Instructions Saved!', ephemeral: true });
+    } catch(error) {
+      console.log(error.message);
+    }
+  } else if (interaction.customId === 'custom-server-personality-modal') {
+    try {
+      const customInstructionsInput = interaction.fields.getTextInputValue('custom-server-personality-input');
+      customInstructions[interaction.guild.id] = customInstructionsInput.trim();
   
-      setTimeout(() => interaction.deleteReply(), 5000); // Delete after 5 seconds
+      await interaction.reply({ content: 'Custom Server Personality Instructions Saved!', ephemeral: true });
     } catch(error) {
       console.log(error.message);
     }
@@ -906,9 +1174,11 @@ async function downloadConversation(interaction) {
 }
 
 async function showSettings(interaction) {
-  initializeBlacklistForGuild(interaction.guildId);
-  if (interaction.guildId && blacklistedUsers[interaction.guildId].includes(interaction.user.id)) {
-    return interaction.reply({ content: 'You are blacklisted and cannot use this interaction.', ephemeral: true });
+  if (interaction.guild) {
+    initializeBlacklistForGuild(interaction.guild.id);
+    if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
+      return interaction.reply({ content: 'You are blacklisted and cannot use this interaction.', ephemeral: true });
+    }
   }
   // Define button configurations in an array
   const buttonConfigs = [
@@ -997,7 +1267,7 @@ async function showSettings(interaction) {
       style: ButtonStyle.Secondary,
     },
     {
-      customId: "exit-settings",
+      customId: "exit",
       label: "Exit Settings",
       emoji: "✖",
       style: ButtonStyle.Danger,
@@ -1047,6 +1317,91 @@ async function showSettings(interaction) {
       } catch (error) {}
     }
   }, 1000);
+}
+
+async function showDashboard(interaction) {
+  if (interaction.channel.type === ChannelType.DM) {
+    return interaction.reply({ content: 'This command cannot be used in DMs.', ephemeral: true });
+  }
+  if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+    return interaction.reply({ content: 'You need to be an admin to use this command.', ephemeral: true });
+  }
+  initializeBlacklistForGuild(interaction.guild.id);
+  // Define button configurations in an array
+  const buttonConfigs = [
+    {
+      customId: "server-chat-history",
+      label: "Toggle Server-Wide Conversation History",
+      emoji: "📦",
+      style: ButtonStyle.Primary,
+    },
+    {
+      customId: "clear-server",
+      label: "Clear Server-Wide Memory",
+      emoji: "🧹",
+      style: ButtonStyle.Danger,
+    },
+    {
+      customId: "settings-save-buttons",
+      label: "Toggle Add Settings And Save Button",
+      emoji: "🔘",
+      style: ButtonStyle.Primary,
+    },
+    {
+      customId: "custom-server-personality",
+      label: "Custom Server Personality",
+      emoji: "🙌",
+      style: ButtonStyle.Primary,
+    },
+    {
+      customId: "toggle-server-personality",
+      label: "Toggle Server Personality",
+      emoji: "🤖",
+      style: ButtonStyle.Primary,
+    },
+    {
+      customId: "toggle-response-server-mode",
+      label: "Toggle Server-Wide Responses Style",
+      emoji: "✏️",
+      style: ButtonStyle.Primary,
+    },
+    {
+      customId: "response-server-mode",
+      label: "Server-Wide Responses Style",
+      emoji: "📝",
+      style: ButtonStyle.Secondary,
+    },
+    {
+      customId: "download-server-conversation",
+      label: "Download Server Conversation",
+      emoji: "🗃️",
+      style: ButtonStyle.Secondary,
+    }
+  ];
+
+  // Generate buttons from configurations
+  const allButtons = buttonConfigs.map((config) =>
+    new ButtonBuilder()
+      .setCustomId(config.customId)
+      .setLabel(config.label)
+      .setEmoji(config.emoji)
+      .setStyle(config.style)
+  );
+
+  // Split buttons into action rows
+  const actionRows = [];
+  while (allButtons.length > 0) {
+    actionRows.push(
+      new ActionRowBuilder().addComponents(allButtons.splice(0, 5))
+    );
+  }
+
+  // Reply to the interaction with settings buttons, without any countdown message
+  await interaction.reply({
+    content: "> ```Dashboard:```",
+    components: actionRows,
+    ephemeral: true
+  });
 }
 
 async function retryOperation(fn, maxRetries, delayMs = 1000) {
@@ -2006,9 +2361,10 @@ async function handleTextFileMessage(message) {
     }
 
     // Load the text model and handle the conversation
+    const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
     const model = await genAI.getGenerativeModel({ model: 'gemini-pro' });
     const chat = model.startChat({
-      history: getHistory(message.author.id),
+      history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
       safetySettings,
     });
 
@@ -2089,7 +2445,11 @@ async function handleTextMessage(message) {
     await addSettingsButton(botMessage);
     return;
   }
-  const instructions = customInstructions[message.author.id];
+  const instructions = message.guild ?
+    (serverSettings[message.guild.id]?.customServerPersonality && customInstructions[message.guild.id] ?
+      customInstructions[message.guild.id] :
+      customInstructions[message.author.id]) :
+    customInstructions[message.author.id];
 
   // Only include instructions if they are set.
   let formattedMessage = instructions ?
@@ -2104,8 +2464,9 @@ async function handleTextMessage(message) {
     await handleUrlsInMessage(urls, formattedMessage, botMessage, message);
   } else {
     botMessage = await message.reply('> `Let me think...`');
+    const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
     const chat = model.startChat({
-      history: getHistory(message.author.id),
+      history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
       safetySettings,
     });
     await handleModelResponse(botMessage, () => chat.sendMessageStream(formattedMessage), message);
@@ -2139,8 +2500,9 @@ async function toggleUrlUserPreference(interaction) {
 
 async function handleUrlsInMessage(urls, messageContent, botMessage, originalMessage) {
   const model = await genAI.getGenerativeModel({ model: 'gemini-pro' });
+  const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
   const chat = model.startChat({
-    history: getHistory(originalMessage.author.id),
+    history: isServerChatHistoryEnabled ? getHistory(originalMessage.guild.id) : getHistory(originalMessage.author.id),
     safetySettings,
   });
 
@@ -2205,7 +2567,7 @@ function delay(ms) {
 
 async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   const userId = originalMessage.author.id;
-  const userPreference = getUserPreference(userId);
+  const userPreference = originalMessage.guild && serverSettings[originalMessage.guild.id]?.serverResponcePreference ? serverSettings[originalMessage.guild.id].responseStyle : getUserPreference(userId);
   const maxCharacterLimit = userPreference === 'embedded' ? 3900 : 1900;
   let attempts = 3;
 
@@ -2279,10 +2641,15 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
         await sendAsTextFile(finalResponse, originalMessage);
         await addSettingsButton(botMessage);
       } else {
-        await addDownloadButton(botMessage);
+        const shouldAddDownloadButton = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.settingsSaveButton : false;
+        if (shouldAddDownloadButton) {
+          await addDownloadButton(botMessage);
+        } else {
+          await botMessage.edit({components: [] });
+        }
       }
-
-      updateChatHistory(userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
+      const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
+      updateChatHistory(isServerChatHistoryEnabled ? originalMessage.guild.id : userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
       break;
     } catch (error) {
       console.error(error.message);
@@ -2303,6 +2670,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
     }
   }
   activeRequests.delete(userId);
+  saveStateToFile();
 }
 
 async function updateEmbed(botMessage, finalResponse, authorDisplayName) {
@@ -2372,19 +2740,19 @@ async function fetchTextFile(url) {
   }
 }
 
-function getHistory(userId) {
-  return chatHistories[userId]?.map((line, index) => ({
+function getHistory(id) {
+  return chatHistories[id]?.map((line, index) => ({
     role: index % 2 === 0 ? 'user' : 'model',
     parts: [{ text: line }],
   })) || [];
 }
 
-function updateChatHistory(userId, userMessage, modelResponse) {
-  if (!chatHistories[userId]) {
-    chatHistories[userId] = [];
+function updateChatHistory(id, userMessage, modelResponse) {
+  if (!chatHistories[id]) {
+    chatHistories[id] = [];
   }
-  chatHistories[userId].push(userMessage);
-  chatHistories[userId].push(modelResponse);
+  chatHistories[id].push(userMessage);
+  chatHistories[id].push(modelResponse);
 }
 
 async function addDownloadButton(botMessage) {
