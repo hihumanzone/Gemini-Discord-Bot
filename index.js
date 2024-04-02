@@ -352,7 +352,12 @@ client.on('interactionCreate', async (interaction) => {
         await handleImagineCommand(interaction);
         break;
       case 'clear':
-        await clearChatHistory(interaction);
+        const serverChatHistoryEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverChatHistory : false;
+        if (!serverChatHistoryEnabled) {
+          await clearChatHistory(interaction);
+        } else {
+          await interaction.reply("Clearing chat history is not enabled for this server, Server-Wide chat history is active.");
+        }
         break;
       case 'speech':
         await handleSpeechCommand(interaction);
@@ -640,16 +645,31 @@ client.on('interactionCreate', async (interaction) => {
           await showSettings(interaction);
           break;
         case 'clear':
-          await clearChatHistory(interaction);
+          const serverChatHistoryEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverChatHistory : false;
+          if (!serverChatHistoryEnabled) {
+            await clearChatHistory(interaction);
+          } else {
+            await interaction.reply("Clearing chat history is not enabled for this server, Server-Wide chat history is active.");
+          }
           break;
         case 'always-respond':
           await alwaysRespond(interaction);
           break;
         case 'custom-personality':
-          await setCustomPersonality(interaction);
+          const serverCustomEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.customServerPersonality : false;
+          if (!serverCustomEnabled) {
+            await setCustomPersonality(interaction);
+          } else {
+            await interaction.reply("Custom personality is not enabled for this server, Server-Wide personality is active.");
+          }
           break;
         case 'remove-personality':
-          await removeCustomPersonality(interaction);
+          const isServerEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.customServerPersonality : false;
+          if (!isServerEnabled) {
+            await removeCustomPersonality(interaction);
+          } else {
+            await interaction.reply("Custom personality is not enabled for this server, Server-Wide personality is active.");
+          }
           break;
         case 'generate-image':
           await handleGenerateImageButton(interaction);
@@ -661,7 +681,12 @@ client.on('interactionCreate', async (interaction) => {
           await changeImageResolution(interaction);
           break;
         case 'toggle-response-mode':
-          await toggleUserPreference(interaction);
+          const serverResponcePreferenceEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverResponsePreference : false;
+          if (!serverResponcePreferenceEnabled) {
+            await toggleUserPreference(interaction);
+          } else {
+            await interaction.reply("Custom personality is not enabled for this server, Server-Wide personality is active.");
+          }
           break;
        case 'toggle-url-mode':
           await toggleUrlUserPreference(interaction);
