@@ -1373,15 +1373,15 @@ async function showDashboard(interaction) {
       style: ButtonStyle.Primary,
     },
     {
-      customId: "custom-server-personality",
-      label: "Custom Server Personality",
-      emoji: "🙌",
-      style: ButtonStyle.Primary,
-    },
-    {
       customId: "toggle-server-personality",
       label: "Toggle Server Personality",
       emoji: "🤖",
+      style: ButtonStyle.Primary,
+    },
+    {
+      customId: "custom-server-personality",
+      label: "Custom Server Personality",
+      emoji: "🙌",
       style: ButtonStyle.Primary,
     },
     {
