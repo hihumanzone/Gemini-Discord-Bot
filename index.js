@@ -2666,7 +2666,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
         await sendAsTextFile(finalResponse, originalMessage);
         await addSettingsButton(botMessage);
       } else {
-        const shouldAddDownloadButton = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.settingsSaveButton : false;
+        const shouldAddDownloadButton = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.settingsSaveButton : true;
         if (shouldAddDownloadButton) {
           await addDownloadButton(botMessage);
         } else {
