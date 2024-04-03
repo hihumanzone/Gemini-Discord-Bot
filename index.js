@@ -434,7 +434,7 @@ async function handleWhitelistCommand(interaction) {
       return interaction.reply({ content: 'You need to be an admin to use this command.', ephemeral: true });
     }
     const userId = interaction.options.getUser('user').id;
-    
+
     // Remove the user from the blacklist if present
     initializeBlacklistForGuild(interaction.guild.id);
     const index = blacklistedUsers[interaction.guild.id].indexOf(userId);
@@ -649,7 +649,7 @@ client.on('interactionCreate', async (interaction) => {
           if (!serverChatHistoryEnabled) {
             await clearChatHistory(interaction);
           } else {
-            await interaction.reply("Clearing chat history is not enabled for this server, Server-Wide chat history is active.");
+            await interaction.reply({content: "Clearing chat history is not enabled for this server, Server-Wide chat history is active.", ephemeral: true});
           }
           break;
         case 'always-respond':
@@ -660,7 +660,7 @@ client.on('interactionCreate', async (interaction) => {
           if (!serverCustomEnabled) {
             await setCustomPersonality(interaction);
           } else {
-            await interaction.reply("Custom personality is not enabled for this server, Server-Wide personality is active.");
+            await interaction.reply({content: "Custom personality is not enabled for this server, Server-Wide personality is active.", ephemeral: true});
           }
           break;
         case 'remove-personality':
@@ -668,7 +668,7 @@ client.on('interactionCreate', async (interaction) => {
           if (!isServerEnabled) {
             await removeCustomPersonality(interaction);
           } else {
-            await interaction.reply("Custom personality is not enabled for this server, Server-Wide personality is active.");
+            await interaction.reply({content: "Custom personality is not enabled for this server, Server-Wide personality is active.", ephemeral: true});
           }
           break;
         case 'generate-image':
@@ -685,7 +685,7 @@ client.on('interactionCreate', async (interaction) => {
           if (!serverResponcePreferenceEnabled) {
             await toggleUserPreference(interaction);
           } else {
-            await interaction.reply("Custom personality is not enabled for this server, Server-Wide personality is active.");
+            await interaction.reply({content: "Custom personality is not enabled for this server, Server-Wide personality is active.", ephemeral: true});
           }
           break;
        case 'toggle-url-mode':
@@ -1003,7 +1003,7 @@ async function handleModalSubmit(interaction) {
     try {
       const customInstructionsInput = interaction.fields.getTextInputValue('custom-personality-input');
       customInstructions[interaction.user.id] = customInstructionsInput.trim();
-  
+
       await interaction.reply({ content: '> Custom Personality Instructions Saved!', ephemeral: true });
     } catch(error) {
       console.log(error.message);
@@ -1012,7 +1012,7 @@ async function handleModalSubmit(interaction) {
     try {
       const customInstructionsInput = interaction.fields.getTextInputValue('custom-server-personality-input');
       customInstructions[interaction.guild.id] = customInstructionsInput.trim();
-  
+
       await interaction.reply({ content: 'Custom Server Personality Instructions Saved!', ephemeral: true });
     } catch(error) {
       console.log(error.message);
@@ -1319,7 +1319,7 @@ async function showSettings(interaction) {
   // Reply to the interaction
   let secondsLeft = 30;
   const countdownMessage = `> **This Message Will Get Deleted In: ${secondsLeft}s**\n> \`\`\`Settings:\`\`\``;
-  
+
   await interaction.reply({
     content: countdownMessage,
     components: actionRows,
@@ -1564,10 +1564,10 @@ async function speechGen(prompt, language) {
         responseType: 'stream'
       }).then(responseSecond => {
         let fullData = '';
-  
+
         responseSecond.data.on('data', (chunk) => {
           fullData += chunk.toString();
-  
+
           if (fullData.includes('"msg": "process_completed"')) {
             const lines = fullData.split('\n');
             for (const line of lines) {
@@ -1686,10 +1686,10 @@ async function videoGen(prompt) {
         responseType: 'stream'
       }).then(responseSecond => {
         let fullData = '';
-  
+
         responseSecond.data.on('data', (chunk) => {
           fullData += chunk.toString();
-  
+
           if (fullData.includes('"msg": "process_completed"')) {
             const lines = fullData.split('\n');
             for (const line of lines) {
@@ -2171,20 +2171,20 @@ function generateWithSDXLAlt(prompt) {
         "trigger_id": 7,
         "session_hash": session_hash
       };
-  
+
       axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-  
+
         const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-  
+
         const eventSource = new EventSource(urlSecondRequest);
-  
+
         eventSource.onmessage = (event) => {
           const data = JSON.parse(event.data);
-  
+
           if (data.msg === "process_completed") {
             eventSource.close();
             const full_url = data["output"]["data"][0]["url"];
-  
+
             resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt" });
           }
         };
@@ -2214,20 +2214,20 @@ function generateWithSDXLAlt2(prompt) {
         "trigger_id": 17,
         "session_hash": session_hash
       };
-  
+
       axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-  
+
         const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-  
+
         const eventSource = new EventSource(urlSecondRequest);
-  
+
         eventSource.onmessage = (event) => {
           const data = JSON.parse(event.data);
-  
+
           if (data.msg === "process_completed") {
             eventSource.close();
             const full_url = data?.["output"]?.["data"]?.[0]?.["url"] ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
-  
+
             resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt2" });
           }
         };
@@ -2268,20 +2268,20 @@ function generateWithKandinsky(prompt, resolution) {
         "trigger_id": 4,
         "session_hash": session_hash
       };
-  
+
       axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-  
+
         const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-  
+
         const eventSource = new EventSource(urlSecondRequest);
-  
+
         eventSource.onmessage = (event) => {
           const data = JSON.parse(event.data);
-  
+
           if (data.msg === "process_completed") {
             eventSource.close();
             const full_url = data?.["output"]?.["data"]?.[0]?.[0]?.["image"]?.["url"] ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
-  
+
             resolve({ images: [{ url: full_url }], modelUsed: "Kandinsky" });
           }
         };
@@ -2466,12 +2466,10 @@ async function handleTextMessage(message) {
   const userId = message.author.id;
   let messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim();
   if (messageContent === '') {
-    const botMessage = await message.reply("> `It looks like you didn't say anything. What would you like to talk about?`");
+    const botMessage = await message.reply("It looks like you didn't say anything. What would you like to talk about?");
     await addSettingsButton(botMessage);
     return;
   }
-  const nickname = message.author.displayName;
-  const channelName = message.channel.name;
   const instructions = message.guild ?
     (serverSettings[message.guild.id]?.customServerPersonality && customInstructions[message.guild.id] ?
       customInstructions[message.guild.id] :
@@ -2480,7 +2478,7 @@ async function handleTextMessage(message) {
 
   // Only include instructions if they are set.
   let formattedMessage = instructions ?
-    `[Instructions To Follow]: ${instructions}\n\n${nickname}'s message in #${channelName} channel:\n<===>\n${messageContent}` :
+    `[Instructions To Follow]: ${instructions}\n\n<=====>\n${messageContent}` :
     messageContent
 
   const urls = extractUrls(messageContent);
@@ -2659,7 +2657,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
           updateTimeout = setTimeout(updateMessage, 500);
         }
       }
-      
+
       if (updateTimeout) {
         await updateMessage();
       }
