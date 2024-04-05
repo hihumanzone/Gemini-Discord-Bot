@@ -2624,7 +2624,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
       return;
     }
     if (tempResponse.trim() === "") {
-      return;
+      await botMessage.edit({ content: '...' });
     }
     if (userPreference === 'embedded') {
       await updateEmbed(botMessage, tempResponse, originalMessage.author.displayName);
