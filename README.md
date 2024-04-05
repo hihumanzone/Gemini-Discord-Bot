@@ -1,77 +1,55 @@
-# Discord Gemini Bot
+# Gemini Discord Bot
 
-This Discord bot leverages the power of Google's Generative AI and other tools to interact with users in unique ways, such as generating images based on prompts, replying to messages with insightful comments, and more. Below you'll find all the information you need to get started with using and contributing to the bot.
+Gemini is an advanced Discord bot that leverages Google's Generative AI models to provide a wide range of features and interactions. It can engage in conversations, generate images, create speech, music, and videos, and even analyze text files and web pages.
 
 ## Features
 
-- **Image Generation:** Generate images based on prompts using different models like Proteus, SD-XL, Stable-Cascade, and Kandinsky.
-- **Auto-Response:** Optionally set the bot to automatically respond to all messages in a channel.
-- **Conversation History:** Maintains a history of interactions for more context-aware responses.
-- **File Processing:** Ability to process and understand content from images, PDFs, and text files.
-- **URL Content Fetching:** Fetches and understands content from URLs provided in messages.
-- **Customizable:** Users can customize the bot's personality and response behavior.
+- Conversational AI: Gemini can engage in natural conversations with users, maintaining context and providing relevant responses.
+- Image Generation: Users can generate images based on text prompts using various models like SD-XL-Alt, Kandinsky, DallE-XL, Anime, and Stable-Cascade.
+- Speech Generation: Gemini can generate speech from text prompts in multiple languages.
+- Music Generation: Users can generate music based on text prompts.
+- Video Generation: Gemini can create videos from text descriptions.
+- Text File Analysis: The bot can extract and analyze text from various file types, including PDF, plain text, HTML, CSS, JavaScript, JSON, Python, YAML, Markdown, and XML.
+- Web Page Analysis: Gemini can scrape and analyze the content of web pages.
+- User Preferences: Users can customize their experience by setting preferences for response format, image models, image resolution, speech models, and URL handling.
+- Server-wide Settings: Server administrators can configure server-wide settings such as chat history, custom personality, response style, and more.
+- Blacklisting and Whitelisting: Server administrators can blacklist or whitelist users from using certain interactions.
 
-## Screenshots
+## Installation
 
-### Screenshot 1: Images and text
-![Screenshot 1](ss/1.jpg)
+1. Clone the repository:
+   ```
+   git clone https://github.com/hihumanzone/Gemini-Discord-Bot.git
+   ```
 
-### Screenshot 2: Settings
-![Screenshot 2](ss/2.jpg)
+2. Install the required dependencies:
+   ```
+   npm install dotenv node-fetch@2.6.1 discord.js @google/generative-ai ws fs sharp pdf-parse cheerio youtube-transcript axios eventsource
+   ```
 
-### Screenshot 3: Change Image Model
-![Screenshot 3](ss/3.jpg)
+3. Obtain a Google API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
 
-### Screenshot 4: Custom Personality Demo
-![Screenshot 4](ss/4.jpg)
+4. Create a `.env` file in the project root and add your Discord bot token and Google API key:
+   ```
+   DISCORD_BOT_TOKEN=your_discord_bot_token
+   GOOGLE_API_KEY=your_google_api_key
+   ```
 
-### Screenshot 5: Image Generation
-![Screenshot 5](ss/5.jpg)
+5. Run the bot:
+   ```
+   node index.js
+   ```
 
-### Screenshot 6: Text File Handling & Big Response Handling
-![Screenshot 6](ss/6.jpg)
+## Usage
 
-### Screenshot 7: Reading Websites
-![Screenshot 7](ss/7.jpg)
+Gemini provides a range of slash commands and interactions. Users can interact with the bot by mentioning it or using the available slash commands. The bot also supports message attachments for image and text file analysis.
 
-### Screenshot 8: Reading YouTube Videos
-![Screenshot 8](ss/8.jpg)
+For detailed usage instructions and a list of available commands, please refer to the [official website](https://gemini-discord-bot.vercel.app/).
 
-## Getting Started
+## About the Creator
 
-1. **Clone this repository**
+Gemini Discord Bot is created by hihumanzone (also known as Impulse). For more information and updates, visit the [GitHub repository](https://github.com/hihumanzone/Gemini-Discord-Bot).
 
-    Start by cloning this repository to your local machine to get the source code.
+## License
 
-2. **Install dependencies**
-
-    Navigate to the cloned directory and run the following command to install all necessary packages:
-
-    ```bash
-    npm install dotenv node-fetch@2.6.1 discord.js @google/generative-ai ws fs sharp pdf-parse cheerio youtube-transcript axios eventsource
-    ```
-
-3. **Set Up Environment Variables**
-
-    Create a `.env` file in the root directory and define the following variables:
-
-    - `DISCORD_BOT_TOKEN`: Your Discord bot token.
-    - `GOOGLE_API_KEY`: Your Google Gemini API key which can be obtained from [Google AI Studio](https://aistudio.google.com/app/apikey).
-
-4. **Run the Bot**
-
-    Start the bot by running `node index.js` or your preferred command, depending on how you've set up your project structure. Ensure that `index.js` is the entry point where the code provided is located.
-
-## Additional Resources
-
-- **Website**: For more information, visit the [official website](https://discord-bot-webpage.vercel.app/).
-- **GitHub Repository**: Access the source code on [GitHub](https://github.com/hihumanzone).
-- **Google Gemini API Key**: Obtain your API key [here](https://aistudio.google.com/app/apikey).
-
-## Contributing
-
-Contributions are what make the open-source community such a fantastic place to learn, inspire, and create. Any contributions you make are greatly appreciated.
-
----
-
-Created by hihumanzone (also known as Impulse). Check out the [GitHub profile](https://github.com/hihumanzone) for more awesome projects!
+This project is licensed under the [MIT License](LICENSE).
