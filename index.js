@@ -1277,13 +1277,13 @@ async function showSettings(interaction) {
       customId: "toggle-response-mode",
       label: "Toggle Response Mode",
       emoji: "📝",
-      style: ButtonStyle.Primary,
+      style: ButtonStyle.Secondary,
     },
     {
       customId: "toggle-url-mode",
       label: "Toggle URL Mode",
       emoji: "🌐",
-      style: ButtonStyle.Primary,
+      style: ButtonStyle.Secondary,
     },
     {
       customId: "download-conversation",
@@ -1517,7 +1517,7 @@ async function speechGen(prompt, language) {
   let x, y;
   if (language == 'English') {
     x = 'EN';
-    y = 'EN-US';
+    y = 'EN-Default';
   } else {
     switch (language) {
       case 'Spanish':
@@ -1537,7 +1537,7 @@ async function speechGen(prompt, language) {
         break;
       default:
         x = 'EN';
-        y = 'EN-US';
+        y = 'EN-Default';
     }
   }
   const sessionHash = generateSessionHash();
