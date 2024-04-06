@@ -2116,7 +2116,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
       await botMessage.edit({ content: '...' });
     }
     if (userPreference === 'embedded') {
-      await updateEmbed(botMessage, tempResponse, originalMessage.author.displayName);
+      await updateEmbed(botMessage, tempResponse, originalMessage);
     } else {
       await botMessage.edit({ content: tempResponse });
     }
@@ -2187,20 +2187,21 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   saveStateToFile();
 }
 
-async function updateEmbed(botMessage, finalResponse, authorDisplayName) {
+async function updateEmbed(botMessage, finalResponse, message) {
   try {
+    const isGuild = message.guild !== null;
     const embed = new EmbedBuilder()
       .setColor(0x505050)
-      .setTitle('📝 **Response:**')
       .setDescription(finalResponse)
-      .addFields(
-        { name: '❓ **Questioned by:**', value: `${authorDisplayName}`, inline: false }
-      )
+      .setAuthor({ name: `To ${message.author.displayName}`, iconURL: message.author.displayAvatarURL() })
       .setTimestamp();
+    if (isGuild) {
+      embed.setFooter({ text: message.guild.name, iconURL: message.guild.iconURL() || 'https://ai.google.dev/static/site-assets/images/share.png' });
+    }
 
-    await botMessage.edit({ content: null, embeds: [embed] });
+    await botMessage.edit({ content: ' ', embeds: [embed] });
   } catch(error) {
-    console.log(error.message);
+    console.error("An error occurred while updating the embed:", error.message);
   }
 }
 
