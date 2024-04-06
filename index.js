@@ -395,7 +395,7 @@ client.on('interactionCreate', async (interaction) => {
           await toggleServerPreference(interaction);
           break;
         case 'toggle-response-server-mode':
-          await toggleServerResponcePreference(interaction);
+          await toggleServerResponsePreference(interaction);
           break;
         case 'settings':
           await showSettings(interaction);
@@ -437,11 +437,11 @@ client.on('interactionCreate', async (interaction) => {
           await changeImageResolution(interaction);
           break;
         case 'toggle-response-mode':
-          const serverResponcePreferenceEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverResponsePreference : false;
-          if (!serverResponcePreferenceEnabled) {
+          const serverResponsePreferenceEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverResponsePreference : false;
+          if (!serverResponsePreferenceEnabled) {
             await toggleUserPreference(interaction);
           } else {
-            await interaction.reply({content: "Custom personality is not enabled for this server, Server-Wide personality is active.", ephemeral: true});
+            await interaction.reply({content: "Toggling Response Mode is not enabled for this server, Server-Wide Response Mode is active.", ephemeral: true});
           }
           break;
        case 'toggle-url-mode':
@@ -1508,15 +1508,15 @@ async function toggleServerPersonality(interaction) {
   }
 }
 
-async function toggleServerResponcePreference(interaction) {
+async function toggleServerResponsePreference(interaction) {
   try {
     if (!interaction.guild) {
       await interaction.reply("This command can only be used in a server.");
       return;
     }
     const serverId = interaction.guild.id;
-    serverSettings[serverId].serverResponcePreference = !serverSettings[serverId].serverResponcePreference;
-    await interaction.reply({content: `Server-wide Response Following Is Now \`${serverSettings[serverId].serverResponcePreference}\`` , ephemeral: true});
+    serverSettings[serverId].serverResponsePreference = !serverSettings[serverId].serverResponsePreference;
+    await interaction.reply({content: `Server-wide Response Following Is Now \`${serverSettings[serverId].serverResponsePreference}\`` , ephemeral: true});
 
   } catch (error) {
     console.log(error.message);
@@ -2081,7 +2081,7 @@ const safetySettings = [{ category: HarmCategory.HARM_CATEGORY_HARASSMENT, thres
 
 async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   const userId = originalMessage.author.id;
-  const userPreference = originalMessage.guild && serverSettings[originalMessage.guild.id]?.serverResponcePreference ? serverSettings[originalMessage.guild.id].responseStyle : getUserPreference(userId);
+  const userPreference = originalMessage.guild && serverSettings[originalMessage.guild.id]?.serverResponsePreference ? serverSettings[originalMessage.guild.id].responseStyle : getUserPreference(userId);
   const maxCharacterLimit = userPreference === 'embedded' ? 3900 : 1900;
   let attempts = 3;
 
