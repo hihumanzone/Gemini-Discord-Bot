@@ -30,6 +30,7 @@ const WebSocket = require('ws');
 const path = require('path');
 const sharp = require('sharp');
 const pdf = require('pdf-parse');
+const crypto = require('crypto');
 const cheerio = require('cheerio');
 const { YoutubeTranscript } = require('youtube-transcript');
 const axios = require('axios');
@@ -156,6 +157,7 @@ client.once('ready', async () => {
           .addChoices(
             { name: 'SD-XL-Alt', value: 'SD-XL-Alt' },
             { name: 'SD-XL-Alt2', value: 'SD-XL-Alt2' },
+            { name: 'Playground', value: 'Playground' },
             { name: 'Stable-Cascade', value: 'Stable-Cascade'},
             { name: 'DallE-XL', value: 'DallE-XL' },
             { name: 'Anime', value: 'Anime' },
@@ -1009,7 +1011,7 @@ async function changeImageModel(interaction) {
   try {
     // Define model names in an array
     const models = [
-      'SD-XL-Alt', 'SD-XL-Alt2', 'Kandinsky', 'DallE-XL', 'Anime', 'Stable-Cascade'
+      'SD-XL-Alt', 'SD-XL-Alt2', 'Kandinsky', 'Playground', 'DallE-XL', 'Anime', 'Stable-Cascade'
     ];
 
     // Create a select menu
@@ -1048,7 +1050,7 @@ async function changeImageResolution(interaction) {
     const userId = interaction.user.id;
     const selectedModel = userPreferredImageModel[userId];
     let supportedResolution;
-    const supportedModels = ['Kandinsky', 'DallE-XL', 'Anime', 'Stable-Cascade'];
+    const supportedModels = ['Kandinsky', 'DallE-XL', 'Anime', 'Stable-Cascade', 'Playground'];
     if (supportedModels.includes(selectedModel)) {
       supportedResolution = ['Square', 'Portrait', 'Wide'];
     } else {
@@ -1075,7 +1077,7 @@ async function changeImageResolution(interaction) {
     const actionRow = new ActionRowBuilder().addComponents(selectMenu);
 
     await interaction.reply({
-      content: '> **Supported Models:** `Kandinsky`, `Stable-Cascade`, `Anime`, and `DallE-XL`\n\n> `Select Image Generation Resolution:`',
+      content: '> **Supported Models:** `Kandinsky`, `Stable-Cascade`, `Playground`, `Anime`, and `DallE-XL`\n\n> `Select Image Generation Resolution:`',
       components: [actionRow],
       ephemeral: true
     });
@@ -1121,7 +1123,8 @@ const imageModelFunctions = {
   "Kandinsky": generateWithKandinsky,
   "DallE-XL": generateWithDallEXL,
   "Anime": generateWithAnime,
-  "Stable-Cascade": generateWithSC
+  "Stable-Cascade": generateWithSC,
+  "Playground": generateWithPlayground
 };
 
 async function handleImageSelectModel(interaction, model) {
@@ -1597,13 +1600,10 @@ async function downloadServerConversation(interaction) {
 
     const file = new AttachmentBuilder(tempFileName, { name: 'conversation_history.txt' });
 
-    // Check if the interaction is in DMs
     if (interaction.channel.type === ChannelType.DM) {
-      // If in DMs, send the file directly in the current channel
       await interaction.reply({ content: '> `Here\'s your conversation history:`', files: [file] });
     } else {
       try {
-        // Attempt to send the file as a DM
         await interaction.user.send({ content: '> `Here\'s The Server-Wide conversation history:`', files: [file] });
         await interaction.reply({ content: '> `Server-Wide conversation history has been sent to your DMs.`', ephemeral: true });
       } catch (error) {
@@ -2271,6 +2271,33 @@ async function retryOperation(fn, maxRetries, delayMs = 1000) {
   throw new Error(error);
 }
 
+function getEventId() {
+  const randomBytes = crypto.randomBytes(16);
+  const hexString = randomBytes.toString('hex');
+  return hexString;
+}
+
+async function fetchAndExtractRootUrl(url) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const htmlContent = await response.text();
+
+    const rootMatch = htmlContent.match(/window\.gradio_config = (.*?});/s);
+    if (rootMatch) {
+      const gradioConfig = JSON.parse(rootMatch[1]);
+      return gradioConfig.root;
+    } else {
+      throw new Error("Could not extract root value.");
+    }
+  } catch (error) {
+    console.error('Failed to fetch:', error);
+    return null;
+  }
+}
+
 function generateSessionHash() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let result = '';
@@ -2545,6 +2572,71 @@ function generateWithSC(prompt,  resolution) {
         es.close();
         reject(error);
       };
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+async function generateWithPlayground(prompt,  resolution) {
+  let width, height;
+  if (resolution == 'Square') {
+    width = 1024;
+    height = 1024;
+  } else if (resolution == 'Wide') {
+    width = 1280;
+    height = 768;
+  } else if (resolution == 'Portrait') {
+    width = 768;
+    height = 1280;
+  }
+  return new Promise(async (resolve, reject) => {
+    try {
+      const session_hash = generateSessionHash();
+      const event_id = getEventId();
+      const randomDigit = generateRandomDigits();
+      const rootUrl = await fetchAndExtractRootUrl("https://playgroundai-playground-v2-5.hf.space/");
+
+      const urlJoinQueue = `https://playgroundai-playground-v2-5.hf.space/queue/join?fn_index=3&session_hash=${session_hash}`;
+      const eventSource = new EventSource(urlJoinQueue);
+
+      eventSource.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        if (data.msg === "send_data") {
+          const eventId = data?.event_id;
+          fetch("https://playgroundai-playground-v2-5.hf.space/queue/data", {
+            method: "POST",
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              data: [prompt, nevPrompt, true, randomDigit, width, height, 3, true],
+              event_data: null,
+              fn_index: 3,
+              trigger_id: 6,
+              session_hash: session_hash,
+              event_id: eventId
+            })
+          });
+        } else if (data.msg === "process_completed") {
+          eventSource.close();
+          const imagePaths = data?.output?.data[0] ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+          const firstImagePath = imagePaths.length > 0 ? imagePaths[0].image.path : null;
+
+          if (firstImagePath) {
+            const fullUrl = `${rootUrl}/file=${firstImagePath}`;
+            resolve({ images: [{ url: fullUrl }], modelUsed: "Playground" });
+          } else {
+            reject(new Error('No image path found in the process_completed message.'));
+          }
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        eventSource.close();
+        reject(error);
+      };
+
     } catch (error) {
       reject(error);
     }
