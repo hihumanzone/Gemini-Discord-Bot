@@ -1033,6 +1033,8 @@ async function changeImageModel(interaction) {
     const models = [
       'SD-XL-Alt', 'SD-XL-Alt2', 'Kandinsky', 'Playground', 'DallE-XL', 'Anime', 'Stable-Cascade', 'Dall-e-3'
     ];
+    
+    const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
 
     // Create a select menu
     let selectMenu = new StringSelectMenuBuilder()
@@ -1048,6 +1050,7 @@ async function changeImageModel(interaction) {
           label: model,
           value: model,
           description: `Select to use ${model} model.`,
+          default: model === selectedModel,
         },
       ]);
     });
@@ -1076,6 +1079,8 @@ async function changeImageResolution(interaction) {
     } else {
       supportedResolution = ['Square'];
     }
+    
+    const selectedResolution = userPreferredImageResolution[userId] || 'Square';
 
     // Create a select menu
     let selectMenu = new StringSelectMenuBuilder()
@@ -1090,6 +1095,7 @@ async function changeImageResolution(interaction) {
         label: resolution,
         value: resolution,
         description: `Generate images in ${resolution} resolution.`,
+        default: resolution === selectedResolution,
       }]);
     });
 
