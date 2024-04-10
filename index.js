@@ -161,6 +161,7 @@ client.once('ready', async () => {
             { name: 'SD-XL-Alt', value: 'SD-XL-Alt' },
             { name: 'SD-XL-Alt2', value: 'SD-XL-Alt2' },
             { name: 'Playground', value: 'Playground' },
+            { name: 'CosXL', value: 'CosXL' },
             { name: 'Stable-Cascade', value: 'Stable-Cascade'},
             { name: 'DallE-XL', value: 'DallE-XL' },
             { name: 'Anime', value: 'Anime' },
@@ -1038,7 +1039,7 @@ async function changeImageModel(interaction) {
   try {
     // Define model names in an array
     const models = [
-      'SD-XL-Alt', 'SD-XL-Alt2', 'Kandinsky', 'Playground', 'DallE-XL', 'Anime', 'Stable-Cascade', 'Juggernaut', 'Dall-e-3'
+      'SD-XL-Alt', 'SD-XL-Alt2', 'CosXL', 'Playground', 'DallE-XL', 'Anime', 'Stable-Cascade', 'Kandinsky', 'Juggernaut', 'Dall-e-3'
     ];
     
     const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
@@ -1159,7 +1160,8 @@ const imageModelFunctions = {
   "Stable-Cascade": generateWithSC,
   "Playground": generateWithPlayground,
   "Dall-e-3": generateWithDalle3,
-  "Juggernaut": generateWithJuggernaut
+  "Juggernaut": generateWithJuggernaut,
+  "CosXL": generateWithCosXL
 };
 
 async function handleImageSelectModel(interaction, model) {
@@ -2808,44 +2810,44 @@ function generateWithDallEXL(prompt, resolution) {
     width = 768;
     height = 1280;
   }
-    return new Promise(async (resolve, reject) => {
-        try {
-            const randomDigits = generateRandomDigits();
-            const sessionHash = generateSessionHash();
+  return new Promise(async (resolve, reject) => {
+    try {
+      const randomDigits = generateRandomDigits();
+      const sessionHash = generateSessionHash();
 
-            // First request to join the queue
-            await fetch("https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/join?", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                    data: [prompt, nevPrompt, true, randomDigits, width, height, 6, true], 
-                    event_data: null, 
-                    fn_index: 3, 
-                    trigger_id: 6, 
-                    session_hash: sessionHash 
-                }),
-            });
+      // First request to join the queue
+      await fetch("https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/join?", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: [prompt, nevPrompt, true, randomDigits, width, height, 6, true],
+          event_data: null,
+          fn_index: 3,
+          trigger_id: 6,
+          session_hash: sessionHash
+        }),
+      });
 
-            // Replace this part to use EventSource for listening to the event stream
-            const es = new EventSource(`https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/data?session_hash=${sessionHash}`);
+      // Replace this part to use EventSource for listening to the event stream
+      const es = new EventSource(`https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/data?session_hash=${sessionHash}`);
 
-            es.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.msg === 'process_completed') {
-                    es.close();
-                    const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
-                    resolve({ images: [{ url: outputUrl }], modelUsed: "DallE-XL" });
-                }
-            };
-
-            es.onerror = (error) => {
-                es.close();
-                reject(error);
-            };
-        } catch (error) {
-            reject(error);
+      es.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.msg === 'process_completed') {
+          es.close();
+          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+          resolve({ images: [{ url: outputUrl }], modelUsed: "DallE-XL" });
         }
-    });
+      };
+
+      es.onerror = (error) => {
+        es.close();
+        reject(error);
+      };
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
 function generateWithAnime(prompt, resolution) {
@@ -3088,6 +3090,46 @@ function generateWithJuggernaut(prompt, resolution) {
       }).catch(error => {
         reject(error);
       });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function generateWithCosXL(prompt) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const sessionHash = generateSessionHash();
+
+      // First request to join the queue
+      await fetch("https://multimodalart-cosxl.hf.space/queue/join?", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: [prompt, nevPrompt, 3.5],
+          event_data: null,
+          fn_index: 2,
+          trigger_id: 6,
+          session_hash: sessionHash
+        }),
+      });
+
+      // Replace this part to use EventSource for listening to the event stream
+      const es = new EventSource(`https://multimodalart-cosxl.hf.space/queue/data?session_hash=${sessionHash}`);
+
+      es.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.msg === 'process_completed') {
+          es.close();
+          const outputUrl = data?.output?.data?.[0]?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+          resolve({ images: [{ url: outputUrl }], modelUsed: "CosXL" });
+        }
+      };
+
+      es.onerror = (error) => {
+        es.close();
+        reject(error);
+      };
     } catch (error) {
       reject(error);
     }
