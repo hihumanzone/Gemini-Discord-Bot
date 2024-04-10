@@ -2907,7 +2907,7 @@ function generateWithAnime(prompt, resolution) {
 function generateWithSDXLAlt(prompt) {
   return new Promise((resolve, reject) => {
     try {
-      const url = "https://ap123-sdxl-lightning.hf.space";
+      const url = "https://bytedance-sdxl-lightning.hf.space";
       const session_hash = generateSessionHash();
       const urlFirstRequest = `${url}/queue/join?`;
       const dataFirstRequest = {
