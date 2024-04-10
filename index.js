@@ -1238,8 +1238,8 @@ async function enhancePrompt(prompt) {
       return prompt;
     }
   } catch (error) {
-    console.error('Error fetching response:', error);
-    throw error;
+    console.error(error);
+    return prompt;
   }
 }
 
