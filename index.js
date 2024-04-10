@@ -57,6 +57,7 @@ let customInstructions = {};
 let serverSettings = {};
 let userPreferredImageModel = {};
 let userPreferredImageResolution = {};
+let userPreferredImagePromptEnhancement = {};
 let userPreferredSpeechModel = {};
 let userPreferredUrlHandle = {};
 let userResponsePreference = {};
@@ -76,6 +77,7 @@ function saveStateToFile() {
     serverSettings,
     userPreferredImageModel,
     userPreferredImageResolution,
+    userPreferredImagePromptEnhancement,
     userPreferredSpeechModel,
     userPreferredUrlHandle,
     userResponsePreference,
@@ -103,6 +105,7 @@ function loadStateFromFile() {
       serverSettings = state.serverSettings;
       userPreferredImageModel = state.userPreferredImageModel;
       userPreferredImageResolution = state.userPreferredImageResolution;
+      userPreferredImagePromptEnhancement = state.userPreferredImagePromptEnhancement;
       userPreferredSpeechModel = state.userPreferredSpeechModel;
       userPreferredUrlHandle = state.userPreferredUrlHandle;
       userResponsePreference = state.userResponsePreference;
@@ -436,6 +439,9 @@ client.on('interactionCreate', async (interaction) => {
           break;
         case 'change-image-model':
           await changeImageModel(interaction);
+          break;
+        case 'toggle-prompt-enhancer':
+          await togglePromptEnhancer(interaction);
           break;
         case 'change-image-resolution':
           await changeImageResolution(interaction);
@@ -929,7 +935,7 @@ async function generateAndSendImage(prompt, interaction) {
     const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed], files: [attachment] });
     await addSettingsButton(messageReference);
   } catch (error) {
-    console.log(error.message);
+    throw error;
   }
 }
 
@@ -1186,17 +1192,73 @@ async function handleSpeechSelectModel(interaction, model) {
   }
 }
 
+async function togglePromptEnhancer(interaction) {
+  try {
+    const userId = interaction.user.id;
+    if (userPreferredImagePromptEnhancement[userId] === undefined) {
+      userPreferredImagePromptEnhancement[userId] = true;
+    }
+    userPreferredImagePromptEnhancement[userId] = !userPreferredImagePromptEnhancement[userId];
+    const newState = userPreferredImagePromptEnhancement[userId] ? 'Enabled' : 'Disabled';
+    await interaction.reply({ content: `Prompt Enhancer is now ${newState}.`, ephemeral: true });
+  } catch (error) {
+    console.error(`Error toggling Prompt Enhancer: ${error.message}`);
+  }
+}
+
+const diffusionMaster = `You are Diffusion Master, an expert in crafting intricate prompts for the generative AI 'Stable Diffusion', ensuring top-tier image generation by always thinking step by step and showing your work. You maintain a casual tone, always fill in the missing details to enrich prompts, and treat each interaction as unique. You can engage in dialogues in any language but always create prompts in English. You are designed to guide users through creating a prompt that can result in potentially award-winning images, with attention to detail that includes background, style, and additional artistic requirements.\nBasic information required to make a Stable Diffusion prompt:\n-   **Prompt Structure**:\n    -   Photorealistic Images: {Subject Description}, Type of Image, Art Styles, Art Inspirations, Camera, Shot, Render Related Information.  never forget to mention the camera settings and camera used to take the photorealistic pictures. \n    -   Artistic Image Types: Type of Image, {Subject Description}, Art Styles, Art Inspirations, Camera, Shot, Render Related Information.\n-   **Guidelines**:\n\n    -   Word order and effective adjectives matter in the prompt.\n    -   The environment/background should be described.\n    -   The exact type of image can be specified.\n    -   Art style-related keywords can be included.\n    -   Pencil drawing-related terms can be added.\n    -   Curly brackets are necessary in the prompt.\n    -   Art inspirations should be listed.\n    -   Include information about lighting, camera angles, render style, resolution, and detail.\n    -   Specify camera shot type, lens, and view.\n    -   Include keywords related to resolution, detail, and lighting.\n    -   Extra keywords: masterpiece, by oprisco, rutkowski, by marat safin.\n    -   The weight of a keyword can be adjusted using (keyword: factor).\n-   **Note**:\n\n    -   The prompts you provide will be in English.\n    -   Concepts that can't be real should not be described as "Real", "realistic", or "photo".\n\nThe prompts often contain weighted numbers in parentheses to indicate the importance or emphasis of certain details. For example, "(masterpiece:1.5)" indicates that the quality of the work is very important. Multiple parentheses also have similar effects. In addition, if square brackets are used, such as "{blue hair:white hair:0.3}", this represents the fusion of blue and white hair, with blue hair accounting for 0.3.\nHere is an example of using prompts to help an AI model generate an image: masterpiece,(bestquality),highlydetailed,ultra-detailed,cold,solo,(1girl),(detailedeyes),(shinegoldeneyes),(longliverhair),expressionless,(long sleeves),(puffy sleeves),(white wings),shinehalo,(heavymetal:1.2),(metaljewelry),cross-lacedfootwear (chain),(Whitedoves:1.2)\n\nFollowing the example, write a prompt that describes the following content in detail. Start the prompt directly, don't use natural language to provide any other information:`
+
+async function enhancePrompt(prompt) {
+  try {
+    const payload = {
+      model: "mixtral-8x7b",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: `${diffusionMaster}\n${prompt}`
+        }
+      ]
+    };
+
+    const headers = {
+      "Content-Type": "application/json"
+    };
+
+    const response = await axios.post('https://niansuh-hfllmapi.hf.space/api/v1/chat/completions', payload, { headers: headers });
+
+    if (response.data && response.data.choices && response.data.choices.length > 0) {
+      let content = response.data.choices[0].message.content;
+      const pattern = /^("|```)|("|```)$/g;
+      content = content.replace(pattern, '');
+      console.log(content);
+      return content;
+    } else {
+      console.log('Unexpected response format or empty response');
+      return prompt;
+    }
+  } catch (error) {
+    console.error('Error fetching response:', error);
+    throw error;
+  }
+}
+
 async function generateImageWithPrompt(prompt, userId) {
   try {
     const selectedModel = userPreferredImageModel[userId] || defaultImgModel;
     const generateFunction = imageModelFunctions[selectedModel];
     const resolution = userPreferredImageResolution[userId] || 'Square';
-    const filteredPrompt = filterPrompt(prompt);
-
+    if (userPreferredImagePromptEnhancement[userId] === undefined) {
+      userPreferredImagePromptEnhancement[userId] = true;
+    }
     if (!generateFunction) {
       throw new Error(`Unsupported model: ${selectedModel}`);
     }
-    return await retryOperation(() => generateFunction(filteredPrompt, resolution), 3);
+    let finalPrompt = filterPrompt(prompt);
+    if (userPreferredImagePromptEnhancement[userId]) {
+      finalPrompt = await enhancePrompt(finalPrompt);
+    }
+    return await retryOperation(() => generateFunction(finalPrompt, resolution), 3);
   } catch (error) {
     console.error('Error generating image:', error);
     throw new Error('Could not generate image after retries');
@@ -1237,12 +1299,17 @@ async function generateVideoWithPrompt(prompt, userId) {
   try {
     const selectedModel = "VideoGen";
     const generateFunction = speechMusicVideoModelFunctions[selectedModel];
-    const filteredPrompt = filterPrompt(prompt);
-
+    if (userPreferredImagePromptEnhancement[userId] === undefined) {
+      userPreferredImagePromptEnhancement[userId] = true;
+    }
     if (!generateFunction) {
       throw new Error(`Unsupported music model: ${selectedModel}`);
     }
-    return await retryOperation(() => generateFunction(filteredPrompt), 3);
+    let finalPrompt = filterPrompt(prompt);
+    if (userPreferredImagePromptEnhancement[userId]) {
+      finalPrompt = await enhancePrompt(finalPrompt);
+    }
+    return await retryOperation(() => generateFunction(finalPrompt), 3);
   } catch (error) {
     console.error('Error generating music:', error.message);
     throw new Error('Could not generate msuic after retries');
@@ -1701,6 +1768,12 @@ async function showSettings(interaction) {
       style: ButtonStyle.Secondary,
     },
     {
+      customId: "toggle-prompt-enhancer",
+      label: "Toggle Prompt Enhancer",
+      emoji: "🪄",
+      style: ButtonStyle.Secondary,
+    },
+    {
       customId: "change-image-resolution",
       label: "Change Image Resolution",
       emoji: "🖼️",
@@ -1953,15 +2026,14 @@ function getUrlUserPreference(userId) {
 }
 
 // Function to extract text from a PDF file
-async function extractTextFromPDF(url) {
+async function extractTextFromPDF(pdfUrl) {
   try {
-    const response = await fetch(url);
-    const buffer = await response.buffer();
-
-    let data = await pdf(buffer);
+    const response = await fetch(pdfUrl);
+    const pdfBuffer = await response.buffer();
+    const data = await pdfParse(pdfBuffer);
     return data.text;
   } catch (error) {
-    console.error('Error extracting text from PDF:', error);
+    console.error(error.message);
     throw new Error('Could not extract text from PDF');
   }
 }
@@ -2993,11 +3065,11 @@ async function generateWithDalle3(prompt) {
       }
       return { images: data.data, modelUsed: "Dall-e-3" };
     } catch (error) {
-      console.error('Error generating image:', error);
       throw error;
     }
   } catch (error) {
     console.log(error);
+    throw error;
   }
 }
 
