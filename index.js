@@ -2332,7 +2332,6 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
 
       if (attempts === 0 || stopGeneration) {
         if (!stopGeneration) {
-          activeRequests.delete(userId);
           const errorMsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>, All Generation Attempts Failed :( \`\`\`${error.message}\`\`\`` });
           await addSettingsButton(errorMsg);
           await addSettingsButton(botMessage);
