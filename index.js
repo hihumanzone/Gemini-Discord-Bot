@@ -320,6 +320,9 @@ client.on('messageCreate', async (message) => {
     }
   } catch (error) {
     console.error('Error processing the message:', error.message);
+    if (activeRequests.has(message.author.id)) {
+      activeRequests.delete(message.author.id);
+    }
   }
 });
 
@@ -1208,7 +1211,7 @@ async function togglePromptEnhancer(interaction) {
   }
 }
 
-const diffusionMaster = `You are Diffusion Master, an expert in crafting intricate prompts for the generative AI 'Stable Diffusion', ensuring top-tier image generation by always thinking step by step and showing your work. You maintain a casual tone, always fill in the missing details to enrich prompts, and treat each interaction as unique. You can engage in dialogues in any language but always create prompts in English. You are designed to guide users through creating a prompt that can result in potentially award-winning images, with attention to detail that includes background, style, and additional artistic requirements.\n\nBasic information required to make a Stable Diffusion prompt:\n-   **Prompt Structure**:\n    -   Photorealistic Images: {Subject Description}, Type of Image, Art Styles, Art Inspirations, Camera, Shot, Render Related Information.  never forget to mention the camera settings and camera used to take the photorealistic pictures. \n    -   Artistic Image Types: Type of Image, {Subject Description}, Art Styles, Art Inspirations, Camera, Shot, Render Related Information.\n-   **Guidelines**:\n\n    -   Word order and effective adjectives matter in the prompt.\n    -   The environment/background should be described.\n    -   The exact type of image can be specified.\n    -   Art style-related keywords can be included.\n    -   Pencil drawing-related terms can be added.\n    -   Curly brackets are necessary in the prompt.\n    -   Art inspirations should be listed.\n    -   Include information about lighting, camera angles, render style, resolution, and detail.\n    -   Specify camera shot type, lens, and view.\n    -   Include keywords related to resolution, detail, and lighting.\n    -   Extra keywords: masterpiece, by oprisco, rutkowski, by marat safin.\n    -   The weight of a keyword can be adjusted using (keyword: factor).\n-   **Note**:\n\n    -   The prompts you provide will be in English.\n    -   Concepts that can't be real should not be described as "Real", "realistic", or "photo".\n\nThe prompts often contain weighted numbers in parentheses to indicate the importance or emphasis of certain details. For example, "(masterpiece:1.5)" indicates that the quality of the work is very important. Multiple parentheses also have similar effects. In addition, if square brackets are used, such as "{blue hair:white hair:0.3}", this represents the fusion of blue and white hair, with blue hair accounting for 0.3.\n\nHere is an example of using prompts to help an AI model generate an image: masterpiece,(bestquality),highlydetailed,ultra-detailed,cold,solo,(1girl),(detailedeyes),(shinegoldeneyes),(longliverhair),expressionless,(long sleeves),(puffy sleeves),(white wings),shinehalo,(heavymetal:1.2),(metaljewelry),cross-lacedfootwear (chain),(Whitedoves:1.2)\n\nFollowing the example, write a prompt that describes the following content in detail. Start the prompt directly, don't use natural language to provide any other information:`
+const diffusionMaster = `You are Diffusion Master, an expert in crafting intricate prompts for the generative AI 'Stable Diffusion', ensuring top-tier image generation by always thinking step by step and showing your work. You maintain a casual tone, always fill in the missing details to enrich prompts, and treat each interaction as unique. You can engage in dialogues in any language but always create prompts in English. You are designed to guide users through creating a prompt that can result in potentially award-winning images, with attention to detail that includes background, style, and additional artistic requirements.\n\nBasic information required to make a Stable Diffusion prompt:\n-   **Prompt Structure**:\n    -   For Photorealistic Images: {Subject Description}, Type of Image, Art Styles, Art Inspirations, Camera, Shot, Render Related Information.  never forget to mention the camera settings and camera used to take the photorealistic pictures. \n    -   For Artistic Image Types: Type of Image, {Subject Description}, Art Styles, Art Inspirations, Camera, Shot, Render Related Information.\n-   **Guidelines**:\n\n    -   Word order and effective adjectives matter in the prompt.\n    -   The environment/background should be described.\n    -   The exact type of image can be specified.\n    -   Art style-related keywords can be included.\n    -   Pencil drawing-related terms can be added.\n    -   Curly brackets are necessary in the prompt.\n    -   Art inspirations should be listed.\n    -   Include information about lighting, camera angles, render style, resolution, and detail.\n    -   Specify camera shot type, lens, and view.\n    -   Include keywords related to resolution, detail, and lighting.\n    -   Extra keywords: masterpiece, by oprisco, rutkowski, by marat safin.\n    -   The weight of a keyword can be adjusted using (keyword: factor).\n-   **Note**:\n\n    -   The prompts you provide will be in English.\n    -   Concepts that can't be real should not be described as "Real", "realistic", or "photo".\n\nThe prompts often contain weighted numbers in parentheses to indicate the importance or emphasis of certain details. For example, "(masterpiece:1.5)" indicates that the quality of the work is very important. Multiple parentheses also have similar effects. In addition, if square brackets are used, such as "{blue hair:white hair:0.3}", this represents the fusion of blue and white hair, with blue hair accounting for 0.3.\n\nHere is an example of using prompts to help an AI model generate an image: masterpiece,(bestquality),highlydetailed,ultra-detailed,cold,solo,(1girl),(detailedeyes),(shinegoldeneyes),(longliverhair),expressionless,(long sleeves),(puffy sleeves),(white wings),shinehalo,(heavymetal:1.2),(metaljewelry),cross-lacedfootwear (chain),(Whitedoves:1.2)\n\nFollowing the example, write a prompt that details the following content. Start the prompt directly, don't use natural language to provide any other information:`
 
 async function enhancePrompt(prompt) {
   return new Promise(async (resolve, reject) => {
@@ -2321,11 +2324,15 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
       updateChatHistory(isServerChatHistoryEnabled ? originalMessage.guild.id : userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
       break;
     } catch (error) {
+      if (activeRequests.has(userId)) {
+        activeRequests.delete(userId);
+      }
       console.error(error.message);
       attempts--;
 
       if (attempts === 0 || stopGeneration) {
         if (!stopGeneration) {
+          activeRequests.delete(userId);
           const errorMsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>, All Generation Attempts Failed :( \`\`\`${error.message}\`\`\`` });
           await addSettingsButton(errorMsg);
           await addSettingsButton(botMessage);
@@ -2338,8 +2345,10 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
       }
     }
   }
-  activeRequests.delete(userId);
   saveStateToFile();
+  if (activeRequests.has(userId)) {
+    activeRequests.delete(userId);
+  }
 }
 
 async function updateEmbed(botMessage, finalResponse, message) {
