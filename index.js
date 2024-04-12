@@ -128,7 +128,7 @@ function loadStateFromFile() {
 // <=====[Configuration]=====>
 
 const defaultResponseFormat = 'embedded'; //OR 'normal'
-const defaultImgModel = 'SD-XL-Alt2';
+const defaultImgModel = 'SD-XL';
 const defaultUrlReading = 'ON'; //OR 'OFF'
 const bannerMusicGen = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAACACAYAAADktbcKAAADOElEQVR4Ae3UwQ0AIAwDscL+OwMPtjgjMUCcKmtmzvseAQJBgR3MLDIBAl/AADgFAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80Qlc6QQB/7svaWEAAAAASUVORK5CYII=' //Only `png` format
 const nevPrompt = "(deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation, (NSFW:1.25)";
@@ -158,16 +158,17 @@ client.once('ready', async () => {
           .setDescription('The image generation model to use.')
           .setRequired(true)
           .addChoices(
-            { name: 'SD-XL-Alt', value: 'SD-XL-Alt' },
-            { name: 'SD-XL-Alt2', value: 'SD-XL-Alt2' },
+            { name: 'SD-XL', value: 'SD-XL' },
             { name: 'Playground', value: 'Playground' },
-            { name: 'CosXL', value: 'CosXL' },
+            { name: 'Anime', value: 'Anime' },
             { name: 'Stable-Cascade', value: 'Stable-Cascade'},
             { name: 'DallE-XL', value: 'DallE-XL' },
-            { name: 'Anime', value: 'Anime' },
             { name: 'Juggernaut', value: 'Juggernaut' },
-            { name: 'Kandinsky', value: 'Kandinsky' },
-            { name: 'Dall-e-3', value: 'Dall-e-3' }
+            { name: 'CosXL', value: 'CosXL' },
+            { name: 'Tempest', value: 'Tempest' },
+            { name: 'Dall-e-3', value: 'Dall-e-3' },
+            { name: 'SD-XL-Alt', value: 'SD-XL-Alt' },
+            { name: 'Kandinsky', value: 'Kandinsky' }
           )
       )
       .addStringOption(option =>
@@ -1042,8 +1043,8 @@ async function changeImageModel(interaction) {
   try {
     // Define model names in an array
     const models = [
-      'SD-XL-Alt', 'SD-XL-Alt2', 'CosXL', 'Playground', 'DallE-XL', 'Anime', 'Stable-Cascade', 'Kandinsky', 'Juggernaut', 'Dall-e-3'
-    ];
+      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'DallE-XL', 'Juggernaut', 'CosXL', 'Tempest', 'Dall-e-3', 'SD-XL-Alt', 'Kandinsky'
+      ];
     
     const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
 
@@ -1084,7 +1085,7 @@ async function changeImageResolution(interaction) {
     const userId = interaction.user.id;
     const selectedModel = userPreferredImageModel[userId];
     let supportedResolution;
-    const supportedModels = ['Kandinsky', 'DallE-XL', 'Anime', 'Stable-Cascade', 'Playground', 'Juggernaut'];
+    const supportedModels = ['Kandinsky', 'DallE-XL', 'Anime', 'Stable-Cascade', 'Playground', 'Juggernaut', 'Tempest'];
     if (supportedModels.includes(selectedModel)) {
       supportedResolution = ['Square', 'Portrait', 'Wide'];
     } else {
@@ -1114,7 +1115,7 @@ async function changeImageResolution(interaction) {
     const actionRow = new ActionRowBuilder().addComponents(selectMenu);
 
     await interaction.reply({
-      content: '> **Supported Models:** `Kandinsky`, `Stable-Cascade`, `Playground`, `Juggernaut`, `Anime`, and `DallE-XL`\n\n> `Select Image Generation Resolution:`',
+      content: '> **Supported Models:** `Kandinsky`, `Stable-Cascade`, `Playground`, `Tempest`, `Juggernaut`, `Anime`, and `DallE-XL`\n\n> `Select Image Generation Resolution:`',
       components: [actionRow],
       ephemeral: true
     });
@@ -1155,16 +1156,17 @@ const speechMusicVideoModelFunctions = {
 };
 
 const imageModelFunctions = {
-  "SD-XL-Alt": generateWithSDXLAlt,
-  "SD-XL-Alt2": generateWithSDXLAlt2,
-  "Kandinsky": generateWithKandinsky,
-  "DallE-XL": generateWithDallEXL,
+  "SD-XL": generateWithSDXL,
+  "Playground": generateWithPlayground,
   "Anime": generateWithAnime,
   "Stable-Cascade": generateWithSC,
-  "Playground": generateWithPlayground,
-  "Dall-e-3": generateWithDalle3,
+  "DallE-XL": generateWithDallEXL,
   "Juggernaut": generateWithJuggernaut,
-  "CosXL": generateWithCosXL
+  "CosXL": generateWithCosXL,
+  "Tempest": generateWithTempest,
+  "Dall-e-3": generateWithDalle3,
+  "SD-XL-Alt": generateWithSDXLAlt,
+  "Kandinsky": generateWithKandinsky
 };
 
 async function handleImageSelectModel(interaction, model) {
@@ -2955,14 +2957,14 @@ function generateWithSDXLAlt(prompt) {
   });
 }
 
-function generateWithSDXLAlt2(prompt) {
+function generateWithSDXL(prompt) {
   return new Promise((resolve, reject) => {
     try {
       const url = "https://h1t-tcd.hf.space";
       const session_hash = generateSessionHash();
       const urlFirstRequest = `${url}/queue/join?`;
       const dataFirstRequest = {
-        "data": [prompt, 10, -1, 0.5],
+        "data": [prompt, 16, -1, 0.6],
         "event_data": null,
         "fn_index": 2,
         "trigger_id": 17,
@@ -3131,6 +3133,58 @@ function generateWithCosXL(prompt) {
           es.close();
           const outputUrl = data?.output?.data?.[0]?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
           resolve({ images: [{ url: outputUrl }], modelUsed: "CosXL" });
+        }
+      };
+
+      es.onerror = (error) => {
+        es.close();
+        reject(error);
+      };
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function generateWithTempest(prompt, resolution) {
+  let width, height;
+  if (resolution == 'Square') {
+    width = 1024;
+    height = 1024;
+  } else if (resolution == 'Wide') {
+    width = 1280;
+    height = 768;
+  } else if (resolution == 'Portrait') {
+    width = 768;
+    height = 1280;
+  }
+  return new Promise(async (resolve, reject) => {
+    try {
+      const sessionHash = generateSessionHash();
+      const randomDigit = generateRandomDigits();
+
+      // First request to join the queue
+      await fetch("https://ameerazam08-tempestv0-1-gpu-demo.hf.space/queue/join?", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: [prompt, nevPrompt, "", "", true, false, false, randomDigit, width, height, 3, 5, 60, 40 , true],
+          event_data: null,
+          fn_index: 7,
+          trigger_id: 5,
+          session_hash: sessionHash
+        }),
+      });
+
+      // Replace this part to use EventSource for listening to the event stream
+      const es = new EventSource(`https://ameerazam08-tempestv0-1-gpu-demo.hf.space/queue/data?session_hash=${sessionHash}`);
+
+      es.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.msg === 'process_completed') {
+          es.close();
+          const outputUrl = data?.output?.data?.[0]?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+          resolve({ images: [{ url: outputUrl }], modelUsed: "Tempest" });
         }
       };
 
