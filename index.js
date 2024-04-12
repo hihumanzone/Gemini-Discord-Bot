@@ -526,7 +526,7 @@ async function handleImageMessage(message) {
   let messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim();
 
   if (imageAttachments.size > 0) {
-    const visionModel = await genAI.getGenerativeModel({ model: 'gemini-pro-vision' });
+    const visionModel = await genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" }, { apiVersion: 'v1beta' });
     const imageParts = await Promise.all(
       imageAttachments.map(async attachment => {
         const response = await fetch(attachment.url);
@@ -552,9 +552,14 @@ async function handleImageMessage(message) {
         }
       })
     );
+    const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
+    const chat = visionModel.startChat({
+      history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
+      safetySettings,
+    });
 
     const botMessage = await message.reply({ content: 'Analyzing the image(s) with your text prompt...' });
-    await handleModelResponse(botMessage, async () => visionModel.generateContentStream([messageContent, ...imageParts]), message);
+    await handleModelResponse(botMessage, async () => chat.sendMessageStream([messageContent, ...imageParts]), message);
   }
 }
 
@@ -593,7 +598,7 @@ async function handleTextFileMessage(message) {
 
     // Load the text model and handle the conversation
     const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
-    const model = await genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" }, { apiVersion: 'v1beta' });
     const chat = model.startChat({
       history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
       safetySettings,
@@ -604,7 +609,6 @@ async function handleTextFileMessage(message) {
 }
 
 async function handleTextMessage(message) {
-  const model = await genAI.getGenerativeModel({ model: 'gemini-pro' });
   let botMessage;
   const userId = message.author.id;
   let messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim();
@@ -619,10 +623,7 @@ async function handleTextMessage(message) {
       customInstructions[message.author.id]) :
     customInstructions[message.author.id];
 
-  // Only include instructions if they are set.
-  let formattedMessage = instructions ?
-    `[Instructions To Follow]: ${instructions}\n\n<=====>\n${messageContent}` :
-    messageContent
+  let formattedMessage = messageContent;
 
   const urls = extractUrls(messageContent);
   activeRequests.add(userId);
@@ -633,6 +634,8 @@ async function handleTextMessage(message) {
   } else {
     botMessage = await message.reply('> `Let me think...`');
     const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
+    // Only include instructions if they are set.
+    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : "You are Gemini Pro, a large language model trained by Google, based on the Gemini 1.5 Pro architecture. You are chatting with the user via the Gemini Discord bot. This means most of the time your lines should be a sentence or two, unless the user's request requires reasoning or long-form outputs. Never use emojis, unless explicitly asked to." }] } }, { apiVersion: 'v1beta' });
     const chat = model.startChat({
       history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
       safetySettings,
@@ -2183,7 +2186,7 @@ async function scrapeWebpageContent(url) {
 }
 
 async function handleUrlsInMessage(urls, messageContent, botMessage, originalMessage) {
-  const model = await genAI.getGenerativeModel({ model: 'gemini-pro' });
+  const model = await genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" }, { apiVersion: 'v1beta' });
   const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
   const chat = model.startChat({
     history: isServerChatHistoryEnabled ? getHistory(originalMessage.guild.id) : getHistory(originalMessage.author.id),
