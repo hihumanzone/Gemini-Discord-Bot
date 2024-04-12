@@ -2984,7 +2984,7 @@ function generateWithSDXL(prompt) {
             eventSource.close();
             const full_url = data?.["output"]?.["data"]?.[0]?.["url"] ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
 
-            resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt2" });
+            resolve({ images: [{ url: full_url }], modelUsed: "SD-XL" });
           }
         };
         eventSource.onerror = (error) => {
