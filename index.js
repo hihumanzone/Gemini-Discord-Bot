@@ -164,11 +164,8 @@ client.once('ready', async () => {
             { name: 'Stable-Cascade', value: 'Stable-Cascade'},
             { name: 'DallE-XL', value: 'DallE-XL' },
             { name: 'Juggernaut', value: 'Juggernaut' },
-            { name: 'CosXL', value: 'CosXL' },
-            { name: 'Tempest', value: 'Tempest' },
             { name: 'Dall-e-3', value: 'Dall-e-3' },
-            { name: 'SD-XL-Alt', value: 'SD-XL-Alt' },
-            { name: 'Kandinsky', value: 'Kandinsky' }
+            { name: 'SD-XL-Alt', value: 'SD-XL-Alt' }
           )
       )
       .addStringOption(option =>
@@ -1046,7 +1043,7 @@ async function changeImageModel(interaction) {
   try {
     // Define model names in an array
     const models = [
-      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'DallE-XL', 'Juggernaut', 'CosXL', 'Tempest', 'Dall-e-3', 'SD-XL-Alt', 'Kandinsky'
+      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'DallE-XL', 'Juggernaut', 'Dall-e-3', 'SD-XL-Alt'
       ];
     
     const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
@@ -1088,7 +1085,7 @@ async function changeImageResolution(interaction) {
     const userId = interaction.user.id;
     const selectedModel = userPreferredImageModel[userId];
     let supportedResolution;
-    const supportedModels = ['Kandinsky', 'DallE-XL', 'Anime', 'Stable-Cascade', 'Playground', 'Juggernaut', 'Tempest'];
+    const supportedModels = ['DallE-XL', 'Anime', 'Stable-Cascade', 'Playground', 'Juggernaut'];
     if (supportedModels.includes(selectedModel)) {
       supportedResolution = ['Square', 'Portrait', 'Wide'];
     } else {
@@ -1118,7 +1115,7 @@ async function changeImageResolution(interaction) {
     const actionRow = new ActionRowBuilder().addComponents(selectMenu);
 
     await interaction.reply({
-      content: '> **Supported Models:** `Kandinsky`, `Stable-Cascade`, `Playground`, `Tempest`, `Juggernaut`, `Anime`, and `DallE-XL`\n\n> `Select Image Generation Resolution:`',
+      content: '> **Supported Models:** `Stable-Cascade`, `Playground`, `Juggernaut`, `Anime`, and `DallE-XL`\n\n> `Select Image Generation Resolution:`',
       components: [actionRow],
       ephemeral: true
     });
@@ -1165,11 +1162,8 @@ const imageModelFunctions = {
   "Stable-Cascade": generateWithSC,
   "DallE-XL": generateWithDallEXL,
   "Juggernaut": generateWithJuggernaut,
-  "CosXL": generateWithCosXL,
-  "Tempest": generateWithTempest,
   "Dall-e-3": generateWithDalle3,
-  "SD-XL-Alt": generateWithSDXLAlt,
-  "Kandinsky": generateWithKandinsky
+  "SD-XL-Alt": generateWithSDXLAlt
 };
 
 async function handleImageSelectModel(interaction, model) {
@@ -1270,10 +1264,10 @@ async function enhancePrompt(prompt) {
   });
 }
 
-async function enhancePrompt2(prompt) {
+async function enhancePrompt1(prompt) {
   try {
     const payload = {
-      model: "gemma-1.1-7b",
+      model: "zephyr-orpo-141b",
       stream: false,
       messages: [
         {
@@ -3003,60 +2997,6 @@ function generateWithSDXL(prompt) {
   });
 }
 
-function generateWithKandinsky(prompt, resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = '1024';
-    height = '1024';
-  } else if (resolution == 'Wide') {
-    width = '1280';
-    height = '768';
-  } else if (resolution == 'Portrait') {
-    width = '768';
-    height = '1280';
-  }
-  return new Promise((resolve, reject) => {
-    try {
-      const url = "https://ehristoforu-kandinsky-api.hf.space";
-      const session_hash = generateSessionHash();
-      const urlFirstRequest = `${url}/queue/join?`;
-      const dataFirstRequest = {
-        "data": [prompt, width, height],
-        "event_data": null,
-        "fn_index": 0,
-        "trigger_id": 4,
-        "session_hash": session_hash
-      };
-
-      axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-
-        const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
-        const eventSource = new EventSource(urlSecondRequest);
-
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-
-          if (data.msg === "process_completed") {
-            eventSource.close();
-            const full_url = data?.["output"]?.["data"]?.[0]?.[0]?.["image"]?.["url"];
-
-            resolve({ images: [{ url: full_url }], modelUsed: "Kandinsky" });
-          }
-        };
-        eventSource.onerror = (error) => {
-          eventSource.close();
-          reject(error);
-        };
-      }).catch(error => {
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
 function generateWithJuggernaut(prompt, resolution) {
   let size;
   if (resolution == 'Square') {
@@ -3073,7 +3013,7 @@ function generateWithJuggernaut(prompt, resolution) {
       const randomDigit = generateRandomDigits();
       const urlFirstRequest = `${url}/queue/join?`;
       const dataFirstRequest = {
-        "data": [prompt, nevPrompt, randomDigit, 1024, 1024, 3, 35, "DPM++ 2M SDE Karras", size, false, 0.55, 1.5],
+        "data": [prompt, nevPrompt, randomDigit, 1024, 1024, 4, 35, "DPM++ 2M SDE Karras", size, false, 0.55, 1.5],
         "event_data": null,
         "fn_index": 9,
         "trigger_id": 7,
@@ -3103,98 +3043,6 @@ function generateWithJuggernaut(prompt, resolution) {
       }).catch(error => {
         reject(error);
       });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithCosXL(prompt) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const sessionHash = generateSessionHash();
-
-      // First request to join the queue
-      await fetch("https://multimodalart-cosxl.hf.space/queue/join?", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: [prompt, nevPrompt, 3.5],
-          event_data: null,
-          fn_index: 2,
-          trigger_id: 6,
-          session_hash: sessionHash
-        }),
-      });
-
-      // Replace this part to use EventSource for listening to the event stream
-      const es = new EventSource(`https://multimodalart-cosxl.hf.space/queue/data?session_hash=${sessionHash}`);
-
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.url;
-          resolve({ images: [{ url: outputUrl }], modelUsed: "CosXL" });
-        }
-      };
-
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithTempest(prompt, resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = 1024;
-    height = 1024;
-  } else if (resolution == 'Wide') {
-    width = 1280;
-    height = 768;
-  } else if (resolution == 'Portrait') {
-    width = 768;
-    height = 1280;
-  }
-  return new Promise(async (resolve, reject) => {
-    try {
-      const sessionHash = generateSessionHash();
-      const randomDigit = generateRandomDigits();
-
-      // First request to join the queue
-      await fetch("https://ameerazam08-tempestv0-1-gpu-demo.hf.space/queue/join?", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: [prompt, nevPrompt, "", "", true, false, false, randomDigit, width, height, 3, 5, 60, 40 , true],
-          event_data: null,
-          fn_index: 7,
-          trigger_id: 5,
-          session_hash: sessionHash
-        }),
-      });
-
-      // Replace this part to use EventSource for listening to the event stream
-      const es = new EventSource(`https://ameerazam08-tempestv0-1-gpu-demo.hf.space/queue/data?session_hash=${sessionHash}`);
-
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.url;
-          resolve({ images: [{ url: outputUrl }], modelUsed: "Tempest" });
-        }
-      };
-
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
     } catch (error) {
       reject(error);
     }
