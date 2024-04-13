@@ -2540,7 +2540,7 @@ async function speechGen(prompt, language) {
               if (line.includes('"msg": "process_completed"')) {
                 try {
                   const dataDict = JSON.parse(line.slice(line.indexOf('{')));
-                  const fullUrl = dataDict?.output?.data?.[0]?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.mp3";
+                  const fullUrl = dataDict?.output?.data?.[0]?.url;
                   resolve(fullUrl);
                   break;
                 } catch (parseError) {
@@ -2731,7 +2731,7 @@ function generateWithSC(prompt,  resolution) {
         const data = JSON.parse(event.data);
         if (data.msg === 'process_completed') {
           es.close();
-          const outputUrl = data?.output?.data?.[0]?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+          const outputUrl = data?.output?.data?.[0]?.url;
           resolve({ images: [{ url: outputUrl }], modelUsed: "Stable-Cascade" });
         }
       };
@@ -2788,7 +2788,7 @@ async function generateWithPlayground(prompt, resolution) {
           });
         } else if (data.msg === "process_completed") {
           eventSource.close();
-          const imagePaths = data?.output?.data[0] ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+          const imagePaths = data?.output?.data[0];
           const firstImagePath = imagePaths.length > 0 ? imagePaths[0].image.path : null;
 
           if (firstImagePath) {
@@ -2848,7 +2848,7 @@ function generateWithDallEXL(prompt, resolution) {
         const data = JSON.parse(event.data);
         if (data.msg === 'process_completed') {
           es.close();
-          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
           resolve({ images: [{ url: outputUrl }], modelUsed: "DallE-XL" });
         }
       };
@@ -2901,7 +2901,7 @@ function generateWithAnime(prompt, resolution) {
         const data = JSON.parse(event.data);
         if (data.msg === 'process_completed') {
           es.close();
-          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
           resolve({ images: [{ url: outputUrl }], modelUsed: "Anime" });
         }
       };
@@ -2985,7 +2985,7 @@ function generateWithSDXL(prompt) {
 
           if (data.msg === "process_completed") {
             eventSource.close();
-            const full_url = data?.["output"]?.["data"]?.[0]?.["url"] ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+            const full_url = data?.["output"]?.["data"]?.[0]?.["url"];
 
             resolve({ images: [{ url: full_url }], modelUsed: "SD-XL" });
           }
@@ -3039,7 +3039,7 @@ function generateWithKandinsky(prompt, resolution) {
 
           if (data.msg === "process_completed") {
             eventSource.close();
-            const full_url = data?.["output"]?.["data"]?.[0]?.[0]?.["image"]?.["url"] ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+            const full_url = data?.["output"]?.["data"]?.[0]?.[0]?.["image"]?.["url"];
 
             resolve({ images: [{ url: full_url }], modelUsed: "Kandinsky" });
           }
@@ -3091,7 +3091,7 @@ function generateWithJuggernaut(prompt, resolution) {
 
           if (data.msg === "process_completed") {
             eventSource.close();
-            const full_url = data?.["output"]?.["data"]?.[0]?.[0]?.["image"]?.["url"] ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+            const full_url = data?.["output"]?.["data"]?.[0]?.[0]?.["image"]?.["url"];
 
             resolve({ images: [{ url: full_url }], modelUsed: "Juggernaut" });
           }
@@ -3134,7 +3134,7 @@ function generateWithCosXL(prompt) {
         const data = JSON.parse(event.data);
         if (data.msg === 'process_completed') {
           es.close();
-          const outputUrl = data?.output?.data?.[0]?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+          const outputUrl = data?.output?.data?.[0]?.url;
           resolve({ images: [{ url: outputUrl }], modelUsed: "CosXL" });
         }
       };
@@ -3186,7 +3186,7 @@ function generateWithTempest(prompt, resolution) {
         const data = JSON.parse(event.data);
         if (data.msg === 'process_completed') {
           es.close();
-          const outputUrl = data?.output?.data?.[0]?.url ?? "https://raw.githubusercontent.com/hihumanzone/Gemini-Discord-Bot/main/error.png";
+          const outputUrl = data?.output?.data?.[0]?.url;
           resolve({ images: [{ url: outputUrl }], modelUsed: "Tempest" });
         }
       };
