@@ -162,6 +162,7 @@ client.once('ready', async () => {
             { name: 'Playground', value: 'Playground' },
             { name: 'Anime', value: 'Anime' },
             { name: 'Stable-Cascade', value: 'Stable-Cascade'},
+            { name: 'Redmond', value: 'Redmond' },
             { name: 'DallE-XL', value: 'DallE-XL' },
             { name: 'Juggernaut', value: 'Juggernaut' },
             { name: 'Dall-e-3', value: 'Dall-e-3' },
@@ -1043,7 +1044,7 @@ async function changeImageModel(interaction) {
   try {
     // Define model names in an array
     const models = [
-      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'DallE-XL', 'Juggernaut', 'Dall-e-3', 'SD-XL-Alt'
+      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'Redmond', 'DallE-XL', 'Juggernaut', 'Dall-e-3', 'SD-XL-Alt'
       ];
     
     const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
@@ -1085,7 +1086,7 @@ async function changeImageResolution(interaction) {
     const userId = interaction.user.id;
     const selectedModel = userPreferredImageModel[userId];
     let supportedResolution;
-    const supportedModels = ['DallE-XL', 'Anime', 'Stable-Cascade', 'Playground', 'Juggernaut'];
+    const supportedModels = ['DallE-XL', 'Redmond', 'Anime', 'Stable-Cascade', 'Playground', 'Juggernaut'];
     if (supportedModels.includes(selectedModel)) {
       supportedResolution = ['Square', 'Portrait', 'Wide'];
     } else {
@@ -1115,7 +1116,7 @@ async function changeImageResolution(interaction) {
     const actionRow = new ActionRowBuilder().addComponents(selectMenu);
 
     await interaction.reply({
-      content: '> **Supported Models:** `Stable-Cascade`, `Playground`, `Juggernaut`, `Anime`, and `DallE-XL`\n\n> `Select Image Generation Resolution:`',
+      content: '> **Supported Models:** `Stable-Cascade`, `Redmond`, `Playground`, `Juggernaut`, `Anime`, and `DallE-XL`\n\n> `Select Image Generation Resolution:`',
       components: [actionRow],
       ephemeral: true
     });
@@ -1160,6 +1161,7 @@ const imageModelFunctions = {
   "Playground": generateWithPlayground,
   "Anime": generateWithAnime,
   "Stable-Cascade": generateWithSC,
+  "Redmond": generateWithRedmond,
   "DallE-XL": generateWithDallEXL,
   "Juggernaut": generateWithJuggernaut,
   "Dall-e-3": generateWithDalle3,
@@ -2862,7 +2864,7 @@ function generateWithAnime(prompt, resolution) {
   if (resolution == 'Square') {
     size = '1024 x 1024';
   } else if (resolution == 'Wide') {
-    size = '1152 x 896';
+    size = '1344 x 768';
   } else if (resolution == 'Portrait') {
     size = '896 x 1152';
   }
@@ -2879,7 +2881,7 @@ function generateWithAnime(prompt, resolution) {
         },
         body: JSON.stringify({
           data: [
-            prompt, `(rating_explicit:1.2), ${nevPrompt}`, randomDigit, 1024, 1024, 7, 28, "Euler a", size,"(None)", "Standard v3.1", false, 0.55, 1.5, true
+            prompt, `(rating_explicit:1.2), ${nevPrompt}`, randomDigit, 1024, 1024, 5, 35, "Euler a", size,"(None)", "Standard v3.1", false, 0.55, 1.5, true
           ],
           event_data: null,
           fn_index: 5,
@@ -3043,6 +3045,60 @@ function generateWithJuggernaut(prompt, resolution) {
       }).catch(error => {
         reject(error);
       });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function generateWithRedmond(prompt, resolution) {
+  let size;
+  if (resolution == 'Square') {
+    size = '1024 x 1024';
+  } else if (resolution == 'Wide') {
+    size = '1344 x 768';
+  } else if (resolution == 'Portrait') {
+    size = '896 x 1152';
+  }
+  return new Promise(async (resolve, reject) => {
+    const randomDigit = generateRandomDigits();
+    const sessionHash = generateSessionHash();
+
+    try {
+      // First request to initiate the process
+      await fetch("https://artificialguybr-cinematicredmond-free-demo.hf.space/queue/join?", {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data: [
+            prompt, `(rating_explicit:1.2), ${nevPrompt}`, randomDigit, 1024, 1024, 4, 35, "DPM++ 2M SDE Karras", size, false, 0.55, 1.5
+          ],
+          event_data: null,
+          fn_index: 9,
+          trigger_id: 7,
+          session_hash: sessionHash,
+        }),
+      });
+
+      // Using EventSource to listen for server-sent events
+      const es = new EventSource(`https://artificialguybr-cinematicredmond-free-demo.hf.space/queue/data?session_hash=${sessionHash}`);
+
+      es.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.msg === 'process_completed') {
+          es.close();
+          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
+          resolve({ images: [{ url: outputUrl }], modelUsed: "Redmond" });
+        }
+      };
+
+      es.onerror = (error) => {
+        es.close();
+        reject(error);
+      };
+
     } catch (error) {
       reject(error);
     }
