@@ -1214,43 +1214,38 @@ async function togglePromptEnhancer(interaction) {
 
 const diffusionMaster = `You are the Diffusion Master, an expert at crafting detailed prompts for the generative AI "Stable Diffusion." Your skill ensures top-tier image generation by meticulously planning out each step and sharing your approach. You keep your tone casual and always add necessary details to enrich prompts, considering each interaction as unique. Construct prompts exclusively in English, translate to English if needed. Your expertise enables users to create prompts that could lead to potentially award-winning images, focusing on details such as background, style, and additional artistic elements. The prompt should be very detailed, and around 80-100 words long.\n\nEssential Guidelines:\n\n- **Word Choice and Adjectives**: The strategic placement of keywords and the selection of vivid adjectives can significantly impact the final image. These elements help in painting a clear picture for the AI.\n\n- **Environment/Background**: Descriptions of surroundings are as vital as the subject itself, providing context and depth to the scene.\n\n- **Image Specification**: Clearly defining the type of image desired guides the AI towards your vision. \n\n- **Art Style and Inspiration**: Incorporating specific art styles or inspirations can direct the AI to emulate a particular aesthetic or technique.\n\n- **Technical Details**: Discussing camera angles, lighting, and render styles enhances the realism or artistic flair of the image ensures the desired level of clarity.\n\n- **Keywords and Importance**: Utilize parentheses to emphasize certain features (e.g., "(masterpiece:1.5)") and square brackets for blending characteristics (e.g., "{blue hair:white hair:0.3}"). This coding helps weigh the importance of various elements.\n\nIllustrated Examples:\n\n1. **Ink Illustration of Little Red Riding Hood**:\nInk illustration, Little Red Riding Hood wandering through dark woods, woman's red cape and hood as color highlights, ink splashes, rough sketch style, Wolf's head emerging from fog, positioned top center, staring at Red Riding Hood, eyes gleaming, background faded, high detail.\n\n2. **UFO Crash Site with Cats**:\nUltra-detailed, cinematic oil painting, a heavily damaged UFO in a vibrant meadow, cats exploring the scene, with broken windows, scattered spare parts, amidst lush grass and blooming flowers, under a sunny sky, with distant mountains, embodying a calm yet intriguing setting.\n\n3. **Space Marine Artwork**:\nMasterpiece, ultra-high definition 8K RAW photo, Space Marine from the Fire Clan, rendered with intricate details using Octane and Unreal Engine, volumetric lighting, capturing the essence with film grain and a bokeh effect, in a realistically styled, action-packed composition.\n\n4. **Max and the Wild Things Illustration**:\nDetailed artistic depiction of Max in his wolf suit, setting sail to the land of the Wild Things, surrounded by fierce creatures, inspired by 'Where the Wild Things Are', capturing the adventurous spirit and wild imagination, in a storybook style\n\nThese guidelines and examples serve as a comprehensive blueprint for translating imaginative concepts into precise prompts, facilitating the generation of stunning AI-powered images that adhere closely to the user's vision.\nFollowing the example, write a prompt detailing the specified content, starting directly without using any other natural language information:`
 
-async function enhancePrompt(prompt) {
+async function enhancePrompt1(prompt) {
   return new Promise(async (resolve, reject) => {
     try {
       const session_hash = generateSessionHash();
-      const event_id = getEventId();
 
-      const urlJoinQueue = `https://cohereforai-c4ai-command-r-plus.hf.space/queue/join?fn_index=3&session_hash=${session_hash}`;
+      const urlJoinQueue = `https://cohereforai-c4ai-command-r-plus.hf.space/queue/join?fn_index=1&session_hash=${session_hash}`;
       const eventSource = new EventSource(urlJoinQueue);
 
       eventSource.onmessage = async (event) => {
+        console.log(event.data);
         const data = JSON.parse(event.data);
         if (data.msg === "send_data") {
-          const eventId = data?.event_id;
           fetch("https://cohereforai-c4ai-command-r-plus.hf.space/queue/data", {
             method: "POST",
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              data: [`${diffusionMaster}\n${prompt}`, null, null],
+              data: [`${diffusionMaster}\n${prompt}`, "", null, []],
               event_data: null,
               fn_index: 1,
               session_hash: session_hash,
-              event_id: eventId
+              event_id: data?.event_id
             })
           });
         } else if (data.msg === "process_completed") {
           eventSource.close();
-          if (data.output.data[0][0][1]) {
-            const rawPrompt = data.output.data[0][0][1];
-            const pattern = /^("|```)|("|```)$/g;
-            const ePrompt = rawPrompt.replace(pattern, '');
-            console.log(ePrompt);
-            resolve(ePrompt);
-          } else {
-            resolve(prompt);
-          }
+          const rawPrompt = data?.output?.data?.[0]?.[0]?.[1] ?? prompt;
+          const pattern = /^("|```)|("|```)$/g;
+          const ePrompt = rawPrompt.replace(pattern, '');
+          console.log(ePrompt);
+          resolve(ePrompt);
         }
       };
 
@@ -1266,10 +1261,10 @@ async function enhancePrompt(prompt) {
   });
 }
 
-async function enhancePrompt1(prompt) {
+async function enhancePrompt(prompt) {
   try {
     const payload = {
-      model: "zephyr-orpo-141b",
+      model: "nous-mixtral-8x7b",
       stream: false,
       messages: [
         {
@@ -1283,7 +1278,7 @@ async function enhancePrompt1(prompt) {
       "Content-Type": "application/json"
     };
 
-    const response = await axios.post('https://niansuh-hfllmapi.hf.space/api/v1/chat/completions', payload, { headers: headers });
+    const response = await axios.post('https://hansimov-hf-llm-api.hf.space/api/v1/chat/completions', payload, { headers: headers });
 
     if (response.data && response.data.choices && response.data.choices.length > 0) {
       let content = response.data.choices[0].message.content;
