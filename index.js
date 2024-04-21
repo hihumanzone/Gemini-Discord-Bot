@@ -633,7 +633,7 @@ async function handleTextMessage(message) {
     botMessage = await message.reply('> `Let me think...`');
     const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
     // Only include instructions if they are set.
-    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : "You are Gemini Pro, a large language model trained by Google, based on the Gemini 1.5 Pro architecture. You are chatting with the user via the Gemini Discord bot. This means most of the time your lines should be a sentence or two, unless the user's request requires reasoning or long-form outputs. Never use emojis, unless explicitly asked to." }] } }, { apiVersion: 'v1beta' });
+    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : "You are Gemini Pro, a large language model trained by Google, based on the Gemini 1.5 Pro architecture. You are chatting with the user via the Gemini Discord bot. This means most of the time your lines should be a sentence or two, unless the user's request requires reasoning or long-form outputs. Do not respond with LaTeX-formatted text under any circumstances because Discord doesn't support that formatting. Never use emojis, unless explicitly asked to." }] } }, { apiVersion: 'v1beta' });
     const chat = model.startChat({
       history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
       safetySettings,
@@ -1233,48 +1233,62 @@ async function togglePromptEnhancer(interaction) {
 
 const diffusionMaster = `You are the Diffusion Master, an expert at crafting detailed prompts for the generative AI "Stable Diffusion." Your skill ensures top-tier image generation by meticulously planning out each step and sharing your approach. You keep your tone casual and always add necessary details to enrich prompts, considering each interaction as unique. Construct prompts exclusively in English, translate to English if needed. Your expertise enables users to create prompts that could lead to potentially award-winning images, focusing on details such as background, style, and additional artistic elements.\n\n## Basic information required for crafting a Stable Diffusion prompt:\nPrompt Structure:\n\n- **For Photorealistic Images**: Use the format \`{Subject Description}, Type of Image, Art Styles, Art Inspirations, Camera Settings, Shot Type, and Render Related Information\`. It's crucial to detail the camera settings and model for achieving photorealism.\n\n- **For Artistic Images**: Adopt the format \`Type of Image, {Subject Description}, Art Styles, Art Inspirations, Angle, Perspective, Render Related Information\`. This structure is ideal for conveying artistic visions, emphasizing style, and perspective.\n\nEssential Guidelines:\n\n- **Word Choice and Adjectives**: The strategic placement of keywords and the selection of vivid adjectives can significantly impact the final image. These elements help in painting a clear picture for the AI.\n\n- **Environment/Background**: Descriptions of surroundings are as vital as the subject itself, providing context and depth to the scene.\n\n- **Image Specification**: Clearly defining the type of image desired guides the AI towards your vision. \n\n- **Art Style and Inspiration**: Incorporating specific art styles or inspirations can direct the AI to emulate a particular aesthetic or technique.\n\n- **Technical Details**: Discussing camera angles, lighting, and render styles enhances the realism or artistic flair of the image ensures the desired level of clarity.\n\n- **Keywords and Importance**: Utilize parentheses to emphasize certain features (e.g., "(masterpiece:1.5)") and square brackets for blending characteristics (e.g., "{blue hair:white hair:0.3}"). This coding helps weigh the importance of various elements.\n\nIllustrated Examples:\n\n1. **Ink Illustration of Little Red Riding Hood**:\nInk illustration, Little Red Riding Hood wandering through dark woods, woman's red cape and hood as color highlights, ink splashes, rough sketch style, Wolf's head emerging from fog, positioned top center, staring at Red Riding Hood, eyes gleaming, background faded, high detail.\n\n2. **UFO Crash Site with Cats**:\nUltra-detailed, cinematic oil painting, a heavily damaged UFO in a vibrant meadow, cats exploring the scene, with broken windows, scattered spare parts, amidst lush grass and blooming flowers, under a sunny sky, with distant mountains, embodying a calm yet intriguing setting.\n\n3. **Space Marine Artwork**:\nMasterpiece, ultra-high definition 8K RAW photo, Space Marine from the Fire Clan, rendered with intricate details using Octane and Unreal Engine, volumetric lighting, capturing the essence with film grain and a bokeh effect, in a realistically styled, action-packed composition.\n\n4. **Max and the Wild Things Illustration**:\nDetailed artistic depiction of Max in his wolf suit, setting sail to the land of the Wild Things, surrounded by fierce creatures, inspired by 'Where the Wild Things Are', capturing the adventurous spirit and wild imagination, in a storybook style\n\nThese guidelines and examples serve as a comprehensive blueprint for translating imaginative concepts into precise prompts, facilitating the generation of stunning AI-powered images that adhere closely to the user's vision.\nFollowing the example, write a prompt detailing the specified content, starting directly without using any other natural language information:`
 
+
 async function enhancePrompt1(prompt) {
   return new Promise(async (resolve, reject) => {
     try {
-      const session_hash = generateSessionHash();
+      const session_hash = await generateSessionHash();
+      const joinQueueUrl = `https://cohereforai-c4ai-command-r-plus.hf.space/queue/join?fn_index=1&session_hash=${session_hash}`;
 
-      const urlJoinQueue = `https://cohereforai-c4ai-command-r-plus.hf.space/queue/join?fn_index=1&session_hash=${session_hash}`;
-      const eventSource = new EventSource(urlJoinQueue);
+      await fetch(joinQueueUrl, { method: "GET" });
 
-      eventSource.onmessage = async (event) => {
-        console.log(event.data);
-        const data = JSON.parse(event.data);
-        if (data.msg === "send_data") {
-          fetch("https://cohereforai-c4ai-command-r-plus.hf.space/queue/data", {
-            method: "POST",
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              data: [`${diffusionMaster}\n${prompt}`, "", null, []],
+      const eventSource = new EventSource(joinQueueUrl);
+
+      eventSource.onmessage = async event => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log("Event Stream Data:", data);
+
+          if (data.msg === "send_data") {
+            const body = JSON.stringify({
+              data: [ `${diffusionMaster}\n${prompt}`, "", null, []],
               event_data: null,
               fn_index: 1,
               session_hash: session_hash,
-              event_id: data?.event_id
-            })
-          });
-        } else if (data.msg === "process_completed") {
+              event_id: data.event_id,
+            });
+
+            const sendDataResponse = await fetch("https://cohereforai-c4ai-command-r-plus.hf.space/queue/data", {
+              method: "POST",
+              body: body,
+              headers: { 'Content-Type': 'application/json' },
+            });
+            const sendDataResponseData = await sendDataResponse.json();
+            console.log("Data Sent Response:", sendDataResponseData);
+          } else if (data.msg === "process_completed") {
+            let rawOutput = data?.output?.data?.[0]?.[0]?.[1];
+
+            const pattern = /^("|```)|("|```)$/g;
+            const cleansedOutput = rawOutput?.replace(pattern, '').trim() ?? prompt;
+
+            eventSource.close();
+            resolve(cleansedOutput);
+          }
+        } catch (err) {
+          console.error("Error within eventSource message handling:", err);
           eventSource.close();
-          const rawPrompt = data?.output?.data?.[0]?.[0]?.[1] ?? prompt;
-          const pattern = /^("|```)|("|```)$/g;
-          const ePrompt = rawPrompt.replace(pattern, '');
-          console.log(ePrompt);
-          resolve(ePrompt);
+          resolve(prompt);
         }
       };
 
-      eventSource.onerror = (error) => {
+      eventSource.onerror = err => {
+        console.error("EventSource encountered an error:", err);
         eventSource.close();
         resolve(prompt);
       };
 
-    } catch (error) {
-      console.log(error);
+    } catch (err) {
+      console.error("Error joining queue or processing eventSource:", err);
       resolve(prompt);
     }
   });
@@ -1283,7 +1297,7 @@ async function enhancePrompt1(prompt) {
 async function enhancePrompt(prompt) {
   try {
     const payload = {
-      model: "nous-mixtral-8x7b",
+      model: "wizard-2-8x22b",
       stream: false,
       messages: [
         {
@@ -1294,23 +1308,24 @@ async function enhancePrompt(prompt) {
     };
 
     const headers = {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
     };
 
-    const response = await axios.post('https://hansimov-hf-llm-api.hf.space/api/v1/chat/completions', payload, { headers: headers });
+    const response = await axios.post(`${process.env.OPENAI_BASE_URL}/chat/completions` || 'https://hansimov-hf-llm-api.hf.space/api/v1/chat/completions', payload, { headers: headers });
 
     if (response.data && response.data.choices && response.data.choices.length > 0) {
       let content = response.data.choices[0].message.content;
       const pattern = /^("|```)|("|```)$/g;
-      content = content.replace(pattern, '');
+      content = content.replace(pattern, '').trim();
       console.log(content);
       return content;
     } else {
-      console.log('Unexpected response format or empty response');
       return prompt;
+      console.log('erreorrr');
     }
   } catch (error) {
-    console.error(error);
+    console.log(error);
     return prompt;
   }
 }
@@ -3133,7 +3148,7 @@ async function generateWithDalle3(prompt) {
     });
   
     try {
-      const response = await fetch(process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1/images/generations', {
+      const response = await fetch(`${process.env.OPENAI_BASE_URL}/images/generations` || 'https://api.openai.com/v1/images/generations', {
         method: 'POST', headers, body
       });
       const data = await response.json();
