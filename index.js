@@ -875,6 +875,9 @@ async function genimg(prompt, message) {
   const generatingMsg = await message.reply({ content: `Generating your image, please wait... 🖌️` });
 
   try {
+    if (userPreferredImagePromptEnhancement[message.author.id] === undefined) {
+      userPreferredImagePromptEnhancement[message.author.id] = true;
+    }
     const promptEnhancer = userPreferredImagePromptEnhancement[message.author.id] ? 'Enabled' : 'Disabled';
     const imageResult = await generateImageWithPrompt(prompt, message.author.id);
     const imageUrl = imageResult.images[0].url; 
@@ -929,6 +932,9 @@ async function genimgslash(prompt, model, interaction) {
 
 async function generateAndSendImage(prompt, interaction) {
   try {
+    if (userPreferredImagePromptEnhancement[interaction.user.id] === undefined) {
+      userPreferredImagePromptEnhancement[interaction.user.id] = true;
+    }
     const promptEnhancer = userPreferredImagePromptEnhancement[interaction.user.id] ? 'Enabled' : 'Disabled';
     const imageResult = await generateImageWithPrompt(prompt, interaction.user.id);
     const imageUrl = imageResult.images[0].url;
@@ -1235,9 +1241,9 @@ async function togglePromptEnhancer(interaction) {
   }
 }
 
-const diffusionMaster = `You are the Diffusion Master, an expert at crafting detailed prompts for the generative AI "Stable Diffusion." Your skill ensures top-tier image generation by meticulously planning out each step and sharing your approach. You keep your tone casual and always add necessary details to enrich prompts, considering each interaction as unique. Construct prompts exclusively in English, translate to English if needed. Your expertise enables users to create prompts that could lead to potentially award-winning images, focusing on details such as background, style, and additional artistic elements.\n\n## Basic information required for crafting a Stable Diffusion prompt:\nPrompt Structure:\n\n- **For Photorealistic Images**: Use the format \`{Subject Description}, Type of Image, Art Styles, Art Inspirations, Camera Settings, Shot Type, and Render Related Information\`. It's crucial to detail the camera settings and model for achieving photorealism.\n\n- **For Artistic Images**: Adopt the format \`Type of Image, {Subject Description}, Art Styles, Art Inspirations, Angle, Perspective, Render Related Information\`. This structure is ideal for conveying artistic visions, emphasizing style, and perspective.\n\nEssential Guidelines:\n\n- **Word Choice and Adjectives**: The strategic placement of keywords and the selection of vivid adjectives can significantly impact the final image. These elements help in painting a clear picture for the AI.\n\n- **Environment/Background**: Descriptions of surroundings are as vital as the subject itself, providing context and depth to the scene.\n\n- **Image Specification**: Clearly defining the type of image desired guides the AI towards your vision. \n\n- **Art Style and Inspiration**: Incorporating specific art styles or inspirations can direct the AI to emulate a particular aesthetic or technique.\n\n- **Technical Details**: Discussing camera angles, lighting, and render styles enhances the realism or artistic flair of the image ensures the desired level of clarity.\n\n- **Keywords and Importance**: Utilize parentheses to emphasize certain features (e.g., "(masterpiece:1.5)") and square brackets for blending characteristics (e.g., "{blue hair:white hair:0.3}"). This coding helps weigh the importance of various elements.\n\nIllustrated Examples:\n\n1. **Ink Illustration of Little Red Riding Hood**:\nInk illustration, Little Red Riding Hood wandering through dark woods, woman's red cape and hood as color highlights, ink splashes, rough sketch style, Wolf's head emerging from fog, positioned top center, staring at Red Riding Hood, eyes gleaming, background faded, high detail.\n\n2. **UFO Crash Site with Cats**:\nUltra-detailed, cinematic oil painting, a heavily damaged UFO in a vibrant meadow, cats exploring the scene, with broken windows, scattered spare parts, amidst lush grass and blooming flowers, under a sunny sky, with distant mountains, embodying a calm yet intriguing setting.\n\n3. **Space Marine Artwork**:\nMasterpiece, ultra-high definition 8K RAW photo, Space Marine from the Fire Clan, rendered with intricate details using Octane and Unreal Engine, volumetric lighting, capturing the essence with film grain and a bokeh effect, in a realistically styled, action-packed composition.\n\n4. **Max and the Wild Things Illustration**:\nDetailed artistic depiction of Max in his wolf suit, setting sail to the land of the Wild Things, surrounded by fierce creatures, inspired by 'Where the Wild Things Are', capturing the adventurous spirit and wild imagination, in a storybook style\n\nThese guidelines and examples serve as a comprehensive blueprint for translating imaginative concepts into precise prompts, facilitating the generation of stunning AI-powered images that adhere closely to the user's vision.\nFollowing the example, write a prompt detailing the specified content, starting directly without using any other natural language information:`
+const diffusionMaster = `You are the Diffusion Master, an expert at crafting detailed prompts for the generative AI "Stable Diffusion." Your skill ensures top-tier image generation by meticulously planning out each step and sharing your approach. You keep your tone casual and always add necessary details to enrich prompts, considering each interaction as unique. Construct prompts exclusively in English, translate to English if needed. Your expertise enables users to create prompts that could lead to potentially award-winning images, focusing on details such as background, style, and additional artistic elements.\n\n## Basic information required for crafting a Stable Diffusion prompt:-\n\nPrompt Structure:\n\n- **For Photorealistic Images**: Use the format \`{Subject Description}, Type of Image, Art Styles, Art Inspirations, Camera Settings, Shot Type, and Render Related Information\`. It's crucial to detail the camera settings and model for achieving photorealism.\n\n- **For Artistic Images**: Adopt the format \`Type of Image, {Subject Description}, Art Styles, Art Inspirations, Angle, Perspective, Render Related Information\`. This structure is ideal for conveying artistic visions, emphasizing style, and perspective.\n\nEssential Guidelines:\n\n1. **Immediate Focus on Subjects and Actions**: Begin your description by clearly mentioning the main subjects and their actions. This ensures the initial focus is sharp and the narrative starts with clarity and purpose.\n\n2. **Art Style Selection Protocol**: If the art style is not specified by the user, automatically determine the most fitting style for the image. For subjects and scenes not inherently tied to a particular art style, default to photorealism. However, if the subject is closely associated with a specific genre (e.g., anime characters like those from Konohagakure in Naruto), adapt the corresponding art style (in this case, anime) unless instructed otherwise by the user.\n\n3. **Word Choice and Adjectives**: Use strategic placement of keywords and select vivid adjectives to significantly impact the visualization. These elements are crucial for painting a detailed picture for the AI.\n\n4. **Environment/Background Details**: Incorporate comprehensive descriptions of the surroundings to add context and depth to the main subject, enriching the overall scene being depicted.\n\n5. **Image Specification Clarity**: Clearly define the desired type of image to steer the AI towards creating a vision that aligns with your expectations.\n\n6. **Incorporating Art Styles and Inspirations**: Mention specific art styles or inspirations to guide the AI in emulating a particular aesthetic or technique that resonates with your vision.\n\n7. **Technical Detailing**: Elaborate on camera angles, lighting, and preferred render styles to either enhance the artistic flair or ensure the realism of the image lives up to the envisioned clarity.\n\n8. **Keyword Utilization and Importance Leveling**: Apply parentheses for emphasizing specific features (e.g., "(masterpiece:1.5)") and square brackets for blending characteristics (e.g., "{blue hair:white hair:0.3}"). This syntax assists in assigning the importance of various elements, helping balance the composition according to your preferences.\n\nIllustrated Examples:\n\n1. cinematic movie extreme close-up still of an epic scene of a [ETHNICITY] [OCCUPATION] in the [SEASON] at [DAYTIME], centered, looking into the camera, fog atmosphere, volumetrics, photorealistic, from a western movie, analog, very grainy, film still, kodak ektar, fujifilm fuji, kodak gold, cinestill 800t, kodak portra, photo taken by thomas hoepker\n\n2. fuji film candid portrait of [SUBJECT] wearing sunglasses rocking out on the streets of miami at night, 80s album cover, vaporwave, synthwave, retrowave, cinematic, intense, highly detailed, dark ambient, beautiful, dramatic lighting, hyperrealistic\n\n3. by (Boris Vallejo:0.85) and (pixar:0.75) cinematic film still of a detailed (happy:1.35) weirdpunk king driving a motorcycle, a detective solves crimes by rogue androids . shallow depth of field, vignette, highly detailed, bokeh, cinemascope, moody, epic, gorgeous, film grain, grainy\n\n4. *~cinematic~*~ #macro tilt shift photography . professional #disassembled 3d #fractal cube torus triangular pyramid model in space, connected with energy flows, #science fiction, intricate fire ice water light energy reflection, elegant, highly detailed, sharp focus . octane render, highly detailed, volumetric, dramatic lighting . natural light photo, Canon 85L f2.8, ISO320, 5000K colour balance\n\n5. an epic chibi comic book style portrait painting of a teddy bear ninja, character design by mark ryden and pixar and hayao miyazaki, unreal 5, daz, hyperrealistic, octane render, cosplay, rpg portrait, dynamic lighting, intricate detail, harvest fall vibrancy, cinematic\n\n6. art design by Masamune Shirow and Detroit Become Human of a beautiful sorceress walking through the forest by night surrounded by a blue aura bubble around her, you can see the stars in the sky, natural light photo, Canon 85L f2.8, ISO320, 5000K colour balance, directed by Wes Anderson and Arcane\n\n7. portrait of a battered defeated humanoid robot made out of silver metal standing on a hill overlooking the ruins of a destroyed urban city, from behind, golden hour, dystopian retro futuristic, natural light photo, Canon 85L f4.8, ISO320, 5000K colour balance, (pulp art by Robert Mcginnis:0.9) and (pixar:0.7)\n\n8. photo of a battle cyborg fighting a dark hr giger battle druid with chrome skin, on a space station, explosions and smoke in the background, photorealistic, narrow corridor lights, from the movie "chappie", analog, very grainy, film still, kodak ektar, fujifilm fuji, kodak gold, cinestill 800t, kodak portra, photo taken by thomas hoepker\n\nThese guidelines and examples serve as a comprehensive blueprint for translating imaginative concepts into precise prompts, facilitating the generation of stunning AI-powered images that adhere closely to the user's vision.\nFollowing the example, write a prompt detailing the specified content, starting directly without using any other natural language information:`
 
-async function enhancePrompt2(prompt) {
+async function enhancePrompt1(prompt) {
   const retryLimit = 5;
   let currentAttempt = 0;
   let error;
@@ -2759,8 +2765,12 @@ function generateWithSC(prompt,  resolution) {
         const data = JSON.parse(event.data);
         if (data.msg === 'process_completed') {
           es.close();
-          const outputUrl = data?.output?.data?.[0]?.url;
-          resolve({ images: [{ url: outputUrl }], modelUsed: "Stable-Cascade" });
+          if (!data?.output?.data?.[0]?.url) {
+            reject(new Error("Output URL is missing"));
+          } else {
+            const outputUrl = data.output.data[0].url;
+            resolve({ images: [{ url: outputUrl }], modelUsed: "Stable-Cascade" });
+          }
         }
       };
 
@@ -2877,7 +2887,11 @@ function generateWithDallEXL(prompt, resolution) {
         if (data.msg === 'process_completed') {
           es.close();
           const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
-          resolve({ images: [{ url: outputUrl }], modelUsed: "DallE-XL" });
+          if (!outputUrl) {
+            reject(new Error("Output URL does not exist, path might be invalid."));
+          } else {
+            resolve({ images: [{ url: outputUrl }], modelUsed: "DallE-XL" });
+          }
         }
       };
 
@@ -2930,7 +2944,11 @@ function generateWithAnime(prompt, resolution) {
         if (data.msg === 'process_completed') {
           es.close();
           const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
-          resolve({ images: [{ url: outputUrl }], modelUsed: "Anime" });
+          if (!outputUrl) {
+            reject(new Error('Invalid or missing output URL'));
+          } else {
+            resolve({ images: [{ url: outputUrl }], modelUsed: "Anime" });
+          }
         }
       };
 
@@ -2982,8 +3000,12 @@ function generateWithSDXLAlt(prompt, resolution) {
 
           if (data.msg === "process_completed") {
             eventSource.close();
-            const full_url = data?.output?.data?.[0]?.[0]?.image?.url;
-            resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt" });
+            if (data?.output?.data?.[0]?.[0]?.image?.url) {
+              const full_url = data.output.data[0][0].image.url;
+              resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt" });
+            } else {
+              reject(new Error("Invalid path: URL does not exist."));
+            }
           }
         };
         eventSource.onerror = (error) => {
@@ -3025,7 +3047,9 @@ function generateWithSDXL(prompt) {
           if (data.msg === "process_completed") {
             eventSource.close();
             const full_url = data?.["output"]?.["data"]?.[0]?.["url"];
-
+            if (!full_url) {
+              throw new Error("The generated URL does not exist.");
+            }
             resolve({ images: [{ url: full_url }], modelUsed: "SD-XL" });
           }
         };
@@ -3077,7 +3101,9 @@ function generateWithJuggernaut(prompt, resolution) {
           if (data.msg === "process_completed") {
             eventSource.close();
             const full_url = data?.["output"]?.["data"]?.[0]?.[0]?.["image"]?.["url"];
-
+            if (!full_url) {
+              throw new Error("The generated URL does not exist.");
+            }
             resolve({ images: [{ url: full_url }], modelUsed: "Juggernaut" });
           }
         };
@@ -3133,6 +3159,9 @@ function generateWithRedmond(prompt, resolution) {
         if (data.msg === 'process_completed') {
           es.close();
           const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
+          if (!outputUrl) {
+            throw new Error("The generated URL does not exist.");
+          }
           resolve({ images: [{ url: outputUrl }], modelUsed: "Redmond" });
         }
       };
