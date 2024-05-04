@@ -2320,10 +2320,14 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   const filter = (interaction) => interaction.customId === 'stopGenerating' && interaction.user.id === originalMessage.author.id;
   const collector = botMessage.createMessageComponentCollector({ filter, time: 300000 });
 
-  collector.on('collect', async (interaction) => {
-    await interaction.reply({ content: 'Response generation stopped by the user.', ephemeral: true });
-    stopGeneration = true;
-  });
+  try {
+    collector.on('collect', async (interaction) => {
+      try {
+        await interaction.reply({ content: 'Response generation stopped by the user.', ephemeral: true });
+      } catch(error) {}
+      stopGeneration = true;
+    });
+  } catch(error) {}
 
   const updateMessage = async () => {
     if (stopGeneration) {
