@@ -166,7 +166,8 @@ client.once('ready', async () => {
             { name: 'DallE-XL', value: 'DallE-XL' },
             { name: 'Juggernaut', value: 'Juggernaut' },
             //{ name: 'Dall-e-3', value: 'Dall-e-3' },
-            { name: 'SD-XL-Alt', value: 'SD-XL-Alt' }
+            { name: 'SD-XL-Alt', value: 'SD-XL-Alt' },
+            { name: 'PixArt_Sigma', value: 'PixArt_Sigma' }
           )
       )
       .addStringOption(option =>
@@ -1079,7 +1080,7 @@ async function changeImageModel(interaction) {
   try {
     // Define model names in an array
     const models = [
-      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'Redmond', 'DallE-XL', 'Juggernaut'/*, 'Dall-e-3'*/, 'SD-XL-Alt'
+      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'Redmond', 'DallE-XL', 'Juggernaut'/*, 'Dall-e-3'*/, 'SD-XL-Alt', 'PixArt_Sigma'
       ];
     
     const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
@@ -1121,7 +1122,7 @@ async function changeImageResolution(interaction) {
     const userId = interaction.user.id;
     const selectedModel = userPreferredImageModel[userId];
     let supportedResolution;
-    const supportedModels = ['DallE-XL', 'Redmond', 'Anime', 'Stable-Cascade', 'Playground', 'Juggernaut', 'SD-XL-Alt'];
+    const supportedModels = ['DallE-XL', 'Redmond', 'Anime', 'Stable-Cascade', 'Playground', 'Juggernaut', 'SD-XL-Alt', 'PixArt_Sigma'];
     if (supportedModels.includes(selectedModel)) {
       supportedResolution = ['Square', 'Portrait', 'Wide'];
     } else {
@@ -1151,7 +1152,7 @@ async function changeImageResolution(interaction) {
     const actionRow = new ActionRowBuilder().addComponents(selectMenu);
 
     await interaction.reply({
-      content: '> **Supported Models:** `Stable-Cascade`, `Redmond`, `SD-XL-Alt`, `Playground`, `Juggernaut`, `Anime`, and `DallE-XL`\n\n> `Select Image Generation Resolution:`',
+      content: '> **Supported Models:** `Stable-Cascade`, `Redmond`, `SD-XL-Alt`, `Playground`, `Juggernaut`, `Anime`, `PixArt_Sigma`, and `DallE-XL`\n\n> `Select Image Generation Resolution:`',
       components: [actionRow],
       ephemeral: true
     });
@@ -1186,21 +1187,22 @@ async function changeSpeechModel(interaction) {
 }
 
 const speechMusicVideoModelFunctions = {
-  "1": speechGen,
-  "MusicGen": musicGen,
-  "VideoGen": videoGen
+  '1': speechGen,
+  'MusicGen': musicGen,
+  'VideoGen': videoGen
 };
 
 const imageModelFunctions = {
-  "SD-XL": generateWithSDXL,
-  "Playground": generateWithPlayground,
-  "Anime": generateWithAnime,
-  "Stable-Cascade": generateWithSC,
-  "Redmond": generateWithRedmond,
-  "DallE-XL": generateWithDallEXL,
-  "Juggernaut": generateWithJuggernaut,
-  "Dall-e-3": generateWithDalle3,
-  "SD-XL-Alt": generateWithSDXLAlt
+  'SD-XL': generateWithSDXL,
+  'Playground': generateWithPlayground,
+  'Anime': generateWithAnime,
+  'Stable-Cascade': generateWithSC,
+  'Redmond': generateWithRedmond,
+  'DallE-XL': generateWithDallEXL,
+  'Juggernaut': generateWithJuggernaut,
+  'Dall-e-3': generateWithDalle3,
+  'SD-XL-Alt': generateWithSDXLAlt,
+  'PixArt_Sigma': generateWithPixArt_Sigma
 };
 
 async function handleImageSelectModel(interaction, model) {
@@ -3169,7 +3171,7 @@ async function generateWithJuggernaut(prompt, resolution) {
         },
         body: JSON.stringify({
           data: [
-              prompt, `(rating_explicit:1.2), ${nevPrompt}`, randomDigit, 1024, 1024, 4, 35, "DPM++ 2M SDE Karras", size, "(None)", "(None)", false, 0.55, 1.5, true
+              prompt, `(rating_explicit:1.2), ${nevPrompt}`, randomDigit, 1024, 1024, 7, 35, "Euler a", size, "(None)", "(None)", false, 0.55, 1.5, true
             ],
           event_data: null,
           fn_index: 4,
@@ -3199,6 +3201,64 @@ async function generateWithJuggernaut(prompt, resolution) {
         reject(error);
       };
   
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function generateWithPixArt_Sigma(prompt, resolution) {
+  let width, height;
+  if (resolution == 'Square') {
+    width = 1024;
+    height = 1024;
+  } else if (resolution == 'Wide') {
+    width = 1280;
+    height = 768;
+  } else if (resolution == 'Portrait') {
+    width = 768;
+    height = 1280;
+  }
+  return new Promise((resolve, reject) => {
+    try {
+      const url = "https://pixart-alpha-pixart-sigma.hf.space";
+      const randomDigit = generateRandomDigits();
+      const session_hash = generateSessionHash();
+      const urlFirstRequest = `${url}/queue/join?`;
+      const dataFirstRequest = {
+        "data": [prompt, nevPrompt, "(No style)", true, 1, randomDigit, width, height, "SA-Solver", 4.5, 3, 14, 35, true],
+        "event_data": null,
+        "fn_index": 3,
+        "trigger_id": 7,
+        "session_hash": session_hash
+      };
+
+      axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
+
+        const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
+        const eventSource = new EventSource(urlSecondRequest);
+
+        eventSource.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+
+          if (data.msg === "process_completed") {
+            eventSource.close();
+            if (data?.output?.data?.[0]?.[0]?.image?.url) {
+              const full_url = data.output.data[0][0].image.url;
+              resolve({ images: [{ url: full_url }], modelUsed: "PixArt_Sigma" });
+            } else {
+              reject(new Error("Invalid path: URL does not exist."));
+            }
+          }
+        };
+        eventSource.onerror = (error) => {
+          eventSource.close();
+          reject(error);
+        };
+      }).catch(error => {
+        reject(error);
+      });
     } catch (error) {
       reject(error);
     }
