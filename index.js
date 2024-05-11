@@ -2966,7 +2966,7 @@ function generateWithAnime(prompt, resolution) {
         },
         body: JSON.stringify({
           data: [
-            prompt, `(rating_explicit:1.2)`, randomDigit, 1024, 1024, 7, 35, "Euler a", size,"(None)", "Standard v3.1", false, 0.55, 1.5, true, false, null, 0.5
+            prompt, `(rating_explicit:1.2)`, randomDigit, 1024, 1024, 7, 35, "DPM++ SDE Karras", size,"(None)", "Standard v3.1", false, 0.55, 1.5, true, false, null, 0.5
           ],
           event_data: null,
           fn_index: 5,
