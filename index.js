@@ -1238,7 +1238,7 @@ async function handleSpeechSelectModel(interaction, model) {
 async function togglePromptEnhancer(interaction) {
   try {
     const userId = interaction.user.id;
-    if (userPreferredImagePromptEnhancement[userId] === undefined) {
+    if (!userPreferredImagePromptEnhancement[userId]) {
       userPreferredImagePromptEnhancement[userId] = true;
     }
     userPreferredImagePromptEnhancement[userId] = !userPreferredImagePromptEnhancement[userId];
@@ -1356,7 +1356,7 @@ async function generateImageWithPrompt(prompt, userId) {
     const selectedModel = userPreferredImageModel[userId] || defaultImgModel;
     const generateFunction = imageModelFunctions[selectedModel];
     const resolution = userPreferredImageResolution[userId] || 'Square';
-    if (userPreferredImagePromptEnhancement[userId] === undefined) {
+    if (!userPreferredImagePromptEnhancement[userId]) {
       userPreferredImagePromptEnhancement[userId] = true;
     }
     if (!generateFunction) {
@@ -1417,7 +1417,7 @@ async function generateVideoWithPrompt(prompt, userId) {
   try {
     const selectedModel = "VideoGen";
     const generateFunction = speechMusicVideoModelFunctions[selectedModel];
-    if (userPreferredImagePromptEnhancement[userId] === undefined) {
+    if (!userPreferredImagePromptEnhancement[userId]) {
       userPreferredImagePromptEnhancement[userId] = true;
     }
     if (!generateFunction) {
