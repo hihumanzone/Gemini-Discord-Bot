@@ -525,7 +525,7 @@ async function handleImageMessage(message) {
   let messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim();
 
   if (imageAttachments.size > 0) {
-    const visionModel = await genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" }, { apiVersion: 'v1beta' });
+    const visionModel = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }, { apiVersion: 'v1beta' });
     const imageParts = await Promise.all(
       imageAttachments.map(async attachment => {
         const response = await fetch(attachment.url);
@@ -597,7 +597,7 @@ async function handleTextFileMessage(message) {
 
     // Load the text model and handle the conversation
     const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
-    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" }, { apiVersion: 'v1beta' });
+    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }, { apiVersion: 'v1beta' });
     const chat = model.startChat({
       history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
       safetySettings,
@@ -634,7 +634,7 @@ async function handleTextMessage(message) {
     botMessage = await message.reply('> `Let me think...`');
     const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
     // Only include instructions if they are set.
-    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : "You are Gemini Pro, a large language model trained by Google, based on the Gemini 1.5 Pro architecture. You are chatting with the user via the Gemini Discord bot. This means most of the time your lines should be a sentence or two, unless the user's request requires reasoning or long-form outputs. Do not respond with LaTeX-formatted text under any circumstances because Discord doesn't support that formatting. Never use emojis, unless explicitly asked to." }] } }, { apiVersion: 'v1beta' });
+    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : "You are Gemini Flash, a large language model trained by Google, based on the Gemini 1.5 Pro architecture. You are chatting with the user via the Gemini Discord bot. This means most of the time your lines should be a sentence or two, unless the user's request requires reasoning or long-form outputs. Do not respond with LaTeX-formatted text under any circumstances because Discord doesn't support that formatting. Never use emojis, unless explicitly asked to." }] } }, { apiVersion: 'v1beta' });
     const chat = model.startChat({
       history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
       safetySettings,
@@ -2242,7 +2242,7 @@ async function scrapeWebpageContent(url) {
 }
 
 async function handleUrlsInMessage(urls, messageContent, botMessage, originalMessage) {
-  const model = await genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" }, { apiVersion: 'v1beta' });
+  const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }, { apiVersion: 'v1beta' });
   const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
   const chat = model.startChat({
     history: isServerChatHistoryEnabled ? getHistory(originalMessage.guild.id) : getHistory(originalMessage.author.id),
