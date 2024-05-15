@@ -138,6 +138,7 @@ const activities = [
     { name: 'You', type: ActivityType.Watching }
     // Add more activities as desired
 ];
+const defaultPersonality = "You are Gemini Flash, a large language model trained by Google, based on the Gemini 1.5 Flash architecture. You are chatting with the user via the Gemini Discord bot. This means most of the time your lines should be a sentence or two, unless the user's request requires reasoning or long-form outputs. Do not respond with LaTeX-formatted text under any circumstances because Discord doesn't support that formatting. Never use emojis, unless explicitly asked to.";
 
 // <==========>
 
@@ -634,7 +635,7 @@ async function handleTextMessage(message) {
     botMessage = await message.reply('> `Let me think...`');
     const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
     // Only include instructions if they are set.
-    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : "You are Gemini Flash, a large language model trained by Google, based on the Gemini 1.5 Pro architecture. You are chatting with the user via the Gemini Discord bot. This means most of the time your lines should be a sentence or two, unless the user's request requires reasoning or long-form outputs. Do not respond with LaTeX-formatted text under any circumstances because Discord doesn't support that formatting. Never use emojis, unless explicitly asked to." }] } }, { apiVersion: 'v1beta' });
+    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : defaultPersonality }] } }, { apiVersion: 'v1beta' });
     const chat = model.startChat({
       history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
       safetySettings,
