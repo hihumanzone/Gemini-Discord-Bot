@@ -1153,7 +1153,7 @@ async function changeImageResolution(interaction) {
     const actionRow = new ActionRowBuilder().addComponents(selectMenu);
 
     await interaction.reply({
-      content: '> **Supported Models:** `Stable-Cascade`, `Redmond`, `SD-XL-Alt`, `Playground`, `Juggernaut`, `Anime`, `PixArt_Sigma`, and `DallE-XL`\n\n> `Select Image Generation Resolution:`',
+      content: '> **Unsupported Models:** `SD-XL`\n\n> `Select Image Generation Resolution:`',
       components: [actionRow],
       ephemeral: true
     });
@@ -2856,7 +2856,7 @@ async function generateWithPlayground(prompt, resolution) {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              data: [prompt, nevPrompt, true, randomDigit, width, height, 3, true],
+              data: [prompt, "", false, randomDigit, width, height, 3, true],
               event_data: null,
               fn_index: 3,
               trigger_id: 6,
@@ -2866,7 +2866,7 @@ async function generateWithPlayground(prompt, resolution) {
           });
         } else if (data.msg === "process_completed") {
           eventSource.close();
-          const imagePaths = data?.output?.data[0];
+          const imagePaths = data?.output?.data?.[0];
           const firstImagePath = imagePaths.length > 0 ? imagePaths[0].image.path : null;
 
           if (firstImagePath) {
