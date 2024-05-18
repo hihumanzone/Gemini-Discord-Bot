@@ -155,9 +155,14 @@ client.once('ready', async () => {
       .setName('imagine')
       .setDescription('Generate an image based on a prompt using a selected model.')
       .addStringOption(option =>
+        option.setName('prompt')
+          .setDescription('The prompt to generate the image from.')
+          .setRequired(true)
+      )
+      .addStringOption(option =>
         option.setName('model')
           .setDescription('The image generation model to use.')
-          .setRequired(true)
+          .setRequired(false)
           .addChoices(
             { name: 'SD-XL', value: 'SD-XL' },
             { name: 'Playground', value: 'Playground' },
@@ -172,9 +177,14 @@ client.once('ready', async () => {
           )
       )
       .addStringOption(option =>
-        option.setName('prompt')
-          .setDescription('The prompt to generate the image from.')
-          .setRequired(true)
+        option.setName('resolution')
+          .setDescription('The resolution aspect ratio for the generated image.')
+          .setRequired(false)
+          .addChoices(
+            { name: 'Square', value: 'Square' },
+            { name: 'Wide', value: 'Wide' },
+            { name: 'Portrait', value: 'Portrait' }
+         )
       ),
     new SlashCommandBuilder()
       .setName('respondtoall')
@@ -652,8 +662,12 @@ async function handleTextMessage(message) {
 
 async function handleImagineCommand(interaction) {
   try {
-    const model = interaction.options.getString('model');
     const prompt = interaction.options.getString('prompt');
+    const model = interaction.options.getString('model');
+    const resolution = interaction.options.getString('resolution');
+    if (resolution) {
+      userPreferredImageResolution[interaction.user.id] = resolution;
+    }
     await genimgslash(prompt, model, interaction);
   } catch (error) {
     console.log(error.message);
@@ -918,9 +932,14 @@ async function genimg(prompt, message) {
   }
 }
 
-async function genimgslash(prompt, model, interaction) {
+async function genimgslash(prompt, modelI, interaction) {
+  let model = modelI;
+  if (model) {
+    userPreferredImageModel[interaction.user.id] = model;
+  } else {
+    model = userPreferredImageModel[interaction.user.id];
+  }
   const generatingMsg = await interaction.reply({ content: `Generating your image with ${model}, please wait... 🖌️` });
-  userPreferredImageModel[interaction.user.id] = model;
 
   try {
     await generateAndSendImage(prompt, interaction);
@@ -1340,7 +1359,6 @@ async function enhancePrompt(prompt, attempts = 3) {
       cleansedOutput = cleansedOutput.replace(pattern1, '').trim();
       const pattern2 = cleansedOutput.match(/```(.*?)```/s);
       cleansedOutput = pattern2 && pattern2[1] ? pattern2[1].trim() : cleansedOutput;
-      console.log(cleansedOutput);
       return cleansedOutput;
     } catch (error) {
       console.error(`Attempt ${attempt} failed:`, error);
