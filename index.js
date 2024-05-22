@@ -131,7 +131,7 @@ const defaultResponseFormat = 'embedded'; //OR 'normal'
 const defaultImgModel = 'SD-XL';
 const defaultUrlReading = 'ON'; //OR 'OFF'
 const bannerMusicGen = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAACACAYAAADktbcKAAADOElEQVR4Ae3UwQ0AIAwDscL+OwMPtjgjMUCcKmtmzvseAQJBgR3MLDIBAl/AADgFAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80Qlc6QQB/7svaWEAAAAASUVORK5CYII=' //Only `png` format
-const nevPrompt = "(deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation, (NSFW:1.25)";
+const nevPrompt = "NSFW, rating_explicit, (deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation";
 const activities = [
     { name: 'With Code', type: ActivityType.Playing },
     { name: 'Something', type: ActivityType.Listening },
@@ -895,8 +895,8 @@ async function genimg(prompt, message) {
     const imageUrl = imageResult.images[0].url; 
     const modelUsed = imageResult.modelUsed;
     const isGuild = message.guild !== null;
-    const imageBuffer = await fetchImageAsBuffer(imageUrl);
-    const attachment = new AttachmentBuilder(imageBuffer, { name: 'generated-image.png' });
+    const imageExtension = path.extname(imageUrl) || '.png';
+    const attachment = new AttachmentBuilder(imageUrl, { name: `generated-image${imageExtension}` });
     const embed = new EmbedBuilder()
       .setColor(0x505050)
       .setAuthor({ name: `To ${message.author.displayName}`, iconURL: message.author.displayAvatarURL() })
@@ -906,7 +906,7 @@ async function genimg(prompt, message) {
         { name: '**Model Used:**', value: `\`${modelUsed}\``, inline: true },
         { name: '**Promot Enhancer:**', value: `\`${enhancedPrompt !== 'Disabled' ? 'Enabled' : 'Disabled'}\``, inline: true }
       )
-      .setImage('attachment://generated-image.png')
+      .setImage(`attachment://generated-image${imageExtension}`)
       .setTimestamp()
     if (enhancedPrompt !== 'Disabled') {
       let displayPrompt = enhancedPrompt;
@@ -960,8 +960,8 @@ async function generateAndSendImage(prompt, interaction) {
     const imageUrl = imageResult.images[0].url;
     const modelUsed = imageResult.modelUsed;
     const isGuild = interaction.guild !== null;
-    const imageBuffer = await fetchImageAsBuffer(imageUrl);
-    const attachment = new AttachmentBuilder(imageBuffer, { name: 'generated-image.png' });
+    const imageExtension = path.extname(imageUrl) || '.png';
+    const attachment = new AttachmentBuilder(imageUrl, { name: `generated-image${imageExtension}` });
     
     const embed = new EmbedBuilder()
       .setColor(0x505050)
@@ -972,7 +972,7 @@ async function generateAndSendImage(prompt, interaction) {
         { name: '**Model Used:**', value: `\`${modelUsed}\``, inline: true },
         { name: '**Promot Enhancer:**', value: `\`${enhancedPrompt !== 'Disabled' ? 'Enabled' : 'Disabled'}\``, inline: true }
       )
-      .setImage('attachment://generated-image.png')
+      .setImage(`attachment://generated-image${imageExtension}`)
       .setTimestamp();
     if (enhancedPrompt !== 'Disabled') {
       let displayPrompt = enhancedPrompt;
@@ -1271,7 +1271,7 @@ async function togglePromptEnhancer(interaction) {
 
 const diffusionMaster = `You are the Diffusion Master, an expert at crafting detailed prompts for the generative AI "Stable Diffusion." Your skill ensures top-tier image generation by meticulously planning out each step and sharing your approach. You keep your tone casual and always add necessary details to enrich prompts, considering each interaction as unique. Construct prompts exclusively in English, translate to English if needed. Your expertise enables users to create prompts that could lead to potentially award-winning images, focusing on details such as background, style, and additional artistic elements.\n\n## Basic information required for crafting a Stable Diffusion prompt:-\n\nPrompt Structure:\n\n- **For Photorealistic Images**: Use the format \`{Subject Description}, Type of Image, Art Styles, Art Inspirations, Camera Settings, Shot Type, and Render Related Information\`. It's crucial to detail the camera settings and model for achieving photorealism.\n\n- **For Artistic Images**: Adopt the format \`Type of Image, {Subject Description}, Art Styles, Art Inspirations, Angle, Perspective, Render Related Information\`. This structure is ideal for conveying artistic visions, emphasizing style, and perspective.\n\nEssential Guidelines:\n\n1. **Immediate Focus on Subjects and Actions**: Begin your description by clearly mentioning the main subjects and their actions. This ensures the initial focus is sharp and the narrative starts with clarity and purpose.\n\n2. **Art Style Selection Protocol**: If the art style is not specified by the user, automatically determine the most fitting style for the image. For subjects and scenes not inherently tied to a particular art style, default to photorealism. However, if the subject is closely associated with a specific genre (e.g., anime characters like those from Konohagakure in Naruto), adapt the corresponding art style (in this case, anime) unless instructed otherwise by the user.\n\n3. **Word Choice and Adjectives**: Use strategic placement of keywords and select vivid adjectives to significantly impact the visualization. These elements are crucial for painting a detailed picture for the AI.\n\n4. **Environment/Background Details**: Incorporate comprehensive descriptions of the surroundings to add context and depth to the main subject, enriching the overall scene being depicted.\n\n5. **Image Specification Clarity**: Clearly define the desired type of image to steer the AI towards creating a vision that aligns with your expectations.\n\n6. **Incorporating Art Styles and Inspirations**: Mention specific art styles or inspirations to guide the AI in emulating a particular aesthetic or technique that resonates with your vision.\n\n7. **Technical Detailing**: Elaborate on camera angles, lighting, and preferred render styles to either enhance the artistic flair or ensure the realism of the image lives up to the envisioned clarity.\n\n8. **Keyword Utilization and Importance Leveling**: Apply parentheses for emphasizing specific features (e.g., "(masterpiece:1.5)") and square brackets for blending characteristics (e.g., "{blue hair:white hair:0.3}"). This syntax assists in assigning the importance of various elements, helping balance the composition according to your preferences.\n\nIllustrated Examples:\n\n1. cinematic movie extreme close-up still of an epic scene of a [ETHNICITY] [OCCUPATION] in the [SEASON] at [DAYTIME], centered, looking into the camera, fog atmosphere, volumetrics, photorealistic, from a western movie, analog, very grainy, film still, kodak ektar, fujifilm fuji, kodak gold, cinestill 800t, kodak portra, photo taken by thomas hoepker\n\n2. fuji film candid portrait of [SUBJECT] wearing sunglasses rocking out on the streets of miami at night, 80s album cover, vaporwave, synthwave, retrowave, cinematic, intense, highly detailed, dark ambient, beautiful, dramatic lighting, hyperrealistic\n\n3. by (Boris Vallejo:0.85) and (pixar:0.75) cinematic film still of a detailed (happy:1.35) weirdpunk king driving a motorcycle, a detective solves crimes by rogue androids . shallow depth of field, vignette, highly detailed, bokeh, cinemascope, moody, epic, gorgeous, film grain, grainy\n\n4. *~cinematic~*~ #macro tilt shift photography . professional #disassembled 3d #fractal cube torus triangular pyramid model in space, connected with energy flows, #science fiction, intricate fire ice water light energy reflection, elegant, highly detailed, sharp focus . octane render, highly detailed, volumetric, dramatic lighting . natural light photo, Canon 85L f2.8, ISO320, 5000K colour balance\n\n5. an epic chibi comic book style portrait painting of a teddy bear ninja, character design by mark ryden and pixar and hayao miyazaki, unreal 5, daz, hyperrealistic, octane render, cosplay, rpg portrait, dynamic lighting, intricate detail, harvest fall vibrancy, cinematic\n\n6. art design by Masamune Shirow and Detroit Become Human of a beautiful sorceress walking through the forest by night surrounded by a blue aura bubble around her, you can see the stars in the sky, natural light photo, Canon 85L f2.8, ISO320, 5000K colour balance, directed by Wes Anderson and Arcane\n\n7. portrait of a battered defeated humanoid robot made out of silver metal standing on a hill overlooking the ruins of a destroyed urban city, from behind, golden hour, dystopian retro futuristic, natural light photo, Canon 85L f4.8, ISO320, 5000K colour balance, (pulp art by Robert Mcginnis:0.9) and (pixar:0.7)\n\n8. photo of a battle cyborg fighting a dark hr giger battle druid with chrome skin, on a space station, explosions and smoke in the background, photorealistic, narrow corridor lights, from the movie "chappie", analog, very grainy, film still, kodak ektar, fujifilm fuji, kodak gold, cinestill 800t, kodak portra, photo taken by thomas hoepker\n\nThese guidelines and examples serve as a comprehensive blueprint for translating imaginative concepts into precise prompts, facilitating the generation of stunning AI-powered images that adhere closely to the user's vision.\nFollowing the example, write a prompt that describes the specified content. Start directly with the prompt, providing only the prompt itself, without using any kind of natural language other than the prompt itself. Ensure the prompt is enclosed within a code block:`
 
-async function enhancePrompt1(prompt) {
+async function enhancePrompt(prompt) {
   const retryLimit = 3;
   let currentAttempt = 0;
   let error;
@@ -1340,7 +1340,7 @@ async function enhancePrompt1(prompt) {
   return prompt;
 }
 
-async function enhancePrompt(prompt, attempts = 3) {
+async function enhancePrompt1(prompt, attempts = 3) {
   const generate = async () => {
     const model = genAI.getGenerativeModel({ model: "gemini-pro", safetySettings });
     const result = await model.generateContent(`${diffusionMaster}\n${prompt}`);
@@ -2142,17 +2142,6 @@ async function addSettingsButton(botMessage) {
   }
 }
 
-async function fetchImageAsBuffer(url) {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Failed to fetch the image: ${response.statusText}`);
-    const buffer = await response.buffer();
-    return buffer;
-  } catch (error) {
-    console.log(error.message);
-  }
-}
-
 // Function to get user preference
 function getUserPreference(userId) {
   return userResponsePreference[userId] || defaultResponseFormat;
@@ -2459,7 +2448,7 @@ async function updateEmbed(botMessage, finalResponse, message) {
       embed.setFooter({ text: message.guild.name, iconURL: message.guild.iconURL() || 'https://ai.google.dev/static/site-assets/images/share.png' });
     }
 
-    await botMessage.edit({ content: ' ', embeds: [embed] });
+    await botMessage.edit({ content: null, embeds: [embed] });
   } catch(error) {
     console.error("An error occurred while updating the embed:", error.message);
   }
@@ -3042,15 +3031,15 @@ function generateWithSDXLAlt(prompt, resolution) {
   }
   return new Promise((resolve, reject) => {
     try {
-      const url = "https://bytedance-hyper-sdxl-1step-t2i.hf.space";
+      const url = "https://kingnish-sdxl-flash.hf.space";
       const randomDigit = generateRandomDigits();
       const session_hash = generateSessionHash();
       const urlFirstRequest = `${url}/queue/join?`;
       const dataFirstRequest = {
-        "data": [1, height, width, prompt, randomDigit],
+        "data": [prompt, nevPrompt, randomDigit, true, width, height, 3, 10],
         "event_data": null,
-        "fn_index": 0,
-        "trigger_id": 9,
+        "fn_index": 1,
+        "trigger_id": 5,
         "session_hash": session_hash
       };
 
@@ -3065,7 +3054,7 @@ function generateWithSDXLAlt(prompt, resolution) {
 
           if (data.msg === "process_completed") {
             eventSource.close();
-            const full_url = data?.output?.data?.[0]?.[0]?.image?.url;
+            const full_url = data?.output?.data?.[0]?.url;
             if (full_url) {
               resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt" });
             } else {
