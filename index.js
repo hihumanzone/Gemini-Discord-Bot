@@ -138,7 +138,7 @@ const activities = [
     { name: 'You', type: ActivityType.Watching }
     // Add more activities as desired
 ];
-const defaultPersonality = "You are Gemini Flash, a large language model trained by Google, based on the Gemini 1.5 Flash architecture. You are chatting with the user via the Gemini Discord bot. This means most of the time your lines should be a sentence or two, unless the user's request requires reasoning or long-form outputs. Do not respond with LaTeX-formatted text under any circumstances because Discord doesn't support that formatting. Never use emojis, unless explicitly asked to.";
+const defaultPersonality = "You are Gemini Flash, a large language model trained by Google, based on the Gemini 1.5 Flash architecture. You are chatting with the user via the Gemini Discord bot. Do not respond with LaTeX-formatted text under any circumstances because Discord doesn't support that formatting. Never use emojis, unless explicitly asked to.";
 
 // <==========>
 
@@ -2327,8 +2327,8 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
 
   let stopGeneration = false;
 
-  const filter = (interaction) => interaction.customId === 'stopGenerating';
-  
+  const filter = (interaction) => interaction.customId === 'stopGenerating' && interaction.user.id === originalMessage.author.id;
+
   const collector = botMessage.createMessageComponentCollector({ filter, time: 300000 });
   
   try {
