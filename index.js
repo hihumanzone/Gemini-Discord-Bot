@@ -1192,7 +1192,7 @@ async function togglePromptEnhancer(interaction) {
 
 const diffusionMaster = require('./diffusionMasterPrompt');
 
-async function enhancePrompt(prompt) {
+async function enhancePrompt1(prompt) {
   const retryLimit = 3;
   let currentAttempt = 0;
   let error;
@@ -1261,7 +1261,7 @@ async function enhancePrompt(prompt) {
   return prompt;
 }
 
-async function enhancePrompt1(prompt, attempts = 3) {
+async function enhancePrompt(prompt, attempts = 3) {
   const generate = async () => {
     const model = genAI.getGenerativeModel({ model: "gemini-pro", safetySettings });
     const result = await model.generateContent(`${diffusionMaster}\n${prompt}`);
