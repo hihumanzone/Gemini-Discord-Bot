@@ -1,5 +1,3 @@
-// <=====[Main]=====>
-
 require('dotenv').config();
 const fetch = require('node-fetch');
 const {
@@ -23,18 +21,21 @@ const {
   REST,
   Routes,
 } = require('discord.js');
-const { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } = require('@google/generative-ai');
+const {
+  GoogleGenerativeAI,
+  HarmBlockThreshold,
+  HarmCategory
+} = require('@google/generative-ai');
 const { writeFile, unlink } = require('fs/promises');
 const fs = require('fs');
-const WebSocket = require('ws');
 const path = require('path');
 const sharp = require('sharp');
 const pdf = require('pdf-parse');
-const crypto = require('crypto');
 const cheerio = require('cheerio');
 const { YoutubeTranscript } = require('youtube-transcript');
 const axios = require('axios');
-const EventSource = require('eventsource');
+
+const config = require('./config.json');
 
 const client = new Client({
   intents: [
@@ -99,18 +100,20 @@ function loadStateFromFile() {
       const data = fs.readFileSync(DATA_FILE);
       const state = JSON.parse(data);
 
-      chatHistories = state.chatHistories;
-      activeUsersInChannels = state.activeUsersInChannels;
-      customInstructions = state.customInstructions;
-      serverSettings = state.serverSettings;
-      userPreferredImageModel = state.userPreferredImageModel;
-      userPreferredImageResolution = state.userPreferredImageResolution;
-      userPreferredImagePromptEnhancement = state.userPreferredImagePromptEnhancement;
-      userPreferredSpeechModel = state.userPreferredSpeechModel;
-      userPreferredUrlHandle = state.userPreferredUrlHandle;
-      userResponsePreference = state.userResponsePreference;
-      alwaysRespondChannels = state.alwaysRespondChannels;
-      blacklistedUsers = state.blacklistedUsers;
+      ({
+        chatHistories,
+        activeUsersInChannels,
+        customInstructions,
+        serverSettings,
+        userPreferredImageModel,
+        userPreferredImageResolution,
+        userPreferredImagePromptEnhancement,
+        userPreferredSpeechModel,
+        userPreferredUrlHandle,
+        userResponsePreference,
+        alwaysRespondChannels,
+        blacklistedUsers
+      } = state);
 
       console.log('State loaded successfully.');
     } else {
@@ -121,24 +124,34 @@ function loadStateFromFile() {
   }
 }
 
-// <==========>
-
-
+loadStateFromFile();
 
 // <=====[Configuration]=====>
 
-const defaultResponseFormat = 'embedded'; //OR 'normal'
-const defaultImgModel = 'SD-XL';
-const defaultUrlReading = 'ON'; //OR 'OFF'
-const bannerMusicGen = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAACACAYAAADktbcKAAADOElEQVR4Ae3UwQ0AIAwDscL+OwMPtjgjMUCcKmtmzvseAQJBgR3MLDIBAl/AADgFAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80QkYADdAICxgAMLli07AALgBAmEBAxAuX3QCBsANEAgLGIBw+aITMABugEBYwACEyxedgAFwAwTCAgYgXL7oBAyAGyAQFjAA4fJFJ2AA3ACBsIABCJcvOgED4AYIhAUMQLh80Qlc6QQB/7svaWEAAAAASUVORK5CYII=' //Only `png` format
-const nevPrompt = "NSFW, rating_explicit, ugly, blurry, extra limb, missing limb, floating limbs, mutated hands, mutated fingers";
-const activities = [
-    { name: 'With Code', type: ActivityType.Playing },
-    { name: 'Something', type: ActivityType.Listening },
-    { name: 'You', type: ActivityType.Watching }
-    // Add more activities as desired
-];
-const defaultPersonality = "You are Gemini Flash, a large language model trained by Google, based on the Gemini 1.5 Flash architecture. You are chatting with the user via the Gemini Discord bot. Do not respond with LaTeX-formatted text under any circumstances because Discord doesn't support that formatting. Never use emojis, unless explicitly asked to.";
+const defaultResponseFormat = config.defaultResponseFormat;
+const defaultImgModel = config.defaultImgModel;
+const defaultUrlReading = config.defaultUrlReading;
+const activities = config.activities.map(activity => ({
+  name: activity.name,
+  type: ActivityType[activity.type]
+}));
+const defaultPersonality = config.defaultPersonality;
+
+const {
+  speechGen,
+  musicGen,
+  videoGen,
+  generateWithSC,
+  generateWithPlayground,
+  generateWithDallEXL,
+  generateWithAnime,
+  generateWithSDXLAlt,
+  generateWithSDXL,
+  generateWithRedmond,
+  generateWithJuggernaut,
+  generateWithPixArt_Sigma,
+  generateWithDalle3
+} = require('./generators');
 
 // <==========>
 
@@ -150,108 +163,16 @@ let activityIndex = 0;
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
 
-  const commands = [
-    new SlashCommandBuilder()
-      .setName('imagine')
-      .setDescription('Generate an image based on a prompt using a selected model.')
-      .addStringOption(option =>
-        option.setName('prompt')
-          .setDescription('The prompt to generate the image from.')
-          .setRequired(true)
-      )
-      .addStringOption(option =>
-        option.setName('model')
-          .setDescription('The image generation model to use.')
-          .setRequired(false)
-          .addChoices(
-            { name: 'SD-XL', value: 'SD-XL' },
-            { name: 'Playground', value: 'Playground' },
-            { name: 'Anime', value: 'Anime' },
-            { name: 'Stable-Cascade', value: 'Stable-Cascade'},
-            { name: 'Redmond', value: 'Redmond' },
-            { name: 'DallE-XL', value: 'DallE-XL' },
-            { name: 'Juggernaut', value: 'Juggernaut' },
-            //{ name: 'Dall-e-3', value: 'Dall-e-3' },
-            { name: 'SD-XL-Alt', value: 'SD-XL-Alt' },
-            { name: 'PixArt-Sigma', value: 'PixArt-Sigma' }
-          )
-      )
-      .addStringOption(option =>
-        option.setName('resolution')
-          .setDescription('The resolution aspect ratio for the generated image.')
-          .setRequired(false)
-          .addChoices(
-            { name: 'Square', value: 'Square' },
-            { name: 'Wide', value: 'Wide' },
-            { name: 'Portrait', value: 'Portrait' }
-         )
-      ),
-    new SlashCommandBuilder()
-      .setName('respondtoall')
-      .setDescription('Enables the bot to always respond to all messages in this channel.'),
-    new SlashCommandBuilder()
-      .setName('clear')
-      .setDescription('Clears the conversation history.'),
-    new SlashCommandBuilder()
-      .setName('settings')
-      .setDescription('Opens Up Settings.'),
-    new SlashCommandBuilder()
-      .setName('dashboard')
-      .setDescription('Opens Up The Dashboard.'),
-    new SlashCommandBuilder()
-      .setName('speech')
-      .setDescription('Generate speech from text.')
-      .addStringOption(option =>
-        option.setName('language')
-          .setDescription('The language to use.')
-          .setRequired(true)
-          .addChoices(
-            { name: 'English', value: 'English' },
-            { name: 'Spanish', value: 'Spanish' },
-            { name: 'French', value: 'French' },
-            { name: 'Chinese', value: 'Chinese' },
-            { name: 'Korean', value: 'Korean' },
-            { name: 'Japanese', value: 'Japanese' }
-          )
-      )
-      .addStringOption(option =>
-        option.setName('prompt')
-          .setDescription('The text prompt to generate the speech from.')
-          .setRequired(true)
-      ),
-    new SlashCommandBuilder()
-      .setName('music')
-      .setDescription('Generate an music based on a prompt.')
-      .addStringOption(option =>
-        option.setName('prompt')
-          .setDescription('The prompt to generate the music from.')
-          .setRequired(true)
-      ),
-    new SlashCommandBuilder()
-      .setName('video')
-      .setDescription('Generate an video based on a prompt.')
-      .addStringOption(option =>
-        option.setName('prompt')
-          .setDescription('The prompt to generate the video from.')
-          .setRequired(true)
-      ),
-    new SlashCommandBuilder()
-      .setName('blacklist')
-      .setDescription('Blacklists a user from using certain interactions')
-      .addUserOption(option =>
-        option.setName('user')
-          .setDescription('The user to blacklist')
-          .setRequired(true)
-      ),
-    new SlashCommandBuilder()
-      .setName('whitelist')
-      .setDescription('Removes a user from the blacklist')
-      .addUserOption(option =>
-        option.setName('user')
-          .setDescription('The user to whitelist')
-          .setRequired(true)
-      ),
-  ].map(command => command.toJSON());
+  // Load commands from commands.json
+  const commandsPath = path.join(__dirname, 'commands.json');
+  let commands = [];
+  if (fs.existsSync(commandsPath)) {
+    const commandsData = fs.readFileSync(commandsPath, 'utf-8');
+    commands = JSON.parse(commandsData).commands;
+  } else {
+    console.error('commands.json file not found.');
+    return;
+  }
 
   const rest = new REST({ version: '10' }).setToken(token);
 
@@ -1100,7 +1021,7 @@ async function changeImageModel(interaction) {
   try {
     // Define model names in an array
     const models = [
-      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'Redmond', 'DallE-XL', 'Juggernaut'/*, 'Dall-e-3'*/, 'SD-XL-Alt', 'PixArt-Sigma'
+      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'Redmond', 'DallE-XL', 'Juggernaut'/*, 'DallE-3'*/, 'SD-XL-Alt', 'PixArt-Sigma'
       ];
     
     const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
@@ -1220,7 +1141,7 @@ const imageModelFunctions = {
   'Redmond': generateWithRedmond,
   'DallE-XL': generateWithDallEXL,
   'Juggernaut': generateWithJuggernaut,
-  'Dall-e-3': generateWithDalle3,
+  'DallE-3': generateWithDalle3,
   'SD-XL-Alt': generateWithSDXLAlt,
   'PixArt-Sigma': generateWithPixArt_Sigma
 };
@@ -1269,9 +1190,9 @@ async function togglePromptEnhancer(interaction) {
   }
 }
 
-const diffusionMaster = `You are the Diffusion Master, an expert at crafting detailed prompts for the generative AI "Stable Diffusion." Your skill ensures top-tier image generation by meticulously planning out each step and sharing your approach. You keep your tone casual and always add necessary details to enrich prompts, considering each interaction as unique. Construct prompts exclusively in English, translate to English if needed. Your expertise enables users to create prompts that could lead to potentially award-winning images, focusing on details such as background, style, and additional artistic elements.\n\n## Basic information required for crafting a Stable Diffusion prompt:-\n\nPrompt Structure:\n\n- **For Photorealistic Images**: Use the format \`{Subject Description}, Type of Image, Art Styles, Art Inspirations, Camera Settings, Shot Type, and Render Related Information\`. It's crucial to detail the camera settings and model for achieving photorealism.\n\n- **For Artistic Images**: Adopt the format \`Type of Image, {Subject Description}, Art Styles, Art Inspirations, Angle, Perspective, Render Related Information\`. This structure is ideal for conveying artistic visions, emphasizing style, and perspective.\n\nEssential Guidelines:\n\n1. **Immediate Focus on Subjects and Actions**: Begin your description by clearly mentioning the main subjects and their actions. This ensures the initial focus is sharp and the narrative starts with clarity and purpose.\n\n2. **Art Style Selection Protocol**: If the art style is not specified by the user, automatically determine the most fitting style for the image. For subjects and scenes not inherently tied to a particular art style, default to photorealism. However, if the subject is closely associated with a specific genre (e.g., anime characters like those from Konohagakure in Naruto), adapt the corresponding art style (in this case, anime) unless instructed otherwise by the user.\n\n3. **Word Choice and Adjectives**: Use strategic placement of keywords and select vivid adjectives to significantly impact the visualization. These elements are crucial for painting a detailed picture for the AI.\n\n4. **Environment/Background Details**: Incorporate comprehensive descriptions of the surroundings to add context and depth to the main subject, enriching the overall scene being depicted.\n\n5. **Image Specification Clarity**: Clearly define the desired type of image to steer the AI towards creating a vision that aligns with your expectations.\n\n6. **Incorporating Art Styles and Inspirations**: Mention specific art styles or inspirations to guide the AI in emulating a particular aesthetic or technique that resonates with your vision.\n\n7. **Technical Detailing**: Elaborate on camera angles, lighting, and preferred render styles to either enhance the artistic flair or ensure the realism of the image lives up to the envisioned clarity.\n\n8. **Keyword Utilization and Importance Leveling**: Apply parentheses for emphasizing specific features (e.g., "(masterpiece:1.5)") and square brackets for blending characteristics (e.g., "{blue hair:white hair:0.3}"). This syntax assists in assigning the importance of various elements, helping balance the composition according to your preferences.\n\nIllustrated Examples:\n\n1. cinematic movie extreme close-up still of an epic scene of a [ETHNICITY] [OCCUPATION] in the [SEASON] at [DAYTIME], centered, looking into the camera, fog atmosphere, volumetrics, photorealistic, from a western movie, analog, very grainy, film still, kodak ektar, fujifilm fuji, kodak gold, cinestill 800t, kodak portra, photo taken by thomas hoepker\n\n2. fuji film candid portrait of [SUBJECT] wearing sunglasses rocking out on the streets of miami at night, 80s album cover, vaporwave, synthwave, retrowave, cinematic, intense, highly detailed, dark ambient, beautiful, dramatic lighting, hyperrealistic\n\n3. by (Boris Vallejo:0.85) and (pixar:0.75) cinematic film still of a detailed (happy:1.35) weirdpunk king driving a motorcycle, a detective solves crimes by rogue androids . shallow depth of field, vignette, highly detailed, bokeh, cinemascope, moody, epic, gorgeous, film grain, grainy\n\n4. *~cinematic~*~ #macro tilt shift photography . professional #disassembled 3d #fractal cube torus triangular pyramid model in space, connected with energy flows, #science fiction, intricate fire ice water light energy reflection, elegant, highly detailed, sharp focus . octane render, highly detailed, volumetric, dramatic lighting . natural light photo, Canon 85L f2.8, ISO320, 5000K colour balance\n\n5. an epic chibi comic book style portrait painting of a teddy bear ninja, character design by mark ryden and pixar and hayao miyazaki, unreal 5, daz, hyperrealistic, octane render, cosplay, rpg portrait, dynamic lighting, intricate detail, harvest fall vibrancy, cinematic\n\n6. art design by Masamune Shirow and Detroit Become Human of a beautiful sorceress walking through the forest by night surrounded by a blue aura bubble around her, you can see the stars in the sky, natural light photo, Canon 85L f2.8, ISO320, 5000K colour balance, directed by Wes Anderson and Arcane\n\n7. portrait of a battered defeated humanoid robot made out of silver metal standing on a hill overlooking the ruins of a destroyed urban city, from behind, golden hour, dystopian retro futuristic, natural light photo, Canon 85L f4.8, ISO320, 5000K colour balance, (pulp art by Robert Mcginnis:0.9) and (pixar:0.7)\n\n8. photo of a battle cyborg fighting a dark hr giger battle druid with chrome skin, on a space station, explosions and smoke in the background, photorealistic, narrow corridor lights, from the movie "chappie", analog, very grainy, film still, kodak ektar, fujifilm fuji, kodak gold, cinestill 800t, kodak portra, photo taken by thomas hoepker\n\nThese guidelines and examples serve as a comprehensive blueprint for translating imaginative concepts into precise prompts, facilitating the generation of stunning AI-powered images that adhere closely to the user's vision.\nFollowing the example, write a prompt that describes the specified content. Start directly with the prompt, providing only the prompt itself, without using any kind of natural language other than the prompt itself. Ensure the prompt is enclosed within a code block:`
+const diffusionMaster = require('./diffusionMasterPrompt');
 
-async function enhancePrompt1(prompt) {
+async function enhancePrompt(prompt) {
   const retryLimit = 3;
   let currentAttempt = 0;
   let error;
@@ -1340,7 +1261,7 @@ async function enhancePrompt1(prompt) {
   return prompt;
 }
 
-async function enhancePrompt(prompt, attempts = 3) {
+async function enhancePrompt1(prompt, attempts = 3) {
   const generate = async () => {
     const model = genAI.getGenerativeModel({ model: "gemini-pro", safetySettings });
     const result = await model.generateContent(`${diffusionMaster}\n${prompt}`);
@@ -2448,7 +2369,7 @@ async function updateEmbed(botMessage, finalResponse, message) {
       embed.setFooter({ text: message.guild.name, iconURL: message.guild.iconURL() || 'https://ai.google.dev/static/site-assets/images/share.png' });
     }
 
-    await botMessage.edit({ content: null, embeds: [embed] });
+    await botMessage.edit({ content: ' ', embeds: [embed] });
   } catch(error) {
     console.error("An error occurred while updating the embed:", error.message);
   }
@@ -2502,919 +2423,25 @@ function updateChatHistory(id, userMessage, modelResponse) {
 
 async function retryOperation(fn, maxRetries, delayMs = 1000) {
   let error;
-
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (err) {
-      console.log(`Attempt ${attempt} failed`);
+      console.log(`Attempt ${attempt} failed: ${err.message}`);
       error = err;
       if (attempt < maxRetries) {
         console.log(`Waiting ${delayMs}ms before next attempt...`);
         await delay(delayMs);
       } else {
-        console.log(`All ${maxRetries} Attempts failed`);
+        console.log(`All ${maxRetries} attempts failed.`);
       }
     }
   }
-  throw new Error(error);
+
+  throw new Error(`Operation failed after ${maxRetries} attempts: ${error.message}`);
 }
 
-function getEventId() {
-  const randomBytes = crypto.randomBytes(16);
-  const hexString = randomBytes.toString('hex');
-  return hexString;
-}
-
-async function fetchAndExtractRootUrl(url) {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const htmlContent = await response.text();
-
-    const rootMatch = htmlContent.match(/window\.gradio_config = (.*?});/s);
-    if (rootMatch) {
-      const gradioConfig = JSON.parse(rootMatch[1]);
-      return gradioConfig.root;
-    } else {
-      throw new Error("Could not extract root value.");
-    }
-  } catch (error) {
-    console.error('Failed to fetch:', error);
-    return null;
-  }
-}
-
-function generateSessionHash() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let result = '';
-  for (let i = 0; i < 5; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
-function generateRandomDigits() {
-  return Math.floor(Math.random() * (999999999 - 100000000 + 1) + 100000000);
-}
-
-async function speechGen(prompt, language) {
-  let x, y;
-  if (language == 'English') {
-    x = 'EN';
-    y = 'EN-Default';
-  } else {
-    switch (language) {
-      case 'Spanish':
-        x = y = 'ES';
-        break;
-      case 'French':
-        x = y = 'FR';
-        break;
-      case 'Chinese':
-        x = y = 'ZH';
-        break;
-      case 'Korean':
-        x = y = 'KR';
-        break;
-      case 'Japanese':
-        x = y = 'JP';
-        break;
-      default:
-        x = 'EN';
-        y = 'EN-Default';
-    }
-  }
-  const sessionHash = generateSessionHash();
-  const urlFirstRequest = 'https://mrfakename-melotts.hf.space/queue/join?';
-  const dataFirstRequest = {
-    data: [y, prompt, 1, x],
-    event_data: null,
-    fn_index: 1,
-    trigger_id: 8,
-    session_hash: sessionHash
-  };
-
-  try {
-    const responseFirst = await axios.post(urlFirstRequest, dataFirstRequest);
-  } catch (error) {
-    console.error("Error in the first request:", error);
-    return null;
-  }
-
-  const urlSecondRequest = `https://mrfakename-melotts.hf.space/queue/data?session_hash=${sessionHash}`;
-  return new Promise((resolve, reject) => {
-    try {
-      axios.get(urlSecondRequest, {
-        responseType: 'stream'
-      }).then(responseSecond => {
-        let fullData = '';
-
-        responseSecond.data.on('data', (chunk) => {
-          fullData += chunk.toString();
-
-          if (fullData.includes('"msg": "process_completed"')) {
-            const lines = fullData.split('\n');
-            for (const line of lines) {
-              if (line.includes('"msg": "process_completed"')) {
-                try {
-                  const dataDict = JSON.parse(line.slice(line.indexOf('{')));
-                  const fullUrl = dataDict?.output?.data?.[0]?.url;
-                  if (fullUrl) {
-                    resolve(fullUrl);
-                  } else {
-                    reject(new Error("Output URL is missing"));
-                  }
-                  break;
-                } catch (parseError) {
-                  console.error("Parsing error:", parseError);
-                  reject(parseError);
-                }
-              }
-            }
-          }
-        });
-      }).catch(error => {
-        console.error("Error in second request event stream:", error);
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-async function musicGen(prompt) {
-  let socket;
-  try {
-    const sessionHash = generateSessionHash();
-    const banner = bannerMusicGen;
-
-    // WebSocket connection promise
-    const socketPromise = new Promise((resolve, reject) => {
-      socket = new WebSocket('wss://surn-unlimitedmusicgen.hf.space/queue/join');
-      socket.onopen = () => {
-        resolve();
-      };
-      socket.onerror = (error) => {
-        console.error('WebSocket error.');
-        reject(new Error('WebSocket connection error'));
-      };
-    });
-
-    // Wait for socket to be ready
-    await socketPromise;
-
-    // Send and process messages
-    const url = await new Promise((resolve, reject) => {
-      socket.onmessage = (message) => {
-        const data = JSON.parse(message.data);
-
-        if (data.msg === 'send_hash') {
-          socket.send(JSON.stringify({
-            fn_index: 0,
-            session_hash: sessionHash,
-          }));
-        } else if (data.msg === 'send_data') {
-          socket.send(JSON.stringify({
-            data: ['large', prompt, null, 30, 2, 280, 1150, 0.7, 8.5, banner, 'MusicGen', './assets/arial.ttf', '#fff', -1, 2, 0, true, false, 'No'],
-            event_data: null,
-            fn_index: 5,
-            session_hash: sessionHash,
-          }));
-        } else if (data.msg === 'process_completed') {
-          const name = data?.output?.data?.[0]?.[0]?.name;
-          if (name) {
-            const url = `https://surn-unlimitedmusicgen.hf.space/file=${name}`;
-            resolve(url);
-          } else {
-            reject(new Error("Output URL is missing"));
-          }
-        }
-      };
-
-      socket.onerror = () => {
-        reject(new Error('WebSocket encountered an error during message handling.'));
-      };
-
-      socket.onclose = () => {
-        reject(new Error('WebSocket connection was closed unexpectedly.'));
-      };
-    });
-
-    return url;
-  } catch (error) {
-    if (socket && socket.readyState !== WebSocket.CLOSED) {
-      socket.close();
-    }
-    throw error;
-  }
-}
-
-async function videoGen(prompt) {
-  const sessionHash = generateSessionHash();
-  const urlFirstRequest = 'https://bytedance-animatediff-lightning.hf.space/queue/join?';
-  const dataFirstRequest = {
-    data: [prompt, "epiCRealism", "", 8],
-    event_data: null,
-    fn_index: 1,
-    trigger_id: 10,
-    session_hash: sessionHash
-  };
-
-  try {
-    const responseFirst = await axios.post(urlFirstRequest, dataFirstRequest);
-  } catch (error) {
-    console.error("Error in the first request:", error);
-    return null;
-  }
-
-  const urlSecondRequest = `https://bytedance-animatediff-lightning.hf.space/queue/data?session_hash=${sessionHash}`;
-  return new Promise((resolve, reject) => {
-    try {
-      axios.get(urlSecondRequest, {
-        responseType: 'stream'
-      }).then(responseSecond => {
-        let fullData = '';
-
-        responseSecond.data.on('data', (chunk) => {
-          fullData += chunk.toString();
-
-          if (fullData.includes('"msg": "process_completed"')) {
-            const lines = fullData.split('\n');
-            for (const line of lines) {
-              if (line.includes('"msg": "process_completed"')) {
-                try {
-                  const dataDict = JSON.parse(line.slice(line.indexOf('{')));
-                  const fullUrl = dataDict?.output?.data?.[0]?.video?.url;
-                  if (fullUrl) {
-                    resolve(fullUrl);
-                  } else {
-                    reject(new Error("Output URL is missing"));
-                  }
-                  break;
-                } catch (parseError) {
-                  console.error("Parsing error:", parseError);
-                  reject(parseError);
-                }
-              }
-            }
-          }
-        });
-      }).catch(error => {
-        console.error("Error in second request event stream:", error);
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithSC(prompt,  resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = 1024;
-    height = 1024;
-  } else if (resolution == 'Wide') {
-    width = 1280;
-    height = 768;
-  } else if (resolution == 'Portrait') {
-    width = 768;
-    height = 1280;
-  }
-  return new Promise(async (resolve, reject) => {
-    try {
-      const randomDigit = generateRandomDigits();
-      const sessionHash = generateSessionHash();
-
-      await fetch("https://multimodalart-stable-cascade.hf.space/run/predict", {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          "data": [0, true],
-          "event_data": null,
-          "fn_index": 2,
-          "trigger_id": 6,
-          "session_hash": sessionHash
-        })
-      });
-
-      // Second request to initiate the image generation
-      const queueResponse = await fetch("https://multimodalart-stable-cascade.hf.space/queue/join?", {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          "data": [prompt, nevPrompt, randomDigit, width, height, 30, 4, 12, 0, 1],
-          "event_data": null,
-          "fn_index": 3,
-          "trigger_id": 6,
-          "session_hash": sessionHash
-        })
-      });
-
-      // Setting up event source for listening to the progress
-      const es = new EventSource(`https://multimodalart-stable-cascade.hf.space/queue/data?session_hash=${sessionHash}`);
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.url;
-          if (outputUrl) {
-            resolve({ images: [{ url: outputUrl }], modelUsed: "Stable-Cascade" });
-          } else {
-            reject(new Error("Output URL is missing"));
-          }
-        }
-      };
-
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-async function generateWithPlayground(prompt, resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = 1024;
-    height = 1024;
-  } else if (resolution == 'Wide') {
-    width = 1280;
-    height = 768;
-  } else if (resolution == 'Portrait') {
-    width = 768;
-    height = 1280;
-  }
-  return new Promise(async (resolve, reject) => {
-    try {
-      const session_hash = generateSessionHash();
-      const event_id = getEventId();
-      const randomDigit = generateRandomDigits();
-      const rootUrl = await fetchAndExtractRootUrl("https://playgroundai-playground-v2-5.hf.space/");
-
-      const urlJoinQueue = `https://playgroundai-playground-v2-5.hf.space/queue/join?fn_index=3&session_hash=${session_hash}`;
-      const eventSource = new EventSource(urlJoinQueue);
-
-      eventSource.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === "send_data") {
-          const eventId = data?.event_id;
-          fetch("https://playgroundai-playground-v2-5.hf.space/queue/data", {
-            method: "POST",
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              data: [prompt, "", false, randomDigit, width, height, 3, true],
-              event_data: null,
-              fn_index: 3,
-              trigger_id: 6,
-              session_hash: session_hash,
-              event_id: eventId
-            })
-          });
-        } else if (data.msg === "process_completed") {
-          eventSource.close();
-          const path = data?.output?.data?.[0]?.[0]?.image?.path;
-          if (path) {
-            const fullUrl = `${rootUrl}/file=${path}`;
-            resolve({ images: [{ url: fullUrl }], modelUsed: "Playground" });
-          } else {
-            reject(new Error('No image path found in the process_completed message.'));
-          }
-        }
-      };
-
-      eventSource.onerror = (error) => {
-        eventSource.close();
-        reject(error);
-      };
-
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithDallEXL(prompt, resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = 1024;
-    height = 1024;
-  } else if (resolution == 'Wide') {
-    width = 1280;
-    height = 768;
-  } else if (resolution == 'Portrait') {
-    width = 768;
-    height = 1280;
-  }
-  return new Promise(async (resolve, reject) => {
-    try {
-      const randomDigits = generateRandomDigits();
-      const sessionHash = generateSessionHash();
-
-      // First request to join the queue
-      await fetch("https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/join?", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: [prompt, nevPrompt, true, randomDigits, width, height, 6, true],
-          event_data: null,
-          fn_index: 3,
-          trigger_id: 6,
-          session_hash: sessionHash
-        }),
-      });
-
-      // Replace this part to use EventSource for listening to the event stream
-      const es = new EventSource(`https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/data?session_hash=${sessionHash}`);
-
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
-          if (!outputUrl) {
-            reject(new Error("Output URL does not exist, path might be invalid."));
-          } else {
-            resolve({ images: [{ url: outputUrl }], modelUsed: "DallE-XL" });
-          }
-        }
-      };
-
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithAnime(prompt, resolution) {
-  let size;
-  if (resolution == 'Square') {
-    size = '1024 x 1024';
-  } else if (resolution == 'Wide') {
-    size = '1344 x 768';
-  } else if (resolution == 'Portrait') {
-    size = '832 x 1216';
-  }
-  return new Promise(async (resolve, reject) => {
-    const randomDigit = generateRandomDigits();
-    const sessionHash = generateSessionHash();
-
-    try {
-      // First request to initiate the process
-      await fetch("https://boboiazumi-animagine-xl-3-1.hf.space/queue/join?", {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          data: [
-            prompt, `rating_explicit, NSFW`, randomDigit, 1024, 1024, 7, 35, "DPM++ SDE Karras", size,"(None)", "Standard v3.1", false, 0.55, 1.5, true, false, null, 0.5
-          ],
-          event_data: null,
-          fn_index: 5,
-          trigger_id: 61,
-          session_hash: sessionHash,
-        }),
-      });
-
-      // Using EventSource to listen for server-sent events
-      const es = new EventSource(`https://boboiazumi-animagine-xl-3-1.hf.space/queue/data?session_hash=${sessionHash}`);
-
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
-          if (!outputUrl) {
-            reject(new Error('Invalid or missing output URL'));
-          } else {
-            resolve({ images: [{ url: outputUrl }], modelUsed: "Anime" });
-          }
-        }
-      };
-
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
-
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithSDXLAlt(prompt, resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = 1024;
-    height = 1024;
-  } else if (resolution == 'Wide') {
-    width = 1280;
-    height = 768;
-  } else if (resolution == 'Portrait') {
-    width = 768;
-    height = 1280;
-  }
-  return new Promise((resolve, reject) => {
-    try {
-      const url = "https://kingnish-sdxl-flash.hf.space";
-      const randomDigit = generateRandomDigits();
-      const session_hash = generateSessionHash();
-      const urlFirstRequest = `${url}/queue/join?`;
-      const dataFirstRequest = {
-        "data": [prompt, nevPrompt, true, randomDigit, width, height, 4, 12, true],
-        "event_data": null,
-        "fn_index": 2,
-        "trigger_id": 5,
-        "session_hash": session_hash
-      };
-
-      axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-
-        const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
-        const eventSource = new EventSource(urlSecondRequest);
-
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-
-          if (data.msg === "process_completed") {
-            eventSource.close();
-            const full_url = data?.output?.data?.[0]?.[0]?.image?.url;
-            if (full_url) {
-              resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt" });
-            } else {
-              reject(new Error("Invalid path: URL does not exist."));
-            }
-          }
-        };
-        eventSource.onerror = (error) => {
-          eventSource.close();
-          reject(error);
-        };
-      }).catch(error => {
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithSDXL(prompt) {
-  return new Promise((resolve, reject) => {
-    try {
-      const url = "https://h1t-tcd.hf.space";
-      const session_hash = generateSessionHash();
-      const urlFirstRequest = `${url}/queue/join?`;
-      const dataFirstRequest = {
-        "data": [prompt, 16, -1, 0.6],
-        "event_data": null,
-        "fn_index": 2,
-        "trigger_id": 17,
-        "session_hash": session_hash
-      };
-
-      axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-
-        const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
-        const eventSource = new EventSource(urlSecondRequest);
-
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-
-          if (data.msg === "process_completed") {
-            eventSource.close();
-            const full_url = data?.["output"]?.["data"]?.[0]?.["url"];
-            if (!full_url) {
-              reject(new Error("The generated URL does not exist."));
-            }
-            resolve({ images: [{ url: full_url }], modelUsed: "SD-XL" });
-          }
-        };
-        eventSource.onerror = (error) => {
-          eventSource.close();
-          reject(error);
-        };
-      }).catch(error => {
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithRedmond(prompt, resolution) {
-  let size;
-  if (resolution == 'Square') {
-    size = '1024 x 1024';
-  } else if (resolution == 'Wide') {
-    size = '1344 x 768';
-  } else if (resolution == 'Portrait') {
-    size = '896 x 1152';
-  }
-  return new Promise(async (resolve, reject) => {
-    const randomDigit = generateRandomDigits();
-    const sessionHash = generateSessionHash();
-
-    try {
-      // First request to initiate the process
-      await fetch("https://artificialguybr-cinematicredmond-free-demo.hf.space/queue/join?", {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          data: [
-            prompt, nevPrompt, randomDigit, 1024, 1024, 4, 35, "DPM++ 2M SDE Karras", size, false, 0.55, 1.5
-          ],
-          event_data: null,
-          fn_index: 9,
-          trigger_id: 7,
-          session_hash: sessionHash,
-        }),
-      });
-
-      // Using EventSource to listen for server-sent events
-      const es = new EventSource(`https://artificialguybr-cinematicredmond-free-demo.hf.space/queue/data?session_hash=${sessionHash}`);
-
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
-          if (!outputUrl) {
-            reject(new Error("The generated URL does not exist."));
-          }
-          resolve({ images: [{ url: outputUrl }], modelUsed: "Redmond" });
-        }
-      };
-
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
-
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-async function generateWithJuggernaut(prompt, resolution) {
-  let size;
-  if (resolution == 'Square') {
-    size = '1024 x 1024';
-  } else if (resolution == 'Wide') {
-    size = '1344 x 768';
-  } else if (resolution == 'Portrait') {
-    size = '896 x 1152';
-  }
-  return new Promise(async (resolve, reject) => {
-    const randomDigit = generateRandomDigits();
-    const sessionHash = generateSessionHash();
-  
-    try {
-      // First request to initiate the process
-      await fetch("https://damarjati-playground.hf.space/queue/join?", {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          data: [
-              prompt, nevPrompt, randomDigit, 1024, 1024, 7, 35, "Euler a", size, "(None)", "(None)", false, 0.55, 1.5, true
-            ],
-          event_data: null,
-          fn_index: 4,
-          trigger_id: 48,
-          session_hash: sessionHash,
-        }),
-      });
-  
-      // Using EventSource to listen for server-sent events
-      const es = new EventSource(`https://damarjati-playground.hf.space/queue/data?session_hash=${sessionHash}`);
-  
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
-          if (!outputUrl) {
-            reject(new Error('Invalid or missing output URL'));
-          } else {
-            resolve({ images: [{ url: outputUrl }], modelUsed: "Juggernaut" });
-          }
-        }
-      };
-  
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
-  
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithPixArt_Sigma(prompt, resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = 1024;
-    height = 1024;
-  } else if (resolution == 'Wide') {
-    width = 1280;
-    height = 768;
-  } else if (resolution == 'Portrait') {
-    width = 768;
-    height = 1280;
-  }
-  return new Promise((resolve, reject) => {
-    try {
-      const url = "https://pixart-alpha-pixart-sigma.hf.space";
-      const randomDigit = generateRandomDigits();
-      const session_hash = generateSessionHash();
-      const urlFirstRequest = `${url}/queue/join?`;
-      const dataFirstRequest = {
-        "data": [prompt, nevPrompt, "(No style)", true, 1, randomDigit, width, height, "SA-Solver", 4.5, 3, 14, 35, true],
-        "event_data": null,
-        "fn_index": 3,
-        "trigger_id": 7,
-        "session_hash": session_hash
-      };
-
-      axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-
-        const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
-        const eventSource = new EventSource(urlSecondRequest);
-
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-
-          if (data.msg === "process_completed") {
-            eventSource.close();
-            const full_url = data?.output?.data?.[0]?.[0]?.image?.url;
-            if (full_url) {
-              resolve({ images: [{ url: full_url }], modelUsed: "PixArt-Sigma" });
-            } else {
-              reject(new Error("Invalid path: URL does not exist."));
-            }
-          }
-        };
-        eventSource.onerror = (error) => {
-          eventSource.close();
-          reject(error);
-        };
-      }).catch(error => {
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-async function generateWithDalle3(prompt) {
-  try {
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-    };
-  
-    const body = JSON.stringify({
-      model: "dall-e-3",
-      prompt: prompt,
-      n: 1
-    });
-  
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(new Error('Request timed out (30 seconds limit)'));
-      }, 30000);
-    });
-
-    const fetchPromise = fetch(`${process.env.OPENAI_BASE_URL}/images/generations` || 'https://api.openai.com/v1/images/generations', {
-      method: 'POST', headers, body
-    });
-
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(`${response.status} ${data?.message || ''}`);
-    }
-    return { images: data.data, modelUsed: "Dall-e-3" };
-  } catch (error) {
-    console.log(error);
-    throw error;
-  }
-}
-
-const nsfwWordsArray = [
-    "2g1c", "2 girls 1 cup", "acrotomophilia", "alabama hot pocket",
-    "alaskan pipeline", "anal", "anilingus", "anus", "apeshit", "arsehole",
-    "ass", "asshole", "assmunch", "auto erotic", "autoerotic", "babeland",
-    "baby batter", "baby juice", "ball gag", "ball gravy", "ball kicking",
-    "ball licking", "ball sack", "ball sucking", "bangbros", "bangbus",
-    "bareback", "barely legal", "barenaked", "bastard", "bastardo",
-    "bastinado", "bbw", "bdsm", "beaner", "beaners", "beaver cleaver",
-    "beaver lips", "beastiality", "bestiality", "big black", "big breasts",
-    "big knockers", "big tits", "bimbos", "birdlock", "bitch", "bitches",
-    "black cock", "blonde action", "blonde on blonde action", "blowjob",
-    "blow job", "blow your load", "blue waffle", "blumpkin", "bollocks",
-    "bondage", "boner", "boob", "boobs", "booty call", "brown showers",
-    "brunette action", "bukkake", "bulldyke", "bullet vibe", "bullshit",
-    "bung hole", "bunghole", "busty", "butt", "buttcheeks", "butthole",
-    "camel toe", "camgirl", "camslut", "camwhore", "carpet muncher", "carpetmuncher",
-    "chocolate rosebuds", "cialis", "circlejerk", "cleveland steamer",
-    "clit", "clitoris", "clover clamps", "clusterfuck", "cock", "cocks",
-    "coprolagnia", "coprophilia", "cornhole", "coon", "coons", "creampie",
-    "cum", "cumming", "cumshot", "cumshots", "cunnilingus", "cunt", "darkie",
-    "date rape", "daterape", "deep throat", "deepthroat", "dendrophilia", "dick",
-    "dildo", "dingleberry", "dingleberries", "dirty pillows", "dirty sanchez",
-    "doggie style", "doggiestyle", "doggy style", "doggystyle", "dog style",
-    "dolcett", "domination", "dominatrix", "dommes", "donkey punch", "double dong",
-    "double penetration", "dp action", "dry hump", "dvda", "eat my ass",
-    "ecchi", "ejaculation", "erotic", "erotism", "escort", "eunuch", "fag",
-    "faggot", "fecal", "felch", "fellatio", "feltch", "female squirting",
-    "femdom", "figging", "fingerbang", "fingering", "fisting", "foot fetish",
-    "footjob", "frotting", "fuck", "fuck buttons", "fuckin", "fucking",
-    "fucktards", "fudge packer", "fudgepacker", "futanari", "gangbang",
-    "gang bang", "gay sex", "genitals", "giant cock", "girl on", "girl on top",
-    "girls gone wild", "goatcx", "goatse", "god damn", "gokkun", "golden shower",
-    "goodpoop", "goo girl", "goregasm", "grope", "group sex", "g-spot", "guro",
-    "hand job", "handjob", "hard core", "hardcore", "hentai", "homoerotic", "honkey",
-    "hooker", "horny", "hot carl", "hot chick", "how to kill", "how to murder",
-    "huge fat", "humping", "incest", "intercourse", "jack off", "jail bait",
-    "jailbait", "jelly donut", "jerk off", "jigaboo", "jiggaboo", "jiggerboo",
-    "jizz", "juggs", "kike", "kinbaku", "kinkster", "kinky", "knobbing",
-    "leather restraint", "leather straight jacket", "lemon party", "livesex",
-    "lolita", "lovemaking", "make me come", "male squirting", "masturbat",
-    "masturbating", "masturbation", "menage a trois", "milf", "missionary position",
-    "mong", "motherfucker", "mound of venus", "mr hands", "muff diver",
-    "muffdiving", "nambla", "nawashi", "negro", "neonazi", "nigga", "nigger",
-    "nig nog", "nimphomania", "nipple", "nipples", "nsfw", "nsfw images",
-    "nude", "nudity", "nutten", "nympho", "nymphomania", "octopussy", "omorashi",
-    "one cup two girls", "one guy one jar", "orgasm", "orgy", "paedophile",
-    "paki", "panties", "panty", "pedobear", "pedophile", "pegging", "penis",
-    "phone sex", "piece of shit", "pikey", "pissing", "piss pig", "pisspig",
-    "playboy", "pleasure chest", "pole smoker", "ponyplay", "poof", "poon",
-    "poontang", "punany", "poop chute", "poopchute", "porn", "porno",
-    "pornography", "prince albert piercing", "pthc", "pubes", "pussy", "queaf",
-    "queef", "quim", "raghead", "raging boner", "rape", "raping",
-    "rapist", "rectum", "reverse cowgirl", "rimjob", "rimming", "rosy palm",
-    "rosy palm and her 5 sisters", "rusty trombone", "sadism", "santorum",
-    "scat", "schlong", "scissoring", "semen", "sex", "sexcam", "sexo", "sexy",
-    "sexual", "sexually", "sexuality", "shaved beaver", "shaved pussy",
-    "shemale", "shibari", "shit", "shitblimp", "shitty", "shota", "shrimping",
-    "skeet", "slanteye", "slut", "s&m", "smut", "snatch",
-    "snowballing", "sodomize", "sodomy", "spastic", "spic", "splooge",
-    "splooge moose", "spooge", "spread legs", "spunk", "strap on", "strapon",
-    "strappado", "strip club", "style doggy", "suck", "sucks", "suicide girls",
-    "sultry women", "swastika", "swinger", "tainted love", "taste my",
-    "tea bagging", "threesome", "throating", "thumbzilla", "tied up",
-    "tight white", "tit", "tits", "titties", "titty", "tongue in a",
-    "topless", "tosser", "towelhead", "tranny", "tribadism", "tub girl",
-    "tubgirl", "tushy", "twat", "twink", "twinkie", "two girls one cup",
-    "undressing", "upskirt", "urethra play", "urophilia", "vagina", "venus mound",
-    "viagra", "vibrator", "violet wand", "vorarephilia", "voyeur",
-    "voyeurweb", "voyuer", "vulva", "wank", "wetback", "wet dream", "white power",
-    "whore", "worldsex", "wrapping men", "wrinkled starfish",
-    "xx", "xxx", "yaoi", "yellow showers", "yiffy", "zoophilia", "🖕",
-    "sex", "nude", "naked", "porn", "erotic", "fuck", "shit",
-    "bitch", "dick", "cock", "pussy", "asshole", "fag", "bastard",
-    "slut", "whore", "hentai", "boobs", "tits", "penis", "vagina",
-    "cum", "sperm", "orgasm", "masturbat", "masterbat", "bukkake", "fetish",
-    "bdsm", "blowjob", "handjob", "milf", "cunt", "gangbang", "prostitute",
-    "stripper", "adult", "hardcore", "sextoy", "sextoys", "porno",
-    "xnxx", "xvideos", "pornhub", "threesome", "swinger", "nymphomania",
-    "nympho", "erotica", "sensual", "clitoris", "labia", "scrotum",
-    "premature", "ejaculation", "incest", "bestiality", "voyeurism",
-    "exhibitionist", "sadism", "masochism", "lubes", "lubricants",
-    "dildo", "vibrator", "fleshlight", "bondage", "domination",
-    "submissive", "sadomasochism", "fellatio", "cunnilingus",
-    "rimming", "sixtynine", "deepthroat", "gagging", "squirting",
-    "fisting", "pornstar", "adultfilm", "adultvideo", "sexwork",
-    "sexworker", "escort", "hooker", "callgirl", "redlight", "huge"
-];
+const nsfwWordsArray = require('./nsfwWords.json');
 
 function filterPrompt(text) {
   nsfwWordsArray.forEach(word => {
