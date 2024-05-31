@@ -1192,7 +1192,7 @@ async function togglePromptEnhancer(interaction) {
 
 const diffusionMaster = require('./diffusionMasterPrompt');
 
-async function enhancePrompt1(prompt) {
+async function enhancePrompt(prompt) {
   const retryLimit = 3;
   let currentAttempt = 0;
   let error;
@@ -1261,7 +1261,7 @@ async function enhancePrompt1(prompt) {
   return prompt;
 }
 
-async function enhancePrompt(prompt, attempts = 3) {
+async function enhancePrompt1(prompt, attempts = 3) {
   const generate = async () => {
     const model = genAI.getGenerativeModel({ model: "gemini-pro", safetySettings });
     const result = await model.generateContent(`${diffusionMaster}\n${prompt}`);
@@ -2077,7 +2077,7 @@ async function extractTextFromPDF(pdfUrl) {
   try {
     const response = await fetch(pdfUrl);
     const pdfBuffer = await response.buffer();
-    const data = await pdfParse(pdfBuffer);
+    const data = await pdf(pdfBuffer);
     return data.text;
   } catch (error) {
     console.error(error.message);
