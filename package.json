@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "@google/generative-ai": "*",
+    "axios": "*",
+    "cheerio": "*",
+    "discord.js": "*",
+    "dotenv": "*",
+    "eventsource": "*",
+    "fs": "*",
+    "node-fetch": "^2.6.7",
+    "pdf-parse": "*",
+    "sharp": "*",
+    "ws": "*",
+    "youtube-transcript": "^1.2.1"
+  }
+}
