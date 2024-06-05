@@ -124,8 +124,6 @@ function loadStateFromFile() {
   }
 }
 
-loadStateFromFile();
-
 // <=====[Configuration]=====>
 
 const defaultResponseFormat = config.defaultResponseFormat;
@@ -136,6 +134,7 @@ const activities = config.activities.map(activity => ({
   type: ActivityType[activity.type]
 }));
 const defaultPersonality = config.defaultPersonality;
+const defaultServerSettings = config.defaultServerSettings;
 
 const {
   speechGen,
@@ -147,10 +146,9 @@ const {
   generateWithAnime,
   generateWithSDXLAlt,
   generateWithSDXL,
-  generateWithRedmond,
-  generateWithJuggernaut,
   generateWithPixArt_Sigma,
-  generateWithDalle3
+  generateWithDalle3,
+  generateWithMobius
 } = require('./generators');
 
 // <==========>
@@ -449,6 +447,33 @@ client.on('interactionCreate', async (interaction) => {
 
 // <=====[Messages Handling]=====>
 
+async function compressLargeImage(buffer) {
+  try {
+    const compressedBuffer = await sharp(buffer)
+      .resize(3072, 3072, {
+        fit: sharp.fit.inside,
+        withoutEnlargement: true
+      })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+
+    if (compressedBuffer.length > 3.9 * 1024 * 1024) {
+      throw new Error('Image too large after compression.');
+    }
+
+    return compressedBuffer;
+  } catch (error) {
+    console.error('Compression error:', error);
+    throw new Error('The image is too large for Gemini to process even after attempting to compress it.');
+  }
+}
+
+function hasImageAttachments(message) {
+  return message.attachments.some((attachment) =>
+    attachment.contentType?.startsWith('image/')
+  );
+}
+
 async function handleImageMessage(message) {
   const imageAttachments = message.attachments.filter((attachment) =>
     attachment.contentType?.startsWith('image/')
@@ -457,7 +482,6 @@ async function handleImageMessage(message) {
   let messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim();
 
   if (imageAttachments.size > 0) {
-    const visionModel = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }, { apiVersion: 'v1beta' });
     const imageParts = await Promise.all(
       imageAttachments.map(async attachment => {
         const response = await fetch(attachment.url);
@@ -465,17 +489,10 @@ async function handleImageMessage(message) {
 
         if (buffer.length > 3 * 1024 * 1024) {
           try {
-
-            const compressedBuffer = await compressImage(buffer);
-
-            if (compressedBuffer.length > 3.9 * 1024 * 1024) {
-              throw new Error('Image too large after compression.');
-            }
-
+            const compressedBuffer = await compressLargeImage(buffer);
             return { inlineData: { data: compressedBuffer.toString('base64'), mimeType: 'image/jpeg' } };
           } catch (error) {
-            console.error('Compression error:', error);
-            await message.reply('The image is too large for Gemini to process even after attempting to compress it.');
+            await message.reply(error.message);
             throw error;
           }
         } else {
@@ -483,7 +500,14 @@ async function handleImageMessage(message) {
         }
       })
     );
+
     const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
+    const instructions = message.guild ?
+      (serverSettings[message.guild.id]?.customServerPersonality && customInstructions[message.guild.id] ?
+        customInstructions[message.guild.id] :
+        customInstructions[message.author.id]) :
+      customInstructions[message.author.id];
+    const visionModel = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : defaultPersonality }] } }, { apiVersion: 'v1beta' });
     const chat = visionModel.startChat({
       history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
       safetySettings,
@@ -529,7 +553,12 @@ async function handleTextFileMessage(message) {
 
     // Load the text model and handle the conversation
     const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
-    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }, { apiVersion: 'v1beta' });
+    const instructions = message.guild ?
+      (serverSettings[message.guild.id]?.customServerPersonality && customInstructions[message.guild.id] ?
+        customInstructions[message.guild.id] :
+        customInstructions[message.author.id]) :
+      customInstructions[message.author.id];
+    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : defaultPersonality }] } }, { apiVersion: 'v1beta' });
     const chat = model.startChat({
       history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
       safetySettings,
@@ -1021,7 +1050,7 @@ async function changeImageModel(interaction) {
   try {
     // Define model names in an array
     const models = [
-      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'Redmond', 'DallE-XL', 'Juggernaut'/*, 'DallE-3'*/, 'SD-XL-Alt', 'PixArt-Sigma'
+      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'DallE-XL', 'SD-XL-Alt', 'PixArt-Sigma', 'Mobius'/*, 'DallE-3'*/
       ];
     
     const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
@@ -1063,7 +1092,7 @@ async function changeImageResolution(interaction) {
     const userId = interaction.user.id;
     const selectedModel = userPreferredImageModel[userId];
     let supportedResolution;
-    const supportedModels = ['DallE-XL', 'Redmond', 'Anime', 'Stable-Cascade', 'Playground', 'Juggernaut', 'SD-XL-Alt', 'PixArt-Sigma'];
+    const supportedModels = ['DallE-XL', 'Anime', 'Stable-Cascade', 'Playground', 'SD-XL-Alt', 'PixArt-Sigma', 'Mobius'];
     if (supportedModels.includes(selectedModel)) {
       supportedResolution = ['Square', 'Portrait', 'Wide'];
     } else {
@@ -1138,12 +1167,11 @@ const imageModelFunctions = {
   'Playground': generateWithPlayground,
   'Anime': generateWithAnime,
   'Stable-Cascade': generateWithSC,
-  'Redmond': generateWithRedmond,
   'DallE-XL': generateWithDallEXL,
-  'Juggernaut': generateWithJuggernaut,
   'DallE-3': generateWithDalle3,
   'SD-XL-Alt': generateWithSDXLAlt,
-  'PixArt-Sigma': generateWithPixArt_Sigma
+  'PixArt-Sigma': generateWithPixArt_Sigma,
+  'Mobius': generateWithMobius
 };
 
 async function handleImageSelectModel(interaction, model) {
@@ -1212,8 +1240,12 @@ async function enhancePrompt(prompt) {
           stream: false,
           messages: [
             {
+              role: "system",
+              content: diffusionMaster
+            },
+            {
               role: "user",
-              content: `${diffusionMaster}\n${prompt}`
+              content: prompt
             }
           ]
         };
@@ -1240,10 +1272,13 @@ async function enhancePrompt(prompt) {
 
       if (response.data && response.data.choices && response.data.choices.length > 0) {
         let content = response.data.choices[0].message.content;
-        const pattern1 = /^(```|`|"|')|(```|`|"|')$/g;
-        content = content.replace(pattern1, '').trim();
-        const pattern2 = content.match(/```(.*?)```/s);
-        content = pattern2 && pattern2[1] ? pattern2[1].trim() : content;
+        const codeBlockPattern = /```([^`]+)```/s;
+        const match = content.match(codeBlockPattern);
+        if (match) {
+          content = match[1].trim();
+        } else {
+          throw new Error(`Enhanced prompt not found`);
+        }
         console.log(content);
         return content;
       } else {
@@ -1263,24 +1298,27 @@ async function enhancePrompt(prompt) {
 
 async function enhancePrompt1(prompt, attempts = 3) {
   const generate = async () => {
-    const model = genAI.getGenerativeModel({ model: "gemini-pro", safetySettings });
-    const result = await model.generateContent(`${diffusionMaster}\n${prompt}`);
+    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: diffusionMaster }] } }, { apiVersion: 'v1beta' });
+    const result = await model.generateContent(prompt);
     return result.response.text();
   };
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const textResponse = await Promise.race([
-                generate(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
-            ]);
+        generate(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
+      ]);
 
-      let cleansedOutput = textResponse;
-      const pattern1 = /^(```|`|"|')|(```|`|"|')$/g;
-      cleansedOutput = cleansedOutput.replace(pattern1, '').trim();
-      const pattern2 = cleansedOutput.match(/```(.*?)```/s);
-      cleansedOutput = pattern2 && pattern2[1] ? pattern2[1].trim() : cleansedOutput;
-      return cleansedOutput;
+      let content = textResponse;
+      const codeBlockPattern = /```([^`]+)```/s;
+      const match = content.match(codeBlockPattern);
+      if (match) {
+        content = match[1].trim();
+      } else {
+        throw new Error(`Enhanced prompt not found`);
+      }
+      return content;
     } catch (error) {
       console.error(`Attempt ${attempt} failed:`, error);
       if (attempt === attempts) {
@@ -1444,13 +1482,7 @@ function initializeBlacklistForGuild(guildId) {
       blacklistedUsers[guildId] = [];
     }
     if (!serverSettings[guildId]) {
-      serverSettings[guildId] = {
-        serverChatHistory: false,
-        settingsSaveButton: true,
-        customServerPersonality: false,
-        serverResponsePreference:false,
-        responseStyle: "embedded"
-      };
+      serverSettings[guildId] = defaultServerSettings;
     }
   } catch(error) {}
 }
@@ -2094,25 +2126,6 @@ async function fetchTextFile(url) {
     console.error('Error fetching text file:', error);
     throw new Error('Could not fetch text from file');
   }
-}
-
-// Function to compress and resize an image
-async function compressImage(buffer) {
-  const maxDimension = 3072;
-
-  return sharp(buffer)
-    .resize(maxDimension, maxDimension, {
-      fit: sharp.fit.inside,
-      withoutEnlargement: true
-    })
-    .jpeg({ quality: 80 })
-    .toBuffer();
-}
-
-function hasImageAttachments(message) {
-  return message.attachments.some((attachment) =>
-    attachment.contentType?.startsWith('image/')
-  );
 }
 
 function hasTextFileAttachments(message) {
