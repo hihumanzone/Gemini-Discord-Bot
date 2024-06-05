@@ -366,7 +366,7 @@ async function generateWithPlayground(prompt, resolution) {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              data: [prompt, "", false, randomDigit, width, height, 3, true],
+              data: [prompt, nevPrompt, true, randomDigit, width, height, 3, true],
               event_data: null,
               fn_index: 3,
               trigger_id: 6,
@@ -416,11 +416,11 @@ function generateWithDallEXL(prompt, resolution) {
       const sessionHash = generateSessionHash();
 
       // First request to join the queue
-      await fetch("https://prithivmlmods-dalle-4k.hf.space/queue/join?", {
+      await fetch("https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/join?", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          data: [prompt, nevPrompt, "(No style)", true, 35, 1, randomDigits, width, height, 6, true],
+          data: [prompt, nevPrompt, true, randomDigits, width, height, 6, true],
           event_data: null,
           fn_index: 3,
           trigger_id: 6,
@@ -429,7 +429,7 @@ function generateWithDallEXL(prompt, resolution) {
       });
 
       // Replace this part to use EventSource for listening to the event stream
-      const es = new EventSource(`https://prithivmlmods-dalle-4k.hf.space/queue/data?session_hash=${sessionHash}`);
+      const es = new EventSource(`https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/data?session_hash=${sessionHash}`);
 
       es.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -470,24 +470,24 @@ function generateWithAnime(prompt, resolution) {
 
     try {
       // First request to initiate the process
-      await fetch("https://boboiazumi-animagine-xl-3-1.hf.space/queue/join?", {
+      await fetch("https://akimitsujiro-stable-diffusion-xl.hf.space/queue/join?", {
         method: "POST",
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           data: [
-            prompt, `rating_explicit, NSFW`, randomDigit, 1024, 1024, 7, 35, "DPM++ SDE Karras", size,"(None)", "Standard v3.1", false, 0.55, 1.5, true, false, null, 0.5
+            prompt, nevPrompt, randomDigit, 1024, 1024, 7, 35, "DPM++ SDE Karras", size,"(None)", "Standard v3.1", false, 0.55, 1.5, true
           ],
           event_data: null,
-          fn_index: 5,
-          trigger_id: 61,
+          fn_index: 4,
+          trigger_id: 48,
           session_hash: sessionHash,
         }),
       });
 
       // Using EventSource to listen for server-sent events
-      const es = new EventSource(`https://boboiazumi-animagine-xl-3-1.hf.space/queue/data?session_hash=${sessionHash}`);
+      const es = new EventSource(`https://akimitsujiro-stable-diffusion-xl.hf.space/queue/data?session_hash=${sessionHash}`);
 
       es.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -533,7 +533,7 @@ function generateWithSDXLAlt(prompt, resolution) {
       const session_hash = generateSessionHash();
       const urlFirstRequest = `${url}/queue/join?`;
       const dataFirstRequest = {
-        "data": [prompt, nevPrompt, true, randomDigit, width, height, 4, 12, true],
+        "data": [prompt, nevPrompt, true, randomDigit, width, height, 4, 12, true, 1],
         "event_data": null,
         "fn_index": 2,
         "trigger_id": 5,
@@ -619,123 +619,6 @@ function generateWithSDXL(prompt) {
   });
 }
 
-function generateWithRedmond(prompt, resolution) {
-  let size;
-  if (resolution == 'Square') {
-    size = '1024 x 1024';
-  } else if (resolution == 'Wide') {
-    size = '1344 x 768';
-  } else if (resolution == 'Portrait') {
-    size = '896 x 1152';
-  }
-  return new Promise(async (resolve, reject) => {
-    const randomDigit = generateRandomDigits();
-    const sessionHash = generateSessionHash();
-
-    try {
-      // First request to initiate the process
-      await fetch("https://artificialguybr-cinematicredmond-free-demo.hf.space/queue/join?", {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          data: [
-            prompt, nevPrompt, randomDigit, 1024, 1024, 4, 35, "DPM++ 2M SDE Karras", size, false, 0.55, 1.5
-          ],
-          event_data: null,
-          fn_index: 9,
-          trigger_id: 7,
-          session_hash: sessionHash,
-        }),
-      });
-
-      // Using EventSource to listen for server-sent events
-      const es = new EventSource(`https://artificialguybr-cinematicredmond-free-demo.hf.space/queue/data?session_hash=${sessionHash}`);
-
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
-          if (!outputUrl) {
-            reject(new Error("The generated URL does not exist."));
-            console.log(data);
-          }
-          resolve({ images: [{ url: outputUrl }], modelUsed: "Redmond" });
-        }
-      };
-
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
-
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-async function generateWithJuggernaut(prompt, resolution) {
-  let size;
-  if (resolution == 'Square') {
-    size = '1024 x 1024';
-  } else if (resolution == 'Wide') {
-    size = '1344 x 768';
-  } else if (resolution == 'Portrait') {
-    size = '896 x 1152';
-  }
-  return new Promise(async (resolve, reject) => {
-    const randomDigit = generateRandomDigits();
-    const sessionHash = generateSessionHash();
-  
-    try {
-      // First request to initiate the process
-      await fetch("https://damarjati-playground.hf.space/queue/join?", {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          data: [
-              prompt, nevPrompt, randomDigit, 1024, 1024, 7, 35, "Euler a", size, "(None)", "(None)", false, 0.55, 1.5, true
-            ],
-          event_data: null,
-          fn_index: 4,
-          trigger_id: 48,
-          session_hash: sessionHash,
-        }),
-      });
-  
-      // Using EventSource to listen for server-sent events
-      const es = new EventSource(`https://damarjati-playground.hf.space/queue/data?session_hash=${sessionHash}`);
-  
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
-          if (!outputUrl) {
-            reject(new Error('Invalid or missing output URL'));
-            console.log(data);
-          } else {
-            resolve({ images: [{ url: outputUrl }], modelUsed: "Juggernaut" });
-          }
-        }
-      };
-  
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
-  
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
 function generateWithPixArt_Sigma(prompt, resolution) {
   let width, height;
   if (resolution == 'Square') {
@@ -776,6 +659,65 @@ function generateWithPixArt_Sigma(prompt, resolution) {
             const full_url = data?.output?.data?.[0]?.[0]?.image?.url;
             if (full_url) {
               resolve({ images: [{ url: full_url }], modelUsed: "PixArt-Sigma" });
+            } else {
+              reject(new Error("Invalid path: URL does not exist."));
+              console.log(data);
+            }
+          }
+        };
+        eventSource.onerror = (error) => {
+          eventSource.close();
+          reject(error);
+        };
+      }).catch(error => {
+        reject(error);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function generateWithMobius(prompt, resolution) {
+  let width, height;
+  if (resolution == 'Square') {
+    width = 1024;
+    height = 1024;
+  } else if (resolution == 'Wide') {
+    width = 1280;
+    height = 768;
+  } else if (resolution == 'Portrait') {
+    width = 768;
+    height = 1280;
+  }
+  return new Promise((resolve, reject) => {
+    try {
+      const url = "https://corcelio-mobius.hf.space";
+      const randomDigit = generateRandomDigits();
+      const session_hash = generateSessionHash();
+      const urlFirstRequest = `${url}/queue/join?`;
+      const dataFirstRequest = {
+        "data": [prompt, nevPrompt, true, randomDigit, width, height, 3.5, true],
+        "event_data": null,
+        "fn_index": 3,
+        "trigger_id": 6,
+        "session_hash": session_hash
+      };
+
+      axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
+
+        const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
+        const eventSource = new EventSource(urlSecondRequest);
+
+        eventSource.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+
+          if (data.msg === "process_completed") {
+            eventSource.close();
+            const full_url = data?.output?.data?.[0]?.[0]?.image?.url;
+            if (full_url) {
+              resolve({ images: [{ url: full_url }], modelUsed: "Mobius" });
             } else {
               reject(new Error("Invalid path: URL does not exist."));
               console.log(data);
@@ -840,8 +782,7 @@ module.exports = {
   generateWithAnime,
   generateWithSDXLAlt,
   generateWithSDXL,
-  generateWithRedmond,
-  generateWithJuggernaut,
   generateWithPixArt_Sigma,
-  generateWithDalle3
+  generateWithDalle3,
+  generateWithMobius
 };
