@@ -20,11 +20,10 @@
             { "name": "Playground", "value": "Playground" },
             { "name": "Anime", "value": "Anime" },
             { "name": "Stable-Cascade", "value": "Stable-Cascade" },
-            { "name": "Redmond", "value": "Redmond" },
             { "name": "DallE-XL", "value": "DallE-XL" },
-            { "name": "Juggernaut", "value": "Juggernaut" },
             { "name": "SD-XL-Alt", "value": "SD-XL-Alt" },
-            { "name": "PixArt-Sigma", "value": "PixArt-Sigma" }
+            { "name": "PixArt-Sigma", "value": "PixArt-Sigma" },
+            { "name": "Mobius", "value": "Mobius" }
           ]
         },
         {
