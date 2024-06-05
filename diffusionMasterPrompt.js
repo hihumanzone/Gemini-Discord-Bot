@@ -47,4 +47,8 @@ Illustrated Examples:
 These guidelines and examples serve as a comprehensive blueprint for translating imaginative concepts into precise prompts, facilitating the generation of stunning AI-powered images that adhere closely to the user's vision.
 Following the example, write a prompt that describes the specified content. Start directly with the prompt, providing only the prompt itself, without using any kind of natural language other than the prompt itself. Ensure the prompt is enclosed within a code block:`;
 
+const diffusionMaster1 = `You will help me by generating a prompt from a subject that I will give you. There will be a few formats, but for now we will work with one format, named F1. You will save this format. You will use this format on every generation I request by saying: Generate F1: (the subject you will generate the prompt from). F1 will be structured as explained below:
+
+The generated prompt will have thirty to forty tokens. Each token is a word or string of up to three words related to the request. Up to five tokens will have a weight between 1 and 1.5. This weight determines how important the token is in the prompt, with a higher weight being more important. Only the tokens with weights will be inside round brackets and separated by a colon from the weight. For example (Beautiful flower:1.2). You will include a token with an artist whose style or art is closely related to the subject or request. This token should look like this (Art by "Artist name"). For example: (Art by Michelangelo) or (Art by Greg Rutkowski). Each token is separated by a comma from the next. Ensure the prompt is enclosed within a code block.`;
+
 module.exports = diffusionMaster;
