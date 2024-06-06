@@ -470,7 +470,7 @@ function generateWithAnime(prompt, resolution) {
 
     try {
       // First request to initiate the process
-      await fetch("https://akimitsujiro-stable-diffusion-xl.hf.space/queue/join?", {
+      await fetch("https://cagliostrolab-animagine-xl-3-1.hf.space/queue/join?", {
         method: "POST",
         headers: {
           'Content-Type': 'application/json',
@@ -480,14 +480,14 @@ function generateWithAnime(prompt, resolution) {
             prompt, nevPrompt, randomDigit, 1024, 1024, 7, 35, "DPM++ SDE Karras", size,"(None)", "Standard v3.1", false, 0.55, 1.5, true
           ],
           event_data: null,
-          fn_index: 4,
-          trigger_id: 48,
+          fn_index: 5,
+          trigger_id: 49,
           session_hash: sessionHash,
         }),
       });
 
       // Using EventSource to listen for server-sent events
-      const es = new EventSource(`https://akimitsujiro-stable-diffusion-xl.hf.space/queue/data?session_hash=${sessionHash}`);
+      const es = new EventSource(`https://cagliostrolab-animagine-xl-3-1.hf.space/queue/data?session_hash=${sessionHash}`);
 
       es.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -514,7 +514,7 @@ function generateWithAnime(prompt, resolution) {
   });
 }
 
-function generateWithSDXLAlt(prompt, resolution) {
+function generateWithSDXL(prompt, resolution) {
   let width, height;
   if (resolution == 'Square') {
     width = 1024;
@@ -553,57 +553,11 @@ function generateWithSDXLAlt(prompt, resolution) {
             eventSource.close();
             const full_url = data?.output?.data?.[0]?.[0]?.image?.url;
             if (full_url) {
-              resolve({ images: [{ url: full_url }], modelUsed: "SD-XL-Alt" });
+              resolve({ images: [{ url: full_url }], modelUsed: "SD-XL" });
             } else {
               reject(new Error("Invalid path: URL does not exist."));
               console.log(data);
             }
-          }
-        };
-        eventSource.onerror = (error) => {
-          eventSource.close();
-          reject(error);
-        };
-      }).catch(error => {
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithSDXL(prompt) {
-  return new Promise((resolve, reject) => {
-    try {
-      const url = "https://h1t-tcd.hf.space";
-      const session_hash = generateSessionHash();
-      const urlFirstRequest = `${url}/queue/join?`;
-      const dataFirstRequest = {
-        "data": [prompt, 16, -1, 0.6],
-        "event_data": null,
-        "fn_index": 2,
-        "trigger_id": 17,
-        "session_hash": session_hash
-      };
-
-      axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-
-        const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
-        const eventSource = new EventSource(urlSecondRequest);
-
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-
-          if (data.msg === "process_completed") {
-            eventSource.close();
-            const full_url = data?.["output"]?.["data"]?.[0]?.["url"];
-            if (!full_url) {
-              reject(new Error("The generated URL does not exist."));
-              console.log(data);
-            }
-            resolve({ images: [{ url: full_url }], modelUsed: "SD-XL" });
           }
         };
         eventSource.onerror = (error) => {
@@ -780,7 +734,6 @@ module.exports = {
   generateWithPlayground,
   generateWithDallEXL,
   generateWithAnime,
-  generateWithSDXLAlt,
   generateWithSDXL,
   generateWithPixArt_Sigma,
   generateWithDalle3,
