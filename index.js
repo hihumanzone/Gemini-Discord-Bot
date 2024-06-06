@@ -65,64 +65,84 @@ let userResponsePreference = {};
 let alwaysRespondChannels = {};
 let blacklistedUsers = {};
 
-// Path to your file
-const DATA_FILE = path.join(__dirname, 'serverData.json');
-loadStateFromFile();
+const CONFIG_DIR = path.join(__dirname, 'config');
+const CHAT_HISTORIES_DIR = path.join(CONFIG_DIR, 'chat_histories');
 
-// Function to save current state to file
+const FILE_PATHS = {
+  activeUsersInChannels: path.join(CONFIG_DIR, 'active_users_in_channels.json'),
+  customInstructions: path.join(CONFIG_DIR, 'custom_instructions.json'),
+  serverSettings: path.join(CONFIG_DIR, 'server_settings.json'),
+  userPreferredImageModel: path.join(CONFIG_DIR, 'user_preferred_image_model.json'),
+  userPreferredImageResolution: path.join(CONFIG_DIR, 'user_preferred_image_resolution.json'),
+  userPreferredImagePromptEnhancement: path.join(CONFIG_DIR, 'user_preferred_image_prompt_enhancement.json'),
+  userPreferredSpeechModel: path.join(CONFIG_DIR, 'user_preferred_speech_model.json'),
+  userPreferredUrlHandle: path.join(CONFIG_DIR, 'user_preferred_url_handle.json'),
+  userResponsePreference: path.join(CONFIG_DIR, 'user_response_preference.json'),
+  alwaysRespondChannels: path.join(CONFIG_DIR, 'always_respond_channels.json'),
+  blacklistedUsers: path.join(CONFIG_DIR, 'blacklisted_users.json')
+};
+
 function saveStateToFile() {
-  const state = {
-    chatHistories,
-    activeUsersInChannels,
-    customInstructions,
-    serverSettings,
-    userPreferredImageModel,
-    userPreferredImageResolution,
-    userPreferredImagePromptEnhancement,
-    userPreferredSpeechModel,
-    userPreferredUrlHandle,
-    userResponsePreference,
-    alwaysRespondChannels,
-    blacklistedUsers,
-  };
-
-  fs.writeFile(DATA_FILE, JSON.stringify(state, null, 2), (err) => {
-    if (err) {
-      console.error('Error saving state:', err);
-    }
-  });
-}
-
-// Function to load state from file
-function loadStateFromFile() {
   try {
-    if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE);
-      const state = JSON.parse(data);
-
-      ({
-        chatHistories,
-        activeUsersInChannels,
-        customInstructions,
-        serverSettings,
-        userPreferredImageModel,
-        userPreferredImageResolution,
-        userPreferredImagePromptEnhancement,
-        userPreferredSpeechModel,
-        userPreferredUrlHandle,
-        userResponsePreference,
-        alwaysRespondChannels,
-        blacklistedUsers
-      } = state);
-
-      console.log('State loaded successfully.');
-    } else {
-      console.log('No previous state to load.');
+    if (!fs.existsSync(CONFIG_DIR)) {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
     }
-  } catch (err) {
-    console.error('Error loading state:', err);
+
+    if (!fs.existsSync(CHAT_HISTORIES_DIR)) {
+      fs.mkdirSync(CHAT_HISTORIES_DIR, { recursive: true });
+    }
+
+    for (let [key, value] of Object.entries(chatHistories)) {
+      fs.writeFileSync(path.join(CHAT_HISTORIES_DIR, `${key}.json`), JSON.stringify(value, null, 2), 'utf-8');
+    }
+
+    for (let [key, value] of Object.entries(FILE_PATHS)) {
+      fs.writeFileSync(value, JSON.stringify(eval(key), null, 2), 'utf-8');
+    }
+  } catch (error) {
+    console.error('Error saving state to files:', error);
   }
 }
+
+function loadStateFromFile() {
+  try {
+    if (!fs.existsSync(CONFIG_DIR)) {
+      console.warn('Config directory does not exist. Initializing with empty state.');
+      return;
+    }
+
+    if (!fs.existsSync(CHAT_HISTORIES_DIR)) {
+      fs.mkdirSync(CHAT_HISTORIES_DIR, { recursive: true });
+    } else {
+      fs.readdirSync(CHAT_HISTORIES_DIR).forEach(file => {
+        if (file.endsWith('.json')) {
+          const user = path.basename(file, '.json');
+          try {
+            const data = fs.readFileSync(path.join(CHAT_HISTORIES_DIR, file), 'utf-8');
+            chatHistories[user] = JSON.parse(data);
+          } catch (readError) {
+            console.error(`Error reading chat history for ${user}:`, readError);
+          }
+        }
+      });
+    }
+
+    for (let [key, value] of Object.entries(FILE_PATHS)) {
+      if (fs.existsSync(value)) {
+        try {
+          const data = fs.readFileSync(value, 'utf-8');
+          eval(`${key} = JSON.parse(data)`);
+        } catch (readError) {
+          console.error(`Error reading ${key}:`, readError);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error loading state from files:', error);
+  }
+}
+
+loadStateFromFile();
 
 // <=====[Configuration]=====>
 
@@ -1220,7 +1240,7 @@ async function togglePromptEnhancer(interaction) {
 
 const diffusionMaster = require('./diffusionMasterPrompt');
 
-async function enhancePrompt1(prompt) {
+async function enhancePrompt(prompt) {
   const retryLimit = 3;
   let currentAttempt = 0;
   let error;
@@ -1296,7 +1316,7 @@ async function enhancePrompt1(prompt) {
   return prompt;
 }
 
-async function enhancePrompt(prompt, attempts = 3) {
+async function enhancePrompt1(prompt, attempts = 3) {
   const generate = async () => {
     const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: diffusionMaster }] } }, { apiVersion: 'v1beta' });
     const result = await model.generateContent(prompt);
