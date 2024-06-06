@@ -164,7 +164,6 @@ const {
   generateWithPlayground,
   generateWithDallEXL,
   generateWithAnime,
-  generateWithSDXLAlt,
   generateWithSDXL,
   generateWithPixArt_Sigma,
   generateWithDalle3,
@@ -902,25 +901,35 @@ async function genimg(prompt, message) {
   }
 }
 
-async function genimgslash(prompt, modelI, interaction) {
-  let model = modelI;
-  if (model) {
-    userPreferredImageModel[interaction.user.id] = model;
-  } else {
-    model = userPreferredImageModel[interaction.user.id];
+async function genimgslash(prompt, modelInput, interaction) {
+  const userId = interaction.user.id;
+  const preferredModel = modelInput || userPreferredImageModel[userId] || defaultImgModel;
+
+  if (modelInput) {
+    userPreferredImageModel[userId] = modelInput;
   }
-  const generatingMsg = await interaction.reply({ content: `Generating your image with ${model}, please wait... 🖌️` });
+
+  const generatingMsg = await interaction.reply({ content: `Generating your image with ${preferredModel}, please wait... 🖌️` });
 
   try {
     await generateAndSendImage(prompt, interaction);
-    await generatingMsg.delete();
   } catch (error) {
-    console.log(error);
-    try {
-      const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, the image could not be generated. Please try again later.` });
-      await addSettingsButton(messageReference);
-      await generatingMsg.delete();
-    } catch(error) {}
+    console.error(error);
+    await handleImageGenerationError(interaction, generatingMsg);
+    return;
+  }
+
+  await generatingMsg.delete();
+}
+
+async function handleImageGenerationError(interaction, generatingMsg) {
+  try {
+    const errorMsg = await interaction.channel.send({ content: `${interaction.user}, sorry, the image could not be generated. Please try again later.` });
+    await addSettingsButton(errorMsg);
+  } catch (err) {
+    console.error("Error sending error message: ", err);
+  } finally {
+    await generatingMsg.delete();
   }
 }
 
@@ -1070,7 +1079,7 @@ async function changeImageModel(interaction) {
   try {
     // Define model names in an array
     const models = [
-      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'DallE-XL', 'SD-XL-Alt', 'PixArt-Sigma', 'Mobius'/*, 'DallE-3'*/
+      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'DallE-XL', 'PixArt-Sigma', 'Mobius'/*, 'DallE-3'*/
       ];
     
     const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
@@ -1112,7 +1121,7 @@ async function changeImageResolution(interaction) {
     const userId = interaction.user.id;
     const selectedModel = userPreferredImageModel[userId];
     let supportedResolution;
-    const supportedModels = ['DallE-XL', 'Anime', 'Stable-Cascade', 'Playground', 'SD-XL-Alt', 'PixArt-Sigma', 'Mobius'];
+    const supportedModels = ['DallE-XL', 'Anime', 'Stable-Cascade', 'Playground', 'SD-XL', 'PixArt-Sigma', 'Mobius'];
     if (supportedModels.includes(selectedModel)) {
       supportedResolution = ['Square', 'Portrait', 'Wide'];
     } else {
@@ -1142,7 +1151,7 @@ async function changeImageResolution(interaction) {
     const actionRow = new ActionRowBuilder().addComponents(selectMenu);
 
     await interaction.reply({
-      content: '> **Unsupported Models:** `SD-XL`\n\n> `Select Image Generation Resolution:`',
+      content: '> `Select Image Generation Resolution:`',
       components: [actionRow],
       ephemeral: true
     });
@@ -1189,7 +1198,6 @@ const imageModelFunctions = {
   'Stable-Cascade': generateWithSC,
   'DallE-XL': generateWithDallEXL,
   'DallE-3': generateWithDalle3,
-  'SD-XL-Alt': generateWithSDXLAlt,
   'PixArt-Sigma': generateWithPixArt_Sigma,
   'Mobius': generateWithMobius
 };
@@ -1240,7 +1248,7 @@ async function togglePromptEnhancer(interaction) {
 
 const diffusionMaster = require('./diffusionMasterPrompt');
 
-async function enhancePrompt1(prompt) {
+async function enhancePrompt(prompt) {
   const retryLimit = 3;
   let currentAttempt = 0;
   let error;
@@ -1316,7 +1324,7 @@ async function enhancePrompt1(prompt) {
   return prompt;
 }
 
-async function enhancePrompt(prompt, attempts = 3) {
+async function enhancePrompt1(prompt, attempts = 3) {
   const generate = async () => {
     const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: diffusionMaster }] } }, { apiVersion: 'v1beta' });
     const result = await model.generateContent(prompt);
