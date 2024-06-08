@@ -50,7 +50,7 @@ function generateRandomDigits() {
   return Math.floor(Math.random() * (999999999 - 100000000 + 1) + 100000000);
 }
 
-async function speechGen(prompt, language) {
+function speechGen(prompt, language) {
   let x, y;
   if (language == 'English') {
     x = 'EN';
@@ -77,60 +77,44 @@ async function speechGen(prompt, language) {
         y = 'EN-Default';
     }
   }
-  const sessionHash = generateSessionHash();
-  const urlFirstRequest = 'https://mrfakename-melotts.hf.space/queue/join?';
-  const dataFirstRequest = {
-    data: [y, prompt, 1, x],
-    event_data: null,
-    fn_index: 1,
-    trigger_id: 8,
-    session_hash: sessionHash
-  };
-
-  try {
-    const responseFirst = await axios.post(urlFirstRequest, dataFirstRequest);
-  } catch (error) {
-    console.error("Error in the first request:", error);
-    return null;
-  }
-
-  const urlSecondRequest = `https://mrfakename-melotts.hf.space/queue/data?session_hash=${sessionHash}`;
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
-      axios.get(urlSecondRequest, {
-        responseType: 'stream'
-      }).then(responseSecond => {
-        let fullData = '';
+      const sessionHash = generateSessionHash();
 
-        responseSecond.data.on('data', (chunk) => {
-          fullData += chunk.toString();
-
-          if (fullData.includes('"msg": "process_completed"')) {
-            const lines = fullData.split('\n');
-            for (const line of lines) {
-              if (line.includes('"msg": "process_completed"')) {
-                try {
-                  const dataDict = JSON.parse(line.slice(line.indexOf('{')));
-                  const fullUrl = dataDict?.output?.data?.[0]?.url;
-                  if (fullUrl) {
-                    resolve(fullUrl);
-                  } else {
-                    reject(new Error("Output URL is missing"));
-                    console.log(dataDict);
-                  }
-                  break;
-                } catch (parseError) {
-                  console.error("Parsing error:", parseError);
-                  reject(parseError);
-                }
-              }
-            }
-          }
-        });
-      }).catch(error => {
-        console.error("Error in second request event stream:", error);
-        reject(error);
+      // First request to join the queue
+      await fetch("https://mrfakename-melotts.hf.space/queue/join?", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: [prompt, y, 1, x],
+          event_data: null,
+          fn_index: 1,
+          trigger_id: 8,
+          session_hash: sessionHash
+        }),
       });
+
+      // Replace this part to use EventSource for listening to the event stream
+      const es = new EventSource(`https://mrfakename-melotts.hf.space/queue/data?session_hash=${sessionHash}`);
+
+      es.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.msg === 'process_completed') {
+          es.close();
+          const outputUrl = data?.output?.data?.[0]?.url;
+          if (!outputUrl) {
+            reject(new Error("Output URL does not exist, path might be invalid."));
+            console.log(data);
+          } else {
+            resolve(outputUrl);
+          }
+        }
+      };
+
+      es.onerror = (error) => {
+        es.close();
+        reject(error);
+      };
     } catch (error) {
       reject(error);
     }
