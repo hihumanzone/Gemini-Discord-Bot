@@ -155,6 +155,8 @@ const activities = config.activities.map(activity => ({
 }));
 const defaultPersonality = config.defaultPersonality;
 const defaultServerSettings = config.defaultServerSettings;
+const workInDMs = config.workInDMs;
+const shouldDisplayPersonalityButtons = config.shouldDisplayPersonalityButtons;
 
 const {
   speechGen,
@@ -235,11 +237,11 @@ client.on('messageCreate', async (message) => {
     const startsWithPattern = /^generate|^imagine/i;
     const command = message.content.match(mentionPattern) || message.content.match(startsWithPattern);
 
-    // Decide if the bot should respond based on channel conditions
     const shouldRespond = (
+      workInDMs && isDM ||
       alwaysRespondChannels[message.channelId] ||
-      message.mentions.users.has(client.user.id) && !isDM ||
-      activeUsersInChannels[message.channelId]?.[message.author.id] || isDM
+      (message.mentions.users.has(client.user.id) && !isDM) ||
+      activeUsersInChannels[message.channelId]?.[message.author.id]
     );
 
     if (shouldRespond) {
@@ -250,7 +252,6 @@ client.on('messageCreate', async (message) => {
         }
       }
       if (command) {
-        // Extract the command name and the prompt
         const prompt = message.content.slice(command.index + command[0].length).trim();
         if (prompt) {
           await genimg(prompt, message);
@@ -1853,24 +1854,13 @@ async function showSettings(interaction) {
       return interaction.reply({ content: 'You are blacklisted and cannot use this interaction.', ephemeral: true });
     }
   }
+
   // Define button configurations in an array
-  const buttonConfigs = [
+  let buttonConfigs = [
     {
       customId: "clear",
       label: "Clear Memory",
       emoji: "🧹",
-      style: ButtonStyle.Danger,
-    },
-    {
-      customId: "custom-personality",
-      label: "Custom Personality",
-      emoji: "🙌",
-      style: ButtonStyle.Primary,
-    },
-    {
-      customId: "remove-personality",
-      label: "Remove Personality",
-      emoji: "🤖",
       style: ButtonStyle.Danger,
     },
     {
@@ -1953,6 +1943,24 @@ async function showSettings(interaction) {
     },
   ];
 
+  // Conditionally add personality buttons
+  if (shouldDisplayPersonalityButtons) {
+    buttonConfigs.splice(1, 0,
+      {
+        customId: "custom-personality",
+        label: "Custom Personality",
+        emoji: "🙌",
+        style: ButtonStyle.Primary,
+      },
+      {
+        customId: "remove-personality",
+        label: "Remove Personality",
+        emoji: "🤖",
+        style: ButtonStyle.Danger,
+      }
+    );
+  }
+
   // Generate buttons from configurations
   const allButtons = buttonConfigs.map((config) =>
     new ButtonBuilder()
@@ -1978,6 +1986,7 @@ async function showSettings(interaction) {
     content: countdownMessage,
     components: actionRows,
   });
+
   const countdownInterval = setInterval(async () => {
     secondsLeft--;
     if (secondsLeft > 0) {
