@@ -157,6 +157,7 @@ const defaultPersonality = config.defaultPersonality;
 const defaultServerSettings = config.defaultServerSettings;
 const workInDMs = config.workInDMs;
 const shouldDisplayPersonalityButtons = config.shouldDisplayPersonalityButtons;
+const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
 
 const {
   speechGen,
@@ -248,7 +249,11 @@ client.on('messageCreate', async (message) => {
       if (message.guild) {
         initializeBlacklistForGuild(message.guild.id);
         if (blacklistedUsers[message.guild.id].includes(message.author.id)) {
-          return message.reply({ content: 'You are blacklisted and cannot use this bot.' });
+          const embed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('Blacklisted')
+            .setDescription('You are blacklisted and cannot use this bot.');
+          return message.reply({ embeds: [embed] });
         }
       }
       if (command) {
@@ -256,10 +261,18 @@ client.on('messageCreate', async (message) => {
         if (prompt) {
           await genimg(prompt, message);
         } else {
-          await message.channel.send("> `Please provide a valid prompt.`");
+          const embed = new EmbedBuilder()
+            .setColor(0x00FFFF)
+            .setTitle('Invalid Prompt')
+            .setDescription('Please provide a valid prompt.');
+          await message.channel.send({ embeds: [embed] });
         }
       } else if (activeRequests.has(message.author.id)) {
-        await message.reply('> `Please wait until your previous action is complete.`');
+        const embed = new EmbedBuilder()
+          .setColor(0xFFFF00)
+          .setTitle('Request In Progress')
+          .setDescription('Please wait until your previous action is complete.');
+        await message.reply({ embeds: [embed] });
       } else if (message.attachments.size > 0 && hasImageAttachments(message)) {
         await handleImageMessage(message);
       } else if (message.attachments.size > 0 && hasTextFileAttachments(message)) {
@@ -280,7 +293,7 @@ client.on('interactionCreate', async (interaction) => {
   try {
     if (!interaction.isCommand()) return;
     switch (interaction.commandName) {
-      case 'respondtoall':
+      case 'respond_to_all':
         await handleRespondToAllCommand(interaction);
         break;
       case 'whitelist':
@@ -292,12 +305,16 @@ client.on('interactionCreate', async (interaction) => {
       case 'imagine':
         await handleImagineCommand(interaction);
         break;
-      case 'clear':
+      case 'clear_memory':
         const serverChatHistoryEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverChatHistory : false;
         if (!serverChatHistoryEnabled) {
           await clearChatHistory(interaction);
         } else {
-          await interaction.reply("Clearing chat history is not enabled for this server, Server-Wide chat history is active.");
+          const embed = new EmbedBuilder()
+            .setColor(0xFF5555)
+            .setTitle('Feature Disabled')
+            .setDescription('Clearing chat history is not enabled for this server, Server-Wide chat history is active.');
+          await interaction.reply({ embeds: [embed] });
         }
         break;
       case 'speech':
@@ -306,7 +323,7 @@ client.on('interactionCreate', async (interaction) => {
       case 'settings':
         await showSettings(interaction);
         break;
-      case 'dashboard':
+      case 'server_settings':
         await showDashboard(interaction);
         break;
       case 'video':
@@ -330,7 +347,11 @@ client.on('interactionCreate', async (interaction) => {
       if (interaction.guild) {
         initializeBlacklistForGuild(interaction.guild.id);
         if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
-          return interaction.reply({ content: 'You are blacklisted and cannot use this interaction.', ephemeral: true });
+          const embed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('Blacklisted')
+            .setDescription('You are blacklisted and cannot use this interaction.');
+          return interaction.reply({ embeds: [embed], ephemeral: true });
         }
       }
       switch (interaction.customId) {
@@ -366,7 +387,11 @@ client.on('interactionCreate', async (interaction) => {
           if (!serverChatHistoryEnabled) {
             await clearChatHistory(interaction);
           } else {
-            await interaction.reply({content: "Clearing chat history is not enabled for this server, Server-Wide chat history is active.", ephemeral: true});
+            const embed = new EmbedBuilder()
+              .setColor(0xFF5555)
+              .setTitle('Feature Disabled')
+              .setDescription('Clearing chat history is not enabled for this server, Server-Wide chat history is active.');
+            await interaction.reply({ embeds: [embed], ephemeral: true });
           }
           break;
         case 'always-respond':
@@ -377,7 +402,11 @@ client.on('interactionCreate', async (interaction) => {
           if (!serverCustomEnabled) {
             await setCustomPersonality(interaction);
           } else {
-            await interaction.reply({content: "Custom personality is not enabled for this server, Server-Wide personality is active.", ephemeral: true});
+            const embed = new EmbedBuilder()
+              .setColor(0xFF5555)
+              .setTitle('Feature Disabled')
+              .setDescription('Custom personality is not enabled for this server, Server-Wide personality is active.');
+            await interaction.reply({ embeds: [embed], ephemeral: true });
           }
           break;
         case 'remove-personality':
@@ -385,7 +414,11 @@ client.on('interactionCreate', async (interaction) => {
           if (!isServerEnabled) {
             await removeCustomPersonality(interaction);
           } else {
-            await interaction.reply({content: "Custom personality is not enabled for this server, Server-Wide personality is active.", ephemeral: true});
+            const embed = new EmbedBuilder()
+              .setColor(0xFF5555)
+              .setTitle('Feature Disabled')
+              .setDescription('Custom personality is not enabled for this server, Server-Wide personality is active.');
+            await interaction.reply({ embeds: [embed], ephemeral: true });
           }
           break;
         case 'generate-image':
@@ -405,7 +438,11 @@ client.on('interactionCreate', async (interaction) => {
           if (!serverResponsePreferenceEnabled) {
             await toggleUserPreference(interaction);
           } else {
-            await interaction.reply({content: "Toggling Response Mode is not enabled for this server, Server-Wide Response Mode is active.", ephemeral: true});
+            const embed = new EmbedBuilder()
+              .setColor(0xFF5555)
+              .setTitle('Feature Disabled')
+              .setDescription('Toggling Response Mode is not enabled for this server, Server-Wide Response Mode is active.');
+            await interaction.reply({ embeds: [embed], ephemeral: true });
           }
           break;
        case 'toggle-url-mode':
@@ -533,7 +570,11 @@ async function handleImageMessage(message) {
       safetySettings,
     });
 
-    const botMessage = await message.reply({ content: 'Analyzing the image(s) with your text prompt...' });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FFFF)
+      .setTitle('Image Analysis')
+      .setDescription('Analyzing the image(s) with your text prompt...');
+    const botMessage = await message.reply({ embeds: [embed] });
     await handleModelResponse(botMessage, async () => chat.sendMessageStream([messageContent, ...imageParts]), message);
   }
 }
@@ -560,7 +601,11 @@ async function handleTextFileMessage(message) {
   });
 
   if (fileAttachments.size > 0) {
-    let botMessage = await message.reply({ content: '> `Processing your document(s)...`' });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FFFF)
+      .setTitle('Document Processing')
+      .setDescription('Processing your document(s)...');
+    let botMessage = await message.reply({ embeds: [embed] });
     let formattedMessage = messageContent;
 
     for (const [attachmentId, attachment] of fileAttachments) {
@@ -593,7 +638,11 @@ async function handleTextMessage(message) {
   const userId = message.author.id;
   let messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim();
   if (messageContent === '') {
-    const botMessage = await message.reply("It looks like you didn't say anything. What would you like to talk about?");
+    const embed = new EmbedBuilder()
+      .setColor(0x00FFFF)
+      .setTitle('Empty Message')
+      .setDescription("It looks like you didn't say anything. What would you like to talk about?");
+    const botMessage = await message.reply({ embeds: [embed] });
     await addSettingsButton(botMessage);
     return;
   }
@@ -609,12 +658,19 @@ async function handleTextMessage(message) {
   activeRequests.add(userId);
   const videoTranscripts = {};
   if (urls.length > 0 && getUrlUserPreference(userId) === "ON") {
-    botMessage = await message.reply('Fetching content from the URLs...');
+    const embed = new EmbedBuilder()
+      .setColor(0xFFFFFF)
+      .setTitle('Processing URLs')
+      .setDescription('Fetching content from the URLs...');
+    botMessage = await message.reply({ embeds: [embed] });
     await handleUrlsInMessage(urls, formattedMessage, botMessage, message);
   } else {
-    botMessage = await message.reply('> `Let me think...`');
+    const embed = new EmbedBuilder()
+      .setColor(0x00FFFF)
+      .setTitle('Processing')
+      .setDescription('Let me think...');
+    botMessage = await message.reply({ embeds: [embed] });
     const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
-    // Only include instructions if they are set.
     const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : defaultPersonality }] } }, { apiVersion: 'v1beta' });
     const chat = model.startChat({
       history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
@@ -645,7 +701,11 @@ async function handleImagineCommand(interaction) {
 }
 
 async function handleSpeechCommand(interaction) {
-  const generatingMsg = await interaction.reply({ content: `${interaction.user}, generating your speech, please wait... 💽` });
+  const embed = new EmbedBuilder()
+    .setColor(0x00FFFF)
+    .setTitle('Generating Speech')
+    .setDescription(`Generating your speech, please wait... 💽`);
+  const generatingMsg = await interaction.reply({ content: interaction.user, embeds: [embed] });
   try {
     const userId = interaction.user.id;
     const text = interaction.options.getString('prompt');
@@ -655,14 +715,22 @@ async function handleSpeechCommand(interaction) {
       await handleSuccessfulSpeechGeneration(interaction, text, language, outputUrl);
       await generatingMsg.delete();
     } else {
-      const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong, or the output URL is not available.` });
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Error')
+        .setDescription('Sorry, something went wrong, or the output URL is not available.');
+      const messageReference = await interaction.channel.send({ content: interaction.user, embeds: [embed] });
       await addSettingsButton(messageReference);
       await generatingMsg.delete();
     }
   } catch (error) {
     console.log(error);
     try {
-      const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong and the output is not available.` });
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Error')
+        .setDescription(`Sorry, something went wrong and the output is not available.`);
+      const messageReference = await interaction.channel.send({ content: interaction.user, embeds: [embed] });
       await addSettingsButton(messageReference);
       await generatingMsg.delete();
     } catch(error) {}
@@ -670,7 +738,11 @@ async function handleSpeechCommand(interaction) {
 }
 
 async function handleMusicCommand(interaction) {
-  const generatingMsg = await interaction.reply({ content: `${interaction.user}, generating your music, please wait... 🎧` });
+  const embed = new EmbedBuilder()
+    .setColor(0x00FFFF)
+    .setTitle('Generating Music')
+    .setDescription(`Generating your music, please wait... 🎧`);
+  const generatingMsg = await interaction.reply({ content: interaction.user, embeds: [embed] });
   try {
     const userId = interaction.user.id;
     const text = interaction.options.getString('prompt');
@@ -679,14 +751,22 @@ async function handleMusicCommand(interaction) {
       await handleSuccessfulMusicGeneration(interaction, text, outputUrl);
       await generatingMsg.delete();
     } else {
-      const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong, or the output URL is not available.` });
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Error')
+        .setDescription('Sorry, something went wrong, or the output URL is not available.');
+      const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
       await addSettingsButton(messageReference);
       await generatingMsg.delete();
     }
   } catch (error) {
     console.log(error);
     try {
-      const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong and the output is not available.` });
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Error')
+        .setDescription('Sorry, something went wrong and the output is not available.');
+      const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
       await addSettingsButton(messageReference);
       await generatingMsg.delete();
     } catch(error) {}
@@ -694,7 +774,11 @@ async function handleMusicCommand(interaction) {
 }
 
 async function handleVideoCommand(interaction) {
-  const generatingMsg = await interaction.reply({ content: `${interaction.user}, generating your video, please wait... 📽️` });
+  const embed = new EmbedBuilder()
+    .setColor(0x00FFFF)
+    .setTitle('Generating Video')
+    .setDescription(`Generating your video, please wait... 📽️`);
+  const generatingMsg = await interaction.reply({ embeds: [embed] });
   try {
     const userId = interaction.user.id;
     const text = interaction.options.getString('prompt');
@@ -703,14 +787,22 @@ async function handleVideoCommand(interaction) {
       await handleSuccessfulVideoGeneration(interaction, text, outputUrl);
       await generatingMsg.delete();
     } else {
-      const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong, or the output URL is not available.` });
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Error')
+        .setDescription('Sorry, something went wrong, or the output URL is not available.');
+      const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
       await addSettingsButton(messageReference);
       await generatingMsg.delete();
     }
   } catch (error) {
     console.log(error);
     try {
-      const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong and the output is not available.` });
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Error')
+        .setDescription('Sorry, something went wrong and the output is not available.');
+      const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
       await addSettingsButton(messageReference);
       await generatingMsg.delete();
     } catch(error) {}
@@ -895,7 +987,11 @@ async function genimg(prompt, message) {
   } catch (error) {
     console.error(error);
     try {
-      const messageReference = await message.reply({ content: `Sorry, could not generate the image. Please try again later.` });
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Error')
+        .setDescription('Sorry, could not generate the image. Please try again later.');
+      const messageReference = await message.reply({ embeds: [embed] });
       await addSettingsButton(messageReference);
       await generatingMsg.delete();
     } catch(error) {}
@@ -910,7 +1006,11 @@ async function genimgslash(prompt, modelInput, interaction) {
     userPreferredImageModel[userId] = modelInput;
   }
 
-  const generatingMsg = await interaction.reply({ content: `Generating your image with ${preferredModel}, please wait... 🖌️` });
+  const embed = new EmbedBuilder()
+    .setColor(0x00FFFF)
+    .setTitle('Generating Image')
+    .setDescription(`Generating your image with ${preferredModel}, please wait... 🖌️`);
+  const generatingMsg = await interaction.reply({ embeds: [embed] });
 
   try {
     await generateAndSendImage(prompt, interaction);
@@ -925,7 +1025,11 @@ async function genimgslash(prompt, modelInput, interaction) {
 
 async function handleImageGenerationError(interaction, generatingMsg) {
   try {
-    const errorMsg = await interaction.channel.send({ content: `${interaction.user}, sorry, the image could not be generated. Please try again later.` });
+    const embed = new EmbedBuilder()
+      .setColor(0xFF0000)
+      .setTitle('Error')
+      .setDescription('Sorry, the image could not be generated. Please try again later.');
+    const errorMsg = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
     await addSettingsButton(errorMsg);
   } catch (err) {
     console.error("Error sending error message: ", err);
@@ -978,7 +1082,11 @@ async function handleModalSubmit(interaction) {
       const customInstructionsInput = interaction.fields.getTextInputValue('custom-personality-input');
       customInstructions[interaction.user.id] = customInstructionsInput.trim();
 
-      await interaction.reply({ content: '> Custom Personality Instructions Saved!', ephemeral: true });
+      const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('Success')
+        .setDescription('Custom Personality Instructions Saved!');
+      await interaction.reply({ embeds: [embed], ephemeral: true });
     } catch (error) {
       console.log(error.message);
     }
@@ -987,12 +1095,20 @@ async function handleModalSubmit(interaction) {
       const customInstructionsInput = interaction.fields.getTextInputValue('custom-server-personality-input');
       customInstructions[interaction.guild.id] = customInstructionsInput.trim();
 
-      await interaction.reply({ content: 'Custom Server Personality Instructions Saved!', ephemeral: true });
+      const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('Success')
+        .setDescription('Custom Server Personality Instructions Saved!');
+      await interaction.reply({ embeds: [embed], ephemeral: true });
     } catch (error) {
       console.log(error.message);
     }
   } else if (interaction.customId === 'text-speech-modal') {
-    const generatingMsg = await interaction.reply({ content: `${interaction.user}, generating your speech, please wait... 💽` });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FFFF)
+      .setTitle('Generating Speech')
+      .setDescription(`Generating your speech, please wait... 💽`);
+    const generatingMsg = await interaction.reply({ embeds: [embed] });
     try {
       const userId = interaction.user.id;
       const text = interaction.fields.getTextInputValue('text-speech-input');
@@ -1001,20 +1117,32 @@ async function handleModalSubmit(interaction) {
         await handleSuccessfulSpeechGeneration(interaction, text, "English", outputUrl);
         await generatingMsg.delete();
       } else {
-        const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong or the output URL is not available.` });
+        const embed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('Error')
+          .setDescription('Sorry, something went wrong or the output URL is not available.');
+        const messageReference = await interaction.channel.send({ content: interaction.user, embeds: [embed] });
         await addSettingsButton(messageReference);
         await generatingMsg.delete();
       }
     } catch (error) {
       console.log(error);
       try {
-        const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong or the output URL is not available.` });
+        const embed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('Error')
+          .setDescription('Sorry, something went wrong or the output URL is not available.');
+        const messageReference = await interaction.channel.send({ content: interaction.user, embeds: [embed] });
         await addSettingsButton(messageReference);
         await generatingMsg.delete();
       } catch(error) {}
     }
   } else if (interaction.customId === 'text-music-modal') {
-    const generatingMsg = await interaction.reply({ content: `${interaction.user}, generating your music, please wait... 🎧` });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FFFF)
+      .setTitle('Generating Music')
+      .setDescription(`Generating your music, please wait... 🎧`);
+    const generatingMsg = await interaction.reply({ embeds: [embed] });
     try {
       const userId = interaction.user.id;
       const text = interaction.fields.getTextInputValue('text-music-input');
@@ -1023,20 +1151,32 @@ async function handleModalSubmit(interaction) {
         await handleSuccessfulMusicGeneration(interaction, text, outputUrl);
         await generatingMsg.delete();
       } else {
-        const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong or the output URL is not available.` });
+        const embed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('Error')
+          .setDescription('Sorry, something went wrong or the output URL is not available.');
+        const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
         await addSettingsButton(messageReference);
         await generatingMsg.delete();
       }
     } catch (error) {
       console.log(error);
       try {
-        const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong or the output URL is not available.` });
+        const embed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('Error')
+          .setDescription('Sorry, something went wrong or the output URL is not available.');
+        const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
         await addSettingsButton(messageReference);
         await generatingMsg.delete();
       } catch(error) {}
     }
   } else if (interaction.customId === 'text-video-modal') {
-    const generatingMsg = await interaction.reply({ content: `${interaction.user}, generating your video, please wait... 📽️` });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FFFF)
+      .setTitle('Generating Video')
+      .setDescription(`Generating your video, please wait... 📽️`);
+    const generatingMsg = await interaction.reply({ embeds: [embed] });
     try {
       const userId = interaction.user.id;
       const text = interaction.fields.getTextInputValue('text-video-input');
@@ -1045,14 +1185,22 @@ async function handleModalSubmit(interaction) {
         await handleSuccessfulVideoGeneration(interaction, text, outputUrl);
         await generatingMsg.delete();
       } else {
-        const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong or the output URL is not available.` });
+        const embed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('Error')
+          .setDescription('Sorry, something went wrong or the output URL is not available.');
+        const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
         await addSettingsButton(messageReference);
         await generatingMsg.delete();
       }
     } catch (error) {
       console.log(error);
       try {
-        const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, something went wrong or the output URL is not available.` });
+        const embed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('Error')
+          .setDescription('Sorry, something went wrong or the output URL is not available.');
+        const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
         await addSettingsButton(messageReference);
         await generatingMsg.delete();
       } catch(error) {}
@@ -1060,7 +1208,11 @@ async function handleModalSubmit(interaction) {
   } else if (interaction.customId === 'generate-image-modal') {
     const prompt = interaction.fields.getTextInputValue('image-prompt-input');
 
-    const generatingMsg = await interaction.reply({ content: `${interaction.user}, generating your image, please wait... 🖌️` });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FFFF)
+      .setTitle('Generating Image')
+      .setDescription(`Generating your image, please wait... 🖌️`);
+    const generatingMsg = await interaction.reply({ embeds: [embed] });
 
     try {
       await generateAndSendImage(prompt, interaction);
@@ -1068,7 +1220,11 @@ async function handleModalSubmit(interaction) {
     } catch (error) {
       console.log(error);
       try {
-        const messageReference = await interaction.channel.send({ content: `${interaction.user}, sorry, could not generate the image. Please try again later.` });
+        const embed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('Error')
+          .setDescription('Sorry, could not generate the image. Please try again later.');
+        const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
         await addSettingsButton(messageReference);
         await generatingMsg.delete();
       } catch(error) {}
@@ -1107,8 +1263,13 @@ async function changeImageModel(interaction) {
     // Create an action row and add the select menu to it
     const actionRow = new ActionRowBuilder().addComponents(selectMenu);
 
+    const embed = new EmbedBuilder()
+      .setColor(0xFFFFFF)
+      .setTitle('Select Image Generation Model')
+      .setDescription('Select the model you want to use for image generation.');
+    
     await interaction.reply({
-      content: '> `Select Image Generation Model:`',
+      embeds: [embed],
       components: [actionRow],
       ephemeral: true
     });
@@ -1151,8 +1312,13 @@ async function changeImageResolution(interaction) {
     // Create an action row and add the select menu to it
     const actionRow = new ActionRowBuilder().addComponents(selectMenu);
 
+    const embed = new EmbedBuilder()
+      .setColor(0xFFFFFF)
+      .setTitle('Select Image Generation Resolution')
+      .setDescription('Select the resolution you want to use for image generation.');
+    
     await interaction.reply({
-      content: '> `Select Image Generation Resolution:`',
+      embeds: [embed],
       components: [actionRow],
       ephemeral: true
     });
@@ -1179,8 +1345,13 @@ async function changeSpeechModel(interaction) {
     actionRows.push(actionRow);
   }
 
+  const embed = new EmbedBuilder()
+    .setColor(0xFFFFFF)
+    .setTitle('Select Speech Generation Model')
+    .setDescription('Choose the model you want to use for speech generation.');
+  
   await interaction.reply({
-    content: '> `Select Speech Generation Model:`',
+    embeds: [embed],
     components: actionRows,
     ephemeral: true
   });
@@ -1207,7 +1378,12 @@ async function handleImageSelectModel(interaction, model) {
   try {
     const userId = interaction.user.id;
     userPreferredImageModel[userId] = model;
-    await interaction.reply({ content: `**Image Generation Model Selected**: ${model}`, ephemeral: true });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FF00)
+      .setTitle('Model Selected')
+      .setDescription(`Image Generation Model Selected: ${model}`);
+    
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.log(error.message);
   }
@@ -1217,7 +1393,12 @@ async function handleImageSelectResolution(interaction, resolution) {
   try {
     const userId = interaction.user.id;
     userPreferredImageResolution[userId] = resolution;
-    await interaction.reply({ content: `**Image Generation Resolution Selected**: ${resolution}`, ephemeral: true });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FF00)
+      .setTitle('Resolution Selected')
+      .setDescription(`Image Generation Resolution Selected: ${resolution}`);
+    
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.log(error.message);
   }
@@ -1227,7 +1408,12 @@ async function handleSpeechSelectModel(interaction, model) {
   try {
     const userId = interaction.user.id;
     userPreferredSpeechModel[userId] = model;
-    await interaction.reply({ content: `**Speech Generation Model Selected**: ${model}`, ephemeral: true });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FF00)
+      .setTitle('Model Selected')
+      .setDescription(`Speech Generation Model Selected: ${model}`);
+    
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch(error) {
     console.log(error.message);
   }
@@ -1241,7 +1427,12 @@ async function togglePromptEnhancer(interaction) {
     }
     userPreferredImagePromptEnhancement[userId] = !userPreferredImagePromptEnhancement[userId];
     const newState = userPreferredImagePromptEnhancement[userId] ? 'Enabled' : 'Disabled';
-    await interaction.reply({ content: `Prompt Enhancer is now ${newState}.`, ephemeral: true });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FF00)
+      .setTitle('Prompt Enhancer Status')
+      .setDescription(`Prompt Enhancer is now ${newState}.`);
+    
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.error(`Error toggling Prompt Enhancer: ${error.message}`);
   }
@@ -1450,7 +1641,11 @@ async function generateVideoWithPrompt(prompt, userId) {
 async function clearChatHistory(interaction) {
   try {
     chatHistories[interaction.user.id] = [];
-    await interaction.reply({ content: '> `Chat history cleared!`', ephemeral: true });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FF00)
+      .setTitle('Chat History Cleared')
+      .setDescription('Chat history cleared!');
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.log(error.message);
   }
@@ -1462,7 +1657,11 @@ async function alwaysRespond(interaction) {
     const channelId = interaction.channelId;
 
     if (interaction.channel.type === ChannelType.DM) {
-      await interaction.reply({ content: '> `This feature is disabled in DMs.`', ephemeral: true });
+      const dmDisabledEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Feature Disabled in DMs')
+        .setDescription('This feature is disabled in direct messages.');
+      await interaction.reply({ embeds: [dmDisabledEmbed], ephemeral: true });
       return;
     }
 
@@ -1472,10 +1671,18 @@ async function alwaysRespond(interaction) {
 
     if (activeUsersInChannels[channelId][userId]) {
       delete activeUsersInChannels[channelId][userId];
-      await interaction.reply({ content: '> Bot response to your messages is turned `OFF`.', ephemeral: true });
+      const offEmbed = new EmbedBuilder()
+        .setColor(0xFFA500)
+        .setTitle('Bot Response Disabled')
+        .setDescription('Bot response to your messages is turned `OFF`.');
+      await interaction.reply({ embeds: [offEmbed], ephemeral: true });
     } else {
       activeUsersInChannels[channelId][userId] = true;
-      await interaction.reply({ content: '> Bot response to your messages is turned `ON`.', ephemeral: true });
+      const onEmbed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('Bot Response Enabled')
+        .setDescription('Bot response to your messages is turned `ON`.');
+      await interaction.reply({ embeds: [onEmbed], ephemeral: true });
     }
   } catch (error) {
     console.log(error.message);
@@ -1485,20 +1692,36 @@ async function alwaysRespond(interaction) {
 async function handleRespondToAllCommand(interaction) {
   try {
     if (interaction.channel.type === ChannelType.DM) {
-      return interaction.reply({ content: 'This command cannot be used in DMs.', ephemeral: true });
+      const dmEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Command Not Available')
+        .setDescription('This command cannot be used in DMs.');
+      return interaction.reply({ embeds: [dmEmbed], ephemeral: true });
     }
 
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return interaction.reply({ content: 'You need to be an admin to use this command.', ephemeral: true });
+      const adminEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Admin Required')
+        .setDescription('You need to be an admin to use this command.');
+      return interaction.reply({ embeds: [adminEmbed], ephemeral: true });
     }
 
     const channelId = interaction.channelId;
     if (alwaysRespondChannels[channelId]) {
       delete alwaysRespondChannels[channelId];
-      await interaction.reply({ content: '> **The bot will now stop** responding to all messages in this channel.', ephemeral: false });
+      const stopRespondEmbed = new EmbedBuilder()
+        .setColor(0xFFA500)
+        .setTitle('Bot Response Disabled')
+        .setDescription('The bot will now stop responding to all messages in this channel.');
+      await interaction.reply({ embeds: [stopRespondEmbed], ephemeral: false });
     } else {
       alwaysRespondChannels[channelId] = true;
-      await interaction.reply({ content: '> **The bot will now respond** to all messages in this channel.', ephemeral: false });
+      const startRespondEmbed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('Bot Response Enabled')
+        .setDescription('The bot will now respond to all messages in this channel.');
+      await interaction.reply({ embeds: [startRespondEmbed], ephemeral: false });
     }
   } catch (error) {
     console.log(error.message);
@@ -1519,23 +1742,43 @@ function initializeBlacklistForGuild(guildId) {
 async function handleBlacklistCommand(interaction) {
   try {
     if (interaction.channel.type === ChannelType.DM) {
-      return interaction.reply({ content: 'This command cannot be used in DMs.', ephemeral: true });
+      const dmEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Command Not Available')
+        .setDescription('This command cannot be used in DMs.');
+      return interaction.reply({ embeds: [dmEmbed], ephemeral: true });
     }
 
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return interaction.reply({ content: 'You need to be an admin to use this command.', ephemeral: true });
+      const adminEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Admin Required')
+        .setDescription('You need to be an admin to use this command.');
+      return interaction.reply({ embeds: [adminEmbed], ephemeral: true });
     }
+
     const userId = interaction.options.getUser('user').id;
 
-    // Add the user to the blacklist if not already present
-    initializeBlacklistForGuild(interaction.guild.id);
+    // Initialize blacklist for the guild if it doesn't exist
+    if (!blacklistedUsers[interaction.guild.id]) {
+      blacklistedUsers[interaction.guild.id] = [];
+    }
+
     if (!blacklistedUsers[interaction.guild.id].includes(userId)) {
       blacklistedUsers[interaction.guild.id].push(userId);
-      await interaction.reply(`<@${userId}> has been blacklisted.`);
+      const blacklistedEmbed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('User Blacklisted')
+        .setDescription(`<@${userId}> has been blacklisted.`);
+      await interaction.reply({ embeds: [blacklistedEmbed] });
     } else {
-      await interaction.reply(`<@${userId}> is already blacklisted.`);
+      const alreadyBlacklistedEmbed = new EmbedBuilder()
+        .setColor(0xFFA500)
+        .setTitle('User Already Blacklisted')
+        .setDescription(`<@${userId}> is already blacklisted.`);
+      await interaction.reply({ embeds: [alreadyBlacklistedEmbed] });
     }
-  } catch(error) {
+  } catch (error) {
     console.log(error.message);
   }
 }
@@ -1543,24 +1786,44 @@ async function handleBlacklistCommand(interaction) {
 async function handleWhitelistCommand(interaction) {
   try {
     if (interaction.channel.type === ChannelType.DM) {
-      return interaction.reply({ content: 'This command cannot be used in DMs.', ephemeral: true });
+      const dmEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Command Not Available')
+        .setDescription('This command cannot be used in DMs.');
+      return interaction.reply({ embeds: [dmEmbed], ephemeral: true });
     }
 
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return interaction.reply({ content: 'You need to be an admin to use this command.', ephemeral: true });
+      const adminEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Admin Required')
+        .setDescription('You need to be an admin to use this command.');
+      return interaction.reply({ embeds: [adminEmbed], ephemeral: true });
     }
+
     const userId = interaction.options.getUser('user').id;
 
-    // Remove the user from the blacklist if present
-    initializeBlacklistForGuild(interaction.guild.id);
+    // Ensure the guild's blacklist is initialized
+    if (!blacklistedUsers[interaction.guild.id]) {
+      blacklistedUsers[interaction.guild.id] = [];
+    }
+
     const index = blacklistedUsers[interaction.guild.id].indexOf(userId);
     if (index > -1) {
       blacklistedUsers[interaction.guild.id].splice(index, 1);
-      await interaction.reply(`<@${userId}> has been removed from the blacklist.`);
+      const removedEmbed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('User Whitelisted')
+        .setDescription(`<@${userId}> has been removed from the blacklist.`);
+      await interaction.reply({ embeds: [removedEmbed] });
     } else {
-      await interaction.reply(`<@${userId}> is not in the blacklist.`);
+      const notFoundEmbed = new EmbedBuilder()
+        .setColor(0xFFA500)
+        .setTitle('User Not Found')
+        .setDescription(`<@${userId}> is not in the blacklist.`);
+      await interaction.reply({ embeds: [notFoundEmbed] });
     }
-  } catch(error) {
+  } catch (error) {
     console.log(error.message);
   }
 }
@@ -1596,7 +1859,11 @@ async function downloadMessage(interaction) {
     }
 
     if (!textContent) {
-      await interaction.reply({ content: '> `The message is empty..?`', ephemeral: true });
+      const emptyEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Empty Message')
+        .setDescription('The message is empty..?');
+      await interaction.reply({ embeds: [emptyEmbed], ephemeral: true });
       return;
     }
 
@@ -1606,20 +1873,34 @@ async function downloadMessage(interaction) {
     const attachment = new AttachmentBuilder(filePath, { name: 'message_content.txt' });
 
     if (interaction.channel.type === ChannelType.DM) {
-      await interaction.reply({ content: '> `Here is the content of the message:`', files: [attachment] });
+      const dmContentEmbed = new EmbedBuilder()
+        .setColor(0xFFFFFF)
+        .setTitle('Message Content Downloaded')
+        .setDescription('Here is the content of the message:');
+      await interaction.reply({ embeds: [dmContentEmbed], files: [attachment] });
     } else {
       try {
-        await interaction.user.send({ content: '> `Here is the content of the message:`', files: [attachment] });
-        await interaction.reply({ content: '> `The message content has been sent to your DMs.`', ephemeral: true });
+        await interaction.user.send({ 
+          content: '> `Here is the content of the message:`', files: [attachment] 
+        });
+        const dmSentEmbed = new EmbedBuilder()
+          .setColor(0x00FF00)
+          .setTitle('Content Sent')
+          .setDescription('The message content has been sent to your DMs.');
+        await interaction.reply({ embeds: [dmSentEmbed], ephemeral: true });
       } catch (error) {
         console.error(`Failed to send DM: ${error}`);
-        await interaction.reply({ content: '> `Here is the content of the message:`', files: [attachment], ephemeral: true });
+        const failDMEmbed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('Delivery Failed')
+          .setDescription('Failed to send the content to your DMs.');
+        await interaction.reply({ embeds: [failDMEmbed], files: [attachment], ephemeral: true });
       }
     }
 
-    fs.unlinkSync(filePath);
+    fs.unlinkSync(filePath); // Clean up the temp file.
   } catch (error) {
-    console.log(error.message);
+    console.log(`Failed to process download: ${error.message}`);
   }
 }
 
@@ -1629,7 +1910,11 @@ async function downloadConversation(interaction) {
     const conversationHistory = chatHistories[userId];
 
     if (!conversationHistory || conversationHistory.length === 0) {
-      await interaction.reply({ content: '> `No conversation history found.`', ephemeral: true });
+      const noHistoryEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('No History Found')
+        .setDescription('No conversation history found.');
+      await interaction.reply({ embeds: [noHistoryEmbed], ephemeral: true });
       return;
     }
 
@@ -1645,27 +1930,45 @@ async function downloadConversation(interaction) {
     const file = new AttachmentBuilder(tempFileName, { name: 'conversation_history.txt' });
 
     if (interaction.channel.type === ChannelType.DM) {
-      await interaction.reply({ content: '> `Here\'s your conversation history:`', files: [file] });
+      const historyContentEmbed = new EmbedBuilder()
+        .setColor(0xFFFFFF)
+        .setTitle('Conversation History')
+        .setDescription('Here\'s your conversation history:');
+      await interaction.reply({ embeds: [historyContentEmbed], files: [file] });
     } else {
       try {
         await interaction.user.send({ content: '> `Here\'s your conversation history:`', files: [file] });
-        await interaction.reply({ content: '> `Your conversation history has been sent to your DMs.`', ephemeral: true });
+        const dmSentEmbed = new EmbedBuilder()
+          .setColor(0x00FF00)
+          .setTitle('History Sent')
+          .setDescription('Your conversation history has been sent to your DMs.');
+        await interaction.reply({ embeds: [dmSentEmbed], ephemeral: true });
       } catch (error) {
         console.error(`Failed to send DM: ${error}`);
-        await interaction.reply({ content: '> `Here\'s your conversation history:`', files: [file], ephemeral: true });
+        const failDMEmbed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('Delivery Failed')
+          .setDescription('Failed to send the conversation history to your DMs.');
+        await interaction.reply({ embeds: [failDMEmbed], files: [file], ephemeral: true });
       }
     }
 
+    // Clean up the temp file after sending.
     fs.unlinkSync(tempFileName);
   } catch (error) {
-    console.log(error.message);
+    console.log(`Failed to download conversation: ${error.message}`);
   }
 }
 
 async function removeCustomPersonality(interaction) {
   try {
     delete customInstructions[interaction.user.id];
-    await interaction.reply({ content: "> `Custom personality instructions removed!`", ephemeral: true });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FF00)
+      .setTitle('Removed')
+      .setDescription('Custom personality instructions removed!');
+    
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.log(error.message);
   }
@@ -1677,7 +1980,12 @@ async function toggleUrlUserPreference(interaction) {
     const currentPreference = getUrlUserPreference(userId);
     userPreferredUrlHandle[userId] = currentPreference === 'OFF' ? 'ON' : 'OFF';
     const updatedPreference = getUrlUserPreference(userId);
-    await interaction.reply({ content: `> **URL handling has been switched from \`${currentPreference}\` to \`${updatedPreference}\`.**`, ephemeral: true });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FF00)
+      .setTitle('URL Handling Updated')
+      .setDescription(`URL handling has been switched from \`${currentPreference}\` to \`${updatedPreference}\`.`);
+    
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.log(error.message);
   }
@@ -1690,7 +1998,12 @@ async function toggleUserPreference(interaction) {
     const currentPreference = getUserPreference(userId);
     userResponsePreference[userId] = currentPreference === 'normal' ? 'embedded' : 'normal';
     const updatedPreference = getUserPreference(userId);
-    await interaction.reply({ content: `> **Your responses has been switched from \`${currentPreference}\` to \`${updatedPreference}\`.**`, ephemeral: true });
+    const embed = new EmbedBuilder()
+      .setColor(0x00FF00)
+      .setTitle('Response Setting Updated')
+      .setDescription(`Your responses have been switched from \`${currentPreference}\` to \`${updatedPreference}\`.`);
+    
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.log(error.message);
   }
@@ -1699,60 +2012,124 @@ async function toggleUserPreference(interaction) {
 async function toggleServerWideChatHistory(interaction) {
   try {
     if (!interaction.guild) {
-      await interaction.reply("This command can only be used in a server.");
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Server Command Only')
+        .setDescription('This command can only be used in a server.');
+      await interaction.reply({ embeds: [embed], ephemeral: true });
       return;
     }
-    const serverId = interaction.guild.id;
-    serverSettings[serverId].serverChatHistory = !serverSettings[serverId].serverChatHistory;
-    await interaction.reply({content: `Server-wide Chat History Is Now \`${serverSettings[serverId].serverChatHistory}\`` , ephemeral: true});
 
+    const serverId = interaction.guild.id;
+    if (!serverSettings[serverId]) {
+      serverSettings[serverId] = { serverChatHistory: false };
+    }
+
+    // Toggle the server-wide chat history setting
+    serverSettings[serverId].serverChatHistory = !serverSettings[serverId].serverChatHistory;
+    const statusMessage = `Server-wide Chat History is now \`${serverSettings[serverId].serverChatHistory ? "enabled" : "disabled"}\``;
+
+    const embed = new EmbedBuilder()
+      .setColor(serverSettings[serverId].serverChatHistory ? 0x00FF00 : 0xFF0000)
+      .setTitle('Chat History Toggled')
+      .setDescription(statusMessage);
+
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
-    console.log(error.message);
+    console.log('Error toggling server-wide chat history:', error.message);
   }
 }
 
 async function toggleServerPersonality(interaction) {
   try {
     if (!interaction.guild) {
-      await interaction.reply("This command can only be used in a server.");
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Server Command Only')
+        .setDescription('This command can only be used in a server.');
+      await interaction.reply({ embeds: [embed], ephemeral: true });
       return;
     }
-    const serverId = interaction.guild.id;
-    serverSettings[serverId].customServerPersonality = !serverSettings[serverId].customServerPersonality;
-    await interaction.reply({content: `Server-wide Personality Is Now \`${serverSettings[serverId].customServerPersonality}\`` , ephemeral: true});
 
+    const serverId = interaction.guild.id;
+    if (!serverSettings[serverId]) {
+      serverSettings[serverId] = { customServerPersonality: false };
+    }
+
+    // Toggle the server-wide personality setting
+    serverSettings[serverId].customServerPersonality = !serverSettings[serverId].customServerPersonality;
+    const statusMessage = `Server-wide Personality is now \`${serverSettings[serverId].customServerPersonality ? "enabled" : "disabled"}\``;
+
+    const embed = new EmbedBuilder()
+      .setColor(serverSettings[serverId].customServerPersonality ? 0x00FF00 : 0xFF0000)
+      .setTitle('Server Personality Toggled')
+      .setDescription(statusMessage);
+
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
-    console.log(error.message);
+    console.log('Error toggling server-wide personality:', error.message);
   }
 }
 
 async function toggleServerResponsePreference(interaction) {
   try {
     if (!interaction.guild) {
-      await interaction.reply("This command can only be used in a server.");
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Server Command Only')
+        .setDescription('This command can only be used in a server.');
+      await interaction.reply({ embeds: [embed], ephemeral: true });
       return;
     }
-    const serverId = interaction.guild.id;
-    serverSettings[serverId].serverResponsePreference = !serverSettings[serverId].serverResponsePreference;
-    await interaction.reply({content: `Server-wide Response Following Is Now \`${serverSettings[serverId].serverResponsePreference}\`` , ephemeral: true});
 
+    const serverId = interaction.guild.id;
+    if (!serverSettings[serverId]) {
+      serverSettings[serverId] = { serverResponsePreference: false };
+    }
+
+    // Toggle the server-wide response preference
+    serverSettings[serverId].serverResponsePreference = !serverSettings[serverId].serverResponsePreference;
+    const statusMessage = `Server-wide Response Following is now \`${serverSettings[serverId].serverResponsePreference ? "enabled" : "disabled"}\``;
+
+    const embed = new EmbedBuilder()
+      .setColor(serverSettings[serverId].serverResponsePreference ? 0x00FF00 : 0xFF0000)
+      .setTitle('Server Response Preference Toggled')
+      .setDescription(statusMessage);
+
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
-    console.log(error.message);
+    console.log('Error toggling server-wide response preference:', error.message);
   }
 }
 
 async function toggleSettingSaveButton(interaction) {
   try {
     if (!interaction.guild) {
-      await interaction.reply("This command can only be used in a server.");
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Server Command Only')
+        .setDescription('This command can only be used in a server.');
+      await interaction.reply({ embeds: [embed], ephemeral: true });
       return;
     }
-    const serverId = interaction.guild.id;
-    serverSettings[serverId].settingsSaveButton = !serverSettings[serverId].settingsSaveButton;
-    await interaction.reply({content: `Server-wide "Settings And Save Button" Is Now \`${serverSettings[serverId].settingsSaveButton}\`` , ephemeral: true});
 
+    const serverId = interaction.guild.id;
+    if (!serverSettings[serverId]) {
+      serverSettings[serverId] = { settingsSaveButton: false };
+    }
+
+    // Toggle the server-wide settings save button option
+    serverSettings[serverId].settingsSaveButton = !serverSettings[serverId].settingsSaveButton;
+    const statusMessage = `Server-wide "Settings and Save Button" is now \`${serverSettings[serverId].settingsSaveButton ? "enabled" : "disabled"}\``;
+
+    const embed = new EmbedBuilder()
+      .setColor(serverSettings[serverId].settingsSaveButton ? 0x00FF00 : 0xFF0000)
+      .setTitle('Settings Save Button Toggled')
+      .setDescription(statusMessage);
+
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
-    console.log(error.message);
+    console.log('Error toggling server-wide settings save button:', error.message);
   }
 }
 
@@ -1780,27 +2157,53 @@ async function serverPersonality(interaction) {
 async function clearServerChatHistory(interaction) {
   try {
     if (!interaction.guild) {
-      await interaction.reply("This command can only be used in a server.");
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Server Command Only')
+        .setDescription('This command can only be used in a server.');
+      await interaction.reply({ embeds: [embed], ephemeral: true });
       return;
     }
-    if (serverSettings[interaction.guild.id].serverChatHistory) {
-      chatHistories[interaction.guild.id] = [];
-      await interaction.reply({ content: 'Server-Wide Chat History Cleared!', ephemeral: true });
+
+    const serverId = interaction.guild.id;
+
+    // Ensure the server settings exist for chat history
+    if (!serverSettings[serverId]) {
+      serverSettings[serverId] = { serverChatHistory: false };
+    }
+
+    if (serverSettings[serverId].serverChatHistory) {
+      // Clear the server-wide chat history if it's enabled
+      chatHistories[serverId] = [];
+      const clearedEmbed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('Chat History Cleared')
+        .setDescription('Server-wide chat history cleared!');
+      await interaction.reply({ embeds: [clearedEmbed], ephemeral: true });
     } else {
-      await interaction.reply({ content: 'Server-Wide Chat History Is Disabled For This Server.', ephemeral: true });
+      // If chat history is disabled, inform the user
+      const disabledEmbed = new EmbedBuilder()
+        .setColor(0xFFA500)
+        .setTitle('Feature Disabled')
+        .setDescription('Server-wide chat history is disabled for this server.');
+      await interaction.reply({ embeds: [disabledEmbed], ephemeral: true });
     }
   } catch (error) {
-    console.log(error.message);
+    console.log('Failed to clear server-wide chat history:', error.message);
   }
 }
 
 async function downloadServerConversation(interaction) {
   try {
-    const guild = interaction.guild.id;
-    const conversationHistory = chatHistories[guild];
+    const guildId = interaction.guild.id;
+    const conversationHistory = chatHistories[guildId];
 
     if (!conversationHistory || conversationHistory.length === 0) {
-      await interaction.reply({ content: '> `No conversation history found.`', ephemeral: true });
+      const noHistoryEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('No History Found')
+        .setDescription('No server-wide conversation history found.');
+      await interaction.reply({ embeds: [noHistoryEmbed], ephemeral: true });
       return;
     }
 
@@ -1810,26 +2213,38 @@ async function downloadServerConversation(interaction) {
       conversationText += `${speaker}:\n${conversationHistory[i]}\n\n`;
     }
 
-    const tempFileName = path.join(__dirname, `${userId}_conversation.txt`);
+    const tempFileName = path.join(__dirname, `${guildId}_server_conversation.txt`);
     fs.writeFileSync(tempFileName, conversationText, 'utf8');
 
-    const file = new AttachmentBuilder(tempFileName, { name: 'conversation_history.txt' });
+    const file = new AttachmentBuilder(tempFileName, { name: 'server_conversation_history.txt' });
 
     if (interaction.channel.type === ChannelType.DM) {
-      await interaction.reply({ content: '> `Here\'s your conversation history:`', files: [file] });
+      const historyContentEmbed = new EmbedBuilder()
+        .setColor(0xFFFFFF)
+        .setTitle('Server Conversation History')
+        .setDescription('Here\'s the server-wide conversation history:');
+      await interaction.reply({ embeds: [historyContentEmbed], files: [file] });
     } else {
       try {
-        await interaction.user.send({ content: '> `Here\'s The Server-Wide conversation history:`', files: [file] });
-        await interaction.reply({ content: '> `Server-Wide conversation history has been sent to your DMs.`', ephemeral: true });
+        await interaction.user.send({ content: '> `Here\'s the server-wide conversation history:`', files: [file] });
+        const dmSentEmbed = new EmbedBuilder()
+          .setColor(0x00FF00)
+          .setTitle('History Sent')
+          .setDescription('Server-wide conversation history has been sent to your DMs.');
+        await interaction.reply({ embeds: [dmSentEmbed], ephemeral: true });
       } catch (error) {
         console.error(`Failed to send DM: ${error}`);
-        await interaction.reply({ content: '> `Here\'s The Server-Wide conversation history:`', files: [file], ephemeral: true });
+        const failDMEmbed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('Delivery Failed')
+          .setDescription('Failed to send the server-wide conversation history to your DMs.');
+        await interaction.reply({ embeds: [failDMEmbed], files: [file], ephemeral: true });
       }
     }
 
-    fs.unlinkSync(tempFileName);
+    fs.unlinkSync(tempFileName); // Clean up the temporary file.
   } catch (error) {
-    console.log(error.message);
+    console.log(`Failed to download server conversation: ${error.message}`);
   }
 }
 
@@ -1841,7 +2256,12 @@ async function toggleServerPreference(interaction) {
     } else {
       serverSettings[guildId].responseStyle = "embedded";
     }
-    await interaction.reply({ content: `Server response style updated to: ${serverSettings[guildId].responseStyle}`, ephemeral: true});
+    const embed = new EmbedBuilder()
+      .setColor(0x00FF00)
+      .setTitle('Server Response Style Updated')
+      .setDescription(`Server response style updated to: ${serverSettings[guildId].responseStyle}`);
+    
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.log(error.message);
   }
@@ -1851,7 +2271,12 @@ async function showSettings(interaction) {
   if (interaction.guild) {
     initializeBlacklistForGuild(interaction.guild.id);
     if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
-      return interaction.reply({ content: 'You are blacklisted and cannot use this interaction.', ephemeral: true });
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Blacklisted')
+        .setDescription('You are blacklisted and cannot use this interaction.');
+      
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
   }
 
@@ -1980,20 +2405,30 @@ async function showSettings(interaction) {
 
   // Reply to the interaction
   let secondsLeft = 30;
-  const countdownMessage = `> **This Message Will Get Deleted In: ${secondsLeft}s**\n> \`\`\`Settings:\`\`\``;
-
+  const countdownMessage = `**This Message Will Get Deleted In: ${secondsLeft}s**`;
+  const embed = new EmbedBuilder()
+    .setColor(0x00FFFF)
+    .setTitle('Settings')
+    .setDescription(countdownMessage);
+  
   await interaction.reply({
-    content: countdownMessage,
-    components: actionRows,
+    embeds: [embed],
+    components: actionRows
   });
 
   const countdownInterval = setInterval(async () => {
     secondsLeft--;
     if (secondsLeft > 0) {
       try {
+        const updateMessage = `**This Message Will Get Deleted In: ${secondsLeft}s**`;
+        const embed = new EmbedBuilder()
+          .setColor(0x00FFFF)
+          .setTitle('Settings')
+          .setDescription(updateMessage);
+        
         await interaction.editReply({
-          content: `> **This Message Will Get Deleted In: ${secondsLeft}s**\n> \`\`\`Settings:\`\`\``,
-          components: actionRows,
+          embeds: [embed],
+          components: actionRows
         });
       } catch (error) {
         clearInterval(countdownInterval);
@@ -2009,10 +2444,18 @@ async function showSettings(interaction) {
 
 async function showDashboard(interaction) {
   if (interaction.channel.type === ChannelType.DM) {
-    return interaction.reply({ content: 'This command cannot be used in DMs.', ephemeral: true });
+    const embed = new EmbedBuilder()
+      .setColor(0xFF0000)
+      .setTitle('Command Restricted')
+      .setDescription('This command cannot be used in DMs.');
+    return interaction.reply({ embeds: [embed], ephemeral: true });
   }
   if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-    return interaction.reply({ content: 'You need to be an admin to use this command.', ephemeral: true });
+    const embed = new EmbedBuilder()
+      .setColor(0xFF0000)
+      .setTitle('Administrator Required')
+      .setDescription('You need to be an admin to use this command.');
+    return interaction.reply({ embeds: [embed], ephemeral: true });
   }
   initializeBlacklistForGuild(interaction.guild.id);
   // Define button configurations in an array
@@ -2085,8 +2528,12 @@ async function showDashboard(interaction) {
   }
 
   // Reply to the interaction with settings buttons, without any countdown message
+  const embed = new EmbedBuilder()
+    .setColor(0xFFFFFF)
+    .setTitle('Settings')
+    .setDescription('Your Server Settings:');
   await interaction.reply({
-    content: "> ```Dashboard:```",
+    embeds: [embed],
     components: actionRows,
     ephemeral: true
   });
@@ -2306,14 +2753,24 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
     collector.on('collect', async (interaction) => {
       if (interaction.user.id === originalMessage.author.id) {
         try {
-          await interaction.reply({ content: 'Response generation stopped by the user.', ephemeral: true });
+          const embed = new EmbedBuilder()
+            .setColor(0xFFA500)
+            .setTitle('Response Stopped')
+            .setDescription('Response generation stopped by the user.');
+          
+          await interaction.reply({ embeds: [embed], ephemeral: true });
         } catch (error) {
           console.error('Error sending reply:', error);
         }
         stopGeneration = true;
       } else {
         try {
-          await interaction.reply({ content: "It's not for you.", ephemeral: true });
+          const embed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('Access Denied')
+            .setDescription("It's not for you.");
+          
+          await interaction.reply({ embeds: [embed], ephemeral: true });
         } catch (error) {
           console.error('Error sending unauthorized reply:', error);
         }
@@ -2355,7 +2812,12 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
         if (finalResponse.length > maxCharacterLimit) {
           if (!isLargeResponse) {
             isLargeResponse = true;
-            await botMessage.edit({ content: '> `The response is too large and will be sent as a text file once it is ready.`' });
+            const embed = new EmbedBuilder()
+              .setColor(0xFFFF00)
+              .setTitle('Response Overflow')
+              .setDescription('The response got too large, will be sent as a text file once it is completed.');
+            
+            await botMessage.edit({ embeds: [embed] });
           }
         } else if (!updateTimeout) {
           updateTimeout = setTimeout(updateMessage, 500);
@@ -2380,22 +2842,39 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
       const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
       updateChatHistory(isServerChatHistoryEnabled ? originalMessage.guild.id : userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
       break;
-    } catch (error) {
+    }catch (error) {
       if (activeRequests.has(userId)) {
         activeRequests.delete(userId);
       }
       console.error(error.message);
       attempts--;
-
+    
       if (attempts === 0 || stopGeneration) {
         if (!stopGeneration) {
-          const errorMsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>, All Generation Attempts Failed :( \`\`\`${error.message}\`\`\`` });
-          await addSettingsButton(errorMsg);
-          await addSettingsButton(botMessage);
+          if (SEND_RETRY_ERRORS_TO_DISCORD) {
+            const embed = new EmbedBuilder()
+              .setColor(0xFF0000)
+              .setTitle('Generation Failure')
+              .setDescription(`All Generation Attempts Failed :(\n\`\`\`${error.message}\`\`\``);
+            const errorMsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>`, embeds: [embed] });
+            await addSettingsButton(errorMsg);
+            await addSettingsButton(botMessage);
+          } else {
+            const simpleErrorEmbed = new EmbedBuilder()
+              .setColor(0xFF0000)
+              .setTitle('Bot Overloaded')
+              .setDescription('Something seems off, the bot might be overloaded! :(');
+            await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>`, embeds: [simpleErrorEmbed] });
+          }
         }
         break;
-      } else {
-        const errorMsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>, Generation Attempts Failed, Retrying.. \`\`\`${error.message}\`\`\`` });
+      } else if (SEND_RETRY_ERRORS_TO_DISCORD) {
+        const errorMsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>`,
+          embeds: [new EmbedBuilder()
+            .setColor(0xFFFF00)
+            .setTitle('Retry in Progress')
+            .setDescription(`Generation Attempts Failed, Retrying..\n\`\`\`${error.message}\`\`\``)]
+        });
         setTimeout(() => errorMsg.delete().catch(console.error), 5000);
         await delay(500);
       }
