@@ -189,67 +189,6 @@ async function musicGen(prompt) {
   }
 }
 
-async function videoGen(prompt) {
-  const sessionHash = generateSessionHash();
-  const urlFirstRequest = 'https://bytedance-animatediff-lightning.hf.space/queue/join?';
-  const dataFirstRequest = {
-    data: [prompt, "epiCRealism", "", 8],
-    event_data: null,
-    fn_index: 1,
-    trigger_id: 10,
-    session_hash: sessionHash
-  };
-
-  try {
-    const responseFirst = await axios.post(urlFirstRequest, dataFirstRequest);
-  } catch (error) {
-    console.error("Error in the first request:", error);
-    return null;
-  }
-
-  const urlSecondRequest = `https://bytedance-animatediff-lightning.hf.space/queue/data?session_hash=${sessionHash}`;
-  return new Promise((resolve, reject) => {
-    try {
-      axios.get(urlSecondRequest, {
-        responseType: 'stream'
-      }).then(responseSecond => {
-        let fullData = '';
-
-        responseSecond.data.on('data', (chunk) => {
-          fullData += chunk.toString();
-
-          if (fullData.includes('"msg": "process_completed"')) {
-            const lines = fullData.split('\n');
-            for (const line of lines) {
-              if (line.includes('"msg": "process_completed"')) {
-                try {
-                  const dataDict = JSON.parse(line.slice(line.indexOf('{')));
-                  const fullUrl = dataDict?.output?.data?.[0]?.video?.url;
-                  if (fullUrl) {
-                    resolve(fullUrl);
-                  } else {
-                    reject(new Error("Output URL is missing"));
-                    console.log(dataDict);
-                  }
-                  break;
-                } catch (parseError) {
-                  console.error("Parsing error:", parseError);
-                  reject(parseError);
-                }
-              }
-            }
-          }
-        });
-      }).catch(error => {
-        console.error("Error in second request event stream:", error);
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
 function generateWithSC(prompt,  resolution) {
   let width, height;
   if (resolution == 'Square') {
@@ -713,7 +652,6 @@ async function generateWithDalle3(prompt) {
 module.exports = {
   speechGen,
   musicGen,
-  videoGen,
   generateWithSC,
   generateWithPlayground,
   generateWithDallEXL,
