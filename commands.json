@@ -39,11 +39,11 @@
       ]
     },
     {
-      "name": "respondtoall",
+      "name": "respond_to_all",
       "description": "Enables the bot to always respond to all messages in this channel."
     },
     {
-      "name": "clear",
+      "name": "clear_memory",
       "description": "Clears the conversation history."
     },
     {
@@ -51,8 +51,8 @@
       "description": "Opens Up Settings."
     },
     {
-      "name": "dashboard",
-      "description": "Opens Up The Dashboard."
+      "name": "server_settings",
+      "description": "Opens Up The Server Settings."
     },
     {
       "name": "speech",
