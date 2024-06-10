@@ -272,10 +272,6 @@ client.on('messageCreate', async (message) => {
           .setTitle('Request In Progress')
           .setDescription('Please wait until your previous action is complete.');
         await message.reply({ embeds: [embed] });
-      } else if (message.attachments.size > 0 && hasImageAttachments(message)) {
-        await handleImageMessage(message);
-      } else if (message.attachments.size > 0 && hasTextFileAttachments(message)) {
-        await handleTextFileMessage(message);
       } else {
         await handleTextMessage(message);
       }
@@ -497,166 +493,13 @@ client.on('interactionCreate', async (interaction) => {
 
 // <=====[Messages Handling]=====>
 
-async function compressLargeImage(buffer) {
-  try {
-    const compressedBuffer = await sharp(buffer)
-      .resize(3072, 3072, {
-        fit: sharp.fit.inside,
-        withoutEnlargement: true
-      })
-      .jpeg({ quality: 80 })
-      .toBuffer();
-
-    if (compressedBuffer.length > 3.9 * 1024 * 1024) {
-      throw new Error('Image too large after compression.');
-    }
-
-    return compressedBuffer;
-  } catch (error) {
-    console.error('Compression error:', error);
-    throw new Error('The image is too large for Gemini to process even after attempting to compress it.');
-  }
-}
-
-function hasImageAttachments(message) {
-  return message.attachments.some((attachment) =>
-    attachment.contentType?.startsWith('image/')
-  );
-}
-
-async function handleImageMessage(message) {
-  const imageAttachments = message.attachments.filter((attachment) =>
-    attachment.contentType?.startsWith('image/')
-  );
-
-  let messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim();
-
-  if (imageAttachments.size > 0) {
-    const imageParts = await Promise.all(
-      imageAttachments.map(async attachment => {
-        const response = await fetch(attachment.url);
-        const buffer = await response.buffer();
-
-        if (buffer.length > 3 * 1024 * 1024) {
-          try {
-            const compressedBuffer = await compressLargeImage(buffer);
-            return { inlineData: { data: compressedBuffer.toString('base64'), mimeType: 'image/jpeg' } };
-          } catch (error) {
-            await message.reply(error.message);
-            throw error;
-          }
-        } else {
-          return { inlineData: { data: buffer.toString('base64'), mimeType: attachment.contentType } };
-        }
-      })
-    );
-    let infoStr;
-    if (message.guild) {
-      const member = await message.guild.members.fetch(message.author.id);
-      const userInfo = {
-        username: message.author.username,
-        displayName: message.author.displayName,
-        serverNickname: message.author.nickname,
-        status: member.presence ? member.presence.status : 'offline'
-      };
-      const serverName = message.guild.name;
-      const infoStr = `\nYou are currently engaging with users in the ${serverName} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\`\nServer Nickname: \`${userInfo.serverNickname || 'Not set'}\`\nStatus: \`${userInfo.status}\``;
-    }
-
-    const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
-    let instructions = message.guild ?
-      (serverSettings[message.guild.id]?.customServerPersonality && customInstructions[message.guild.id] ?
-        customInstructions[message.guild.id] :
-        customInstructions[message.author.id]) :
-      customInstructions[message.author.id];
-    instructions = isServerChatHistoryEnabled ? instructions+infoStr : instructions;
-    const visionModel = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : defaultPersonality }] } }, { apiVersion: 'v1beta' });
-    const chat = visionModel.startChat({
-      history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
-      safetySettings,
-    });
-
-    const embed = new EmbedBuilder()
-      .setColor(0x00FFFF)
-      .setTitle('Image Analysis')
-      .setDescription('Analyzing the image(s) with your text prompt...');
-    const botMessage = await message.reply({ embeds: [embed] });
-    await handleModelResponse(botMessage, async () => chat.sendMessageStream([messageContent, ...imageParts]), message);
-  }
-}
-
-async function handleTextFileMessage(message) {
-  let messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim();
-
-  const supportedMimeTypes = [
-    'application/pdf', 'text/plain', 'text/html', 'text/css',
-    'application/javascript', 'application/json', 'text/x-python',
-    'application/x-yaml', 'text/markdown', 'application/xml'
-  ];
-
-  const supportedFileExtensions = [
-    'md', 'yaml', 'yml', 'xml', 'env', 'sh', 'bat', 'rb', 'c', 'cpp', 'cc',
-    'cxx', 'h', 'hpp', 'java'
-  ];
-
-  // Filter attachments for supported types and extensions
-  const fileAttachments = message.attachments.filter((attachment) => {
-    const fileMimeType = attachment.contentType?.split(';')[0].trim();
-    const fileExtension = attachment.name.split('.').pop().toLowerCase();
-    return supportedMimeTypes.includes(fileMimeType) || supportedFileExtensions.includes(fileExtension);
-  });
-
-  if (fileAttachments.size > 0) {
-    const embed = new EmbedBuilder()
-      .setColor(0x00FFFF)
-      .setTitle('Document Processing')
-      .setDescription('Processing your document(s)...');
-    let botMessage = await message.reply({ embeds: [embed] });
-    let formattedMessage = messageContent;
-
-    for (const [attachmentId, attachment] of fileAttachments) {
-      let extractedText = await (attachment.contentType?.startsWith('application/pdf') ?
-        extractTextFromPDF(attachment.url) :
-        fetchTextContent(attachment.url));
-
-      formattedMessage += `\n\n[${attachment.name}] File Content:\n"${extractedText}"`;
-    }
-    let infoStr;
-    if (message.guild) {
-      let member = await message.guild.members.fetch(message.author.id);
-      const userInfo = {
-        username: message.author.username,
-        displayName: message.author.displayName,
-        serverNickname: message.author.nickname,
-        status: member.presence ? member.presence.status : 'offline'
-      };
-      const serverName = message.guild.name;
-      const infoStr = `\nYou are currently engaging with users in the ${serverName} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\`\nServer Nickname: \`${userInfo.serverNickname || 'Not set'}\`\nStatus: \`${userInfo.status}\``;
-    }
-
-    // Load the text model and handle the conversation
-    const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
-    let instructions = message.guild ?
-      (serverSettings[message.guild.id]?.customServerPersonality && customInstructions[message.guild.id] ?
-        customInstructions[message.guild.id] :
-        customInstructions[message.author.id]) :
-      customInstructions[message.author.id];
-    instructions = isServerChatHistoryEnabled ? instructions+infoStr : instructions;
-    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : defaultPersonality }] } }, { apiVersion: 'v1beta' });
-    const chat = model.startChat({
-      history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
-      safetySettings,
-    });
-
-    await handleModelResponse(botMessage, () => chat.sendMessageStream(formattedMessage), message);
-  }
-}
-
 async function handleTextMessage(message) {
-  let botMessage;
+  const botId = client.user.id;
   const userId = message.author.id;
-  let messageContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim();
-  if (messageContent === '') {
+  const guildId = message.guild?.id;
+  let messageContent = message.content.replace(new RegExp(`<@!?${botId}>`), '').trim();
+
+  if (messageContent === '' && !(message.attachments.size > 0 && (hasImageAttachments(message) || hasTextFileAttachments(message)))) {
     const embed = new EmbedBuilder()
       .setColor(0x00FFFF)
       .setTitle('Empty Message')
@@ -665,54 +508,331 @@ async function handleTextMessage(message) {
     await addSettingsButton(botMessage);
     return;
   }
-  let instructions = message.guild ?
-    (serverSettings[message.guild.id]?.customServerPersonality && customInstructions[message.guild.id] ?
-      customInstructions[message.guild.id] :
-      customInstructions[message.author.id]) :
-    customInstructions[message.author.id];
-
-  let formattedMessage = messageContent;
-
-  const urls = extractUrls(messageContent);
-  activeRequests.add(userId);
-  const videoTranscripts = {};
-  if (urls.length > 0 && getUrlUserPreference(userId) === "ON") {
-    const embed = new EmbedBuilder()
-      .setColor(0xFFFFFF)
-      .setTitle('Processing URLs')
-      .setDescription('Fetching content from the URLs...');
-    botMessage = await message.reply({ embeds: [embed] });
-    await handleUrlsInMessage(urls, formattedMessage, botMessage, message);
+  
+  const updateEmbedDescription = (urlHandlingStatus, textAttachmentStatus, imageAttachmentStatus, finalText) => {
+    return `Let me think...\n\n- ${urlHandlingStatus}: Url Handling\n- ${textAttachmentStatus}: Text Attachment Check\n- ${imageAttachmentStatus}: Image Attachment Check\n${finalText || ''}`;
+  };
+  
+  const embed = new EmbedBuilder()
+    .setColor(0x00FFFF)
+    .setTitle('Processing')
+    .setDescription(updateEmbedDescription('[🔁]', '[🔁]', '[🔁]'));
+  const botMessage = await message.reply({ embeds: [embed] });
+  
+  let urlHandlingStatus = '[🔁]';
+  if (getUrlUserPreference(userId) === "ON") {
+    messageContent = await appendSiteContentToText(messageContent);
+    urlHandlingStatus = '[☑️]';
   } else {
-    const embed = new EmbedBuilder()
-      .setColor(0x00FFFF)
-      .setTitle('Processing')
-      .setDescription('Let me think...');
-    botMessage = await message.reply({ embeds: [embed] });
-    
-    let infoStr;
-    if (message.guild) {
-      let member = await message.guild.members.fetch(message.author.id);
-      const userInfo = {
-        username: message.author.username,
-        displayName: message.author.displayName,
-        serverNickname: message.author.nickname,
-        status: member.presence ? member.presence.status : 'offline'
-      };
-      const serverName = message.guild.name;
-      const infoStr = `\nYou are currently engaging with users in the ${serverName} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\`\nServer Nickname: \`${userInfo.serverNickname || 'Not set'}\`\nStatus: \`${userInfo.status}\``;
+    urlHandlingStatus = '[🚫]';
+  }
+  embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[🔁]', '[🔁]'));
+  await botMessage.edit({ embeds: [embed] });
+  
+  messageContent = await extractFileText(message, messageContent);
+  embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '[🔁]'));
+  await botMessage.edit({ embeds: [embed] });
+  
+  const parts = await processPromptAndImageAttachments(messageContent, message);
+  embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '[☑️]', '### All checks done. Waiting for the response...'));
+  await botMessage.edit({ embeds: [embed] });
+
+  const instructions = guildId 
+    ? serverSettings[guildId]?.customServerPersonality && customInstructions[guildId]
+      ? customInstructions[guildId]
+      : customInstructions[userId]
+    : customInstructions[userId];
+
+  activeRequests.add(userId);
+
+  let infoStr = '';
+  if (message.guild) {
+    const member = await message.guild.members.fetch(userId);
+    const userInfo = {
+      username: message.author.username,
+      displayName: message.author.displayName,
+      serverNickname: message.author.nickname || 'Not set',
+      status: member.presence ? member.presence.status : 'offline'
+    };
+    infoStr = `\nYou are currently engaging with users in the ${message.guild.name} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\`\nServer Nickname: \`${userInfo.serverNickname}\`\nStatus: \`${userInfo.status}\``;
+  }
+
+  const isServerChatHistoryEnabled = guildId ? serverSettings[guildId]?.serverChatHistory : false;
+  const finalInstructions = isServerChatHistoryEnabled ? instructions + infoStr : instructions;
+
+  const model = await genAI.getGenerativeModel({
+    model: "gemini-1.5-flash-latest",
+    systemInstruction: { role: "system", parts: [{ text: finalInstructions || defaultPersonality }] }
+  }, { apiVersion: 'v1beta' });
+
+  const chat = model.startChat({
+    history: isServerChatHistoryEnabled ? getHistory(guildId) : getHistory(userId),
+    safetySettings,
+  });
+
+  await handleModelResponse(botMessage, () => chat.sendMessageStream(parts), message);
+}
+
+function hasImageAttachments(message) {
+  return message.attachments.some((attachment) =>
+    attachment.contentType?.startsWith('image/')
+  );
+}
+
+function hasTextFileAttachments(message) {
+  const supportedFileExtensions = [
+    'html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf'
+  ];
+
+  return message.attachments.some((attachment) => {
+    const fileExtension = attachment.name.split('.').pop().toLowerCase();
+    return supportedFileExtensions.includes(fileExtension);
+  });
+}
+
+async function processPromptAndImageAttachments(prompt, message) {
+  const attachments = Array.from(message.attachments.values());
+  let parts = [{ text: prompt }];
+
+  if (attachments.length > 0) {
+    const imageAttachments = attachments.filter(attachment => attachment.contentType && attachment.contentType.startsWith('image/'));
+
+    if (imageAttachments.length > 0) {
+      const attachmentParts = await Promise.all(
+        imageAttachments.map(async (attachment) => {
+          const response = await fetch(attachment.url);
+          const buffer = await response.arrayBuffer();
+          let imageBuffer = Buffer.from(buffer);
+
+          if (imageBuffer.length > 5 * 1024 * 1024) {
+            imageBuffer = await sharp(imageBuffer)
+              .resize(3072, 3072, {
+                fit: sharp.fit.inside,
+                withoutEnlargement: true
+              })
+              .jpeg({ quality: 80 })
+              .toBuffer();
+
+            if (imageBuffer.length > 5 * 1024 * 1024) {
+              imageBuffer = await sharp(imageBuffer)
+                .resize(2048, 2048, {
+                  fit: sharp.fit.inside,
+                  withoutEnlargement: true
+                })
+                .jpeg({ quality: 60 })
+                .toBuffer();
+            }
+          }
+
+          return {
+            inlineData: {
+              data: imageBuffer.toString('base64'),
+              mimeType: attachment.contentType || 'application/octet-stream'
+            }
+          };
+        })
+      );
+      parts = [...parts, ...attachmentParts];
     }
-    
-    const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
-    instructions = isServerChatHistoryEnabled ? instructions+infoStr : instructions;
-    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : defaultPersonality }] } }, { apiVersion: 'v1beta' });
-    const chat = model.startChat({
-      history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
-      safetySettings,
-    });
-    await handleModelResponse(botMessage, () => chat.sendMessageStream(formattedMessage), message);
+  }
+  return parts;
+}
+
+async function extractFileText(message, messageContent) {
+  if (message.attachments.size > 0) {
+    let attachments = Array.from(message.attachments.values());
+    for (const attachment of attachments) {
+      const fileType = attachment.name.split('.').pop().toLowerCase();
+      const fileTypes = ['html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf'];
+
+      if (fileTypes.includes(fileType)) {
+        try {
+          let fileContent = await downloadAndReadFile(attachment.url, fileType);
+          messageContent += `\n\n[\`${attachment.name}\` File Content]:\n\`\`\`\n${fileContent}\n\`\`\``;
+        } catch (error) {
+          console.error(`Error reading file ${attachment.name}: ${error.message}`);
+        }
+      }
+    }
+  }
+  return messageContent;
+}
+
+async function downloadAndReadFile(url, fileType) {
+  let response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to download ${response.statusText}`);
+
+  switch (fileType) {
+    case 'pdf':
+      let buffer = await response.buffer();
+      return (await pdfParse(buffer)).text;
+    default:
+      return await response.text();
   }
 }
+
+async function scrapeWebpageContent(url) {
+  try {
+    const timeoutPromise = new Promise((resolve, reject) => {
+      setTimeout(() => reject(new Error("Timeout")), 5000);
+    });
+    const response = await Promise.race([
+      fetch(url),
+      timeoutPromise
+    ]);
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    $('script, style').remove();
+    let bodyText = $('body').text();
+    bodyText = bodyText.replace(/<[^>]*>?/gm, '');
+    return bodyText.trim();
+  } catch (error) {
+    console.error('Error:', error);
+    if (error.message === 'Timeout') {
+      return "ERROR: The website is not responding..";
+    } else {
+      throw new Error('Could not scrape content from webpage');
+    }
+  }
+}
+
+// Function to extract all URLs from the text
+function extractURLs(text) {
+  const urlPattern = /https?:\/\/[^\s]+/g;
+  return text.match(urlPattern) || [];
+}
+
+// Function to extract YouTube video IDs from URLs
+function extractYouTubeIDs(urls) {
+  const videoIDs = [];
+  const regexPatterns = [
+    /https:\/\/youtu\.be\/(\w+)/g, // Short-link pattern
+    /https:\/\/www\.youtube\.com\/watch\?v=([\w-]+)/g, // Standard YouTube link
+    /https:\/\/m\.youtube\.com\/watch\?v=([\w-]+)/g // Mobile YouTube link
+  ];
+
+  urls.forEach(url => {
+    regexPatterns.forEach(pattern => {
+      const match = pattern.exec(url);
+      if (match) {
+        videoIDs.push(match[1]);
+      }
+    });
+  });
+
+  return videoIDs;
+}
+
+// Function to extract non-YouTube URLs
+function extractNonYouTubeURLs(urls) {
+  const nonYouTubeURLs = [];
+  const youtubePatterns = [
+    /https:\/\/youtu\.be\/(\w+)/,
+    /https:\/\/www\.youtube\.com\/watch\?v=([\w-]+)/,
+    /https:\/\/m\.youtube\.com\/watch\?v=([\w-]+)/
+  ];
+
+  urls.forEach(url => {
+    if (!youtubePatterns.some(pattern => pattern.test(url))) {
+      nonYouTubeURLs.push(url);
+    }
+  });
+
+  return nonYouTubeURLs;
+}
+
+// Function to fetch YouTube transcripts and append to text
+async function fetchAndAppendYouTubeTranscripts(text, videoIDs) {
+  let modifiedText = text;
+  const transcriptsPromise = videoIDs.map((id, index) => {
+    const commonUrlPrefix = `https://youtu.be/${id}`;
+    modifiedText = modifiedText.replace(
+      new RegExp(`(${commonUrlPrefix})`, 'g'),
+      `[Reference Number ${index + 1}]($1)`
+    );
+
+    return YoutubeTranscript.fetchTranscript(id)
+      .then(transcript => {
+        const transcriptText = transcript.map(entry => entry.text).join(' ');
+        return {
+          index: index + 1,
+          text: transcriptText,
+          url: commonUrlPrefix,
+        };
+      })
+      .catch(error => {
+        console.error(`Error fetching transcript for video ID ${id}:`, error);
+        return {
+          index: index + 1,
+          text: "Error: The transcript is not available for this video.",
+          url: commonUrlPrefix,
+        };
+      });
+  });
+
+  try {
+    const transcripts = await Promise.all(transcriptsPromise);
+    transcripts.forEach(transcript => {
+      if (transcript) {
+        modifiedText += `\n\n[Transcript Of Video Number [${transcript.index}](${transcript.url})]:\n${transcript.text}`;
+      }
+    });
+
+    return modifiedText;
+  } catch (error) {
+    console.error("An error occurred while appending transcripts to the text", error);
+    return modifiedText;
+  }
+}
+
+// Function to fetch content from non-YouTube URLs and append to text
+async function fetchAndAppendWebpageContent(text, nonYouTubeURLs) {
+  let modifiedText = text;
+  const contentPromises = nonYouTubeURLs.map(async (url, index) => {
+    try {
+      const webpageContent = await scrapeWebpageContent(url);
+      modifiedText = modifiedText.replace(
+        new RegExp(`(${url})`, 'g'),
+        `[Reference Number ${index + 1}]($1)`
+      );
+      return `\n\n[Text Inside The Website [${index + 1}](${url})]:\n"${webpageContent}"`;
+    } catch (error) {
+      console.error(`Error fetching content for URL ${url}:`, error);
+      return `\n\n[Text Inside The Website [${index + 1}](${url})]:\n"Error: Unable to fetch content."`;
+    }
+  });
+
+  try {
+    const contents = await Promise.all(contentPromises);
+    contents.forEach(content => {
+      modifiedText += content;
+    });
+
+    return modifiedText;
+  } catch (error) {
+    console.error("An error occurred while appending webpage content to the text", error);
+    return modifiedText;
+  }
+}
+
+// Main function to append site content to text
+const appendSiteContentToText = async (text) => {
+  const urls = extractURLs(text);
+  const videoIDs = extractYouTubeIDs(urls);
+  const nonYouTubeURLs = extractNonYouTubeURLs(urls);
+
+  let modifiedText = text;
+
+  if (videoIDs.length > 0) {
+    modifiedText = await fetchAndAppendYouTubeTranscripts(modifiedText, videoIDs);
+  }
+
+  if (nonYouTubeURLs.length > 0) {
+    modifiedText = await fetchAndAppendWebpageContent(modifiedText, nonYouTubeURLs);
+  }
+
+  return modifiedText;
+};
 
 // <==========>
 
@@ -2475,130 +2595,6 @@ function getUserPreference(userId) {
 
 function getUrlUserPreference(userId) {
   return userPreferredUrlHandle[userId] || defaultUrlReading;
-}
-
-// Function to extract text from a PDF file
-async function extractTextFromPDF(pdfUrl) {
-  try {
-    const response = await fetch(pdfUrl);
-    const pdfBuffer = await response.buffer();
-    const data = await pdf(pdfBuffer);
-    return data.text;
-  } catch (error) {
-    console.error(error.message);
-    throw new Error('Could not extract text from PDF');
-  }
-}
-
-// Function to fetch text from a plaintext file
-async function fetchTextFile(url) {
-  try {
-    const response = await fetch(url);
-    return await response.text();
-  } catch (error) {
-    console.error('Error fetching text file:', error);
-    throw new Error('Could not fetch text from file');
-  }
-}
-
-function hasTextFileAttachments(message) {
-  const supportedMimeTypes = [
-    'application/pdf', 'text/plain', 'text/html', 'text/css',
-    'application/javascript', 'text/x-python', 'application/json',
-    'application/x-yaml', 'text/markdown', 'application/xml'
-  ];
-
-  const supportedFileExtensions = [
-    'md', 'yaml', 'yml', 'xml', 'env', 'sh', 'bat', 'rb', 'c', 'cpp', 'cc',
-    'cxx', 'h', 'hpp', 'java'
-  ];
-
-  return message.attachments.some((attachment) => {
-    const fileMimeType = attachment.contentType?.split(';')[0].trim();
-    const fileExtension = attachment.name.split('.').pop().toLowerCase();
-
-    return supportedMimeTypes.includes(fileMimeType) || supportedFileExtensions.includes(fileExtension);
-  });
-}
-
-async function fetchTextContent(url) {
-  try {
-    const response = await fetch(url);
-    return await response.text();
-  } catch (error) {
-    console.error('Error fetching text content:', error);
-    throw new Error('Could not fetch text content from file');
-  }
-}
-
-async function scrapeWebpageContent(url) {
-  try {
-    const timeoutPromise = new Promise((resolve, reject) => {
-      setTimeout(() => reject(new Error("Timeout")), 5000);
-    });
-    const response = await Promise.race([
-      fetch(url),
-      timeoutPromise
-    ]);
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    $('script, style').remove();
-    let bodyText = $('body').text();
-    bodyText = bodyText.replace(/<[^>]*>?/gm, '');
-    return bodyText.trim();
-  } catch (error) {
-    console.error('Error:', error);
-    if (error.message === 'Timeout') {
-      return "ERROR: The website is not responding..";
-    } else {
-      throw new Error('Could not scrape content from webpage');
-    }
-  }
-}
-
-async function handleUrlsInMessage(urls, messageContent, botMessage, originalMessage) {
-  const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }, { apiVersion: 'v1beta' });
-  const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
-  const chat = model.startChat({
-    history: isServerChatHistoryEnabled ? getHistory(originalMessage.guild.id) : getHistory(originalMessage.author.id),
-    safetySettings,
-  });
-
-  let contentIndex = 1;
-  let contentWithUrls = messageContent;
-  for (const url of urls) {
-    try {
-      if (url.includes('youtu.be') || url.includes('youtube.com')) {
-        const videoId = extractYouTubeVideoId(url);
-        const transcriptData = await YoutubeTranscript.fetchTranscript(videoId);
-        const transcriptText = transcriptData.map(item => item.text).join(' ');
-        contentWithUrls += `\n\n[Transcript Of Video ${url}]:\n"${transcriptText}"`;
-      } else {
-        // For non-video URLs, attempt to scrape webpage content
-        const webpageContent = await scrapeWebpageContent(url);
-        contentWithUrls += `\n\n[Text Inside The Website ${url}]:\n"${webpageContent}"`;
-      }
-      // In both cases, replace the URL with a reference in the text
-      contentWithUrls = contentWithUrls.replace(url, `[Reference Number ${contentIndex}](${url})`);
-      contentIndex++;
-    } catch (error) {
-      console.error('Error handling URL:', error);
-      contentWithUrls += `\n\n[Error]: Can't access content from the [URL ${contentIndex}](${url}), likely due to bot blocking. Mention if you were blocked in your reply.`;
-    }
-  }
-  // After processing all URLs, continue with the chat response
-  await handleModelResponse(botMessage, () => chat.sendMessageStream(contentWithUrls), originalMessage);
-}
-
-function extractYouTubeVideoId(url) {
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
-
-  return (match && match[2].length === 11) ? match[2] : null;
-}
-
-function extractUrls(text) {
-  return text.match(/\bhttps?:\/\/\S+/gi) || [];
 }
 
 function delay(ms) {
