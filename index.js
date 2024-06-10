@@ -550,13 +550,26 @@ async function handleImageMessage(message) {
         }
       })
     );
+    let infoStr;
+    if (message.guild) {
+      const member = await message.guild.members.fetch(message.author.id);
+      const userInfo = {
+        username: message.author.username,
+        displayName: message.author.displayName,
+        serverNickname: message.author.nickname,
+        status: member.presence ? member.presence.status : 'offline'
+      };
+      const serverName = message.guild.name;
+      const infoStr = `\nYou are currently engaging with users in the ${serverName} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\`\nServer Nickname: \`${userInfo.serverNickname || 'Not set'}\`\nStatus: \`${userInfo.status}\``;
+    }
 
     const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
-    const instructions = message.guild ?
+    let instructions = message.guild ?
       (serverSettings[message.guild.id]?.customServerPersonality && customInstructions[message.guild.id] ?
         customInstructions[message.guild.id] :
         customInstructions[message.author.id]) :
       customInstructions[message.author.id];
+    instructions = isServerChatHistoryEnabled ? instructions+infoStr : instructions;
     const visionModel = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : defaultPersonality }] } }, { apiVersion: 'v1beta' });
     const chat = visionModel.startChat({
       history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
@@ -608,14 +621,27 @@ async function handleTextFileMessage(message) {
 
       formattedMessage += `\n\n[${attachment.name}] File Content:\n"${extractedText}"`;
     }
+    let infoStr;
+    if (message.guild) {
+      let member = await message.guild.members.fetch(message.author.id);
+      const userInfo = {
+        username: message.author.username,
+        displayName: message.author.displayName,
+        serverNickname: message.author.nickname,
+        status: member.presence ? member.presence.status : 'offline'
+      };
+      const serverName = message.guild.name;
+      const infoStr = `\nYou are currently engaging with users in the ${serverName} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\`\nServer Nickname: \`${userInfo.serverNickname || 'Not set'}\`\nStatus: \`${userInfo.status}\``;
+    }
 
     // Load the text model and handle the conversation
     const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
-    const instructions = message.guild ?
+    let instructions = message.guild ?
       (serverSettings[message.guild.id]?.customServerPersonality && customInstructions[message.guild.id] ?
         customInstructions[message.guild.id] :
         customInstructions[message.author.id]) :
       customInstructions[message.author.id];
+    instructions = isServerChatHistoryEnabled ? instructions+infoStr : instructions;
     const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : defaultPersonality }] } }, { apiVersion: 'v1beta' });
     const chat = model.startChat({
       history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
@@ -639,7 +665,7 @@ async function handleTextMessage(message) {
     await addSettingsButton(botMessage);
     return;
   }
-  const instructions = message.guild ?
+  let instructions = message.guild ?
     (serverSettings[message.guild.id]?.customServerPersonality && customInstructions[message.guild.id] ?
       customInstructions[message.guild.id] :
       customInstructions[message.author.id]) :
@@ -663,7 +689,22 @@ async function handleTextMessage(message) {
       .setTitle('Processing')
       .setDescription('Let me think...');
     botMessage = await message.reply({ embeds: [embed] });
+    
+    let infoStr;
+    if (message.guild) {
+      let member = await message.guild.members.fetch(message.author.id);
+      const userInfo = {
+        username: message.author.username,
+        displayName: message.author.displayName,
+        serverNickname: message.author.nickname,
+        status: member.presence ? member.presence.status : 'offline'
+      };
+      const serverName = message.guild.name;
+      const infoStr = `\nYou are currently engaging with users in the ${serverName} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\`\nServer Nickname: \`${userInfo.serverNickname || 'Not set'}\`\nStatus: \`${userInfo.status}\``;
+    }
+    
     const isServerChatHistoryEnabled = message.guild ? serverSettings[message.guild.id]?.serverChatHistory : false;
+    instructions = isServerChatHistoryEnabled ? instructions+infoStr : instructions;
     const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: instructions ? instructions : defaultPersonality }] } }, { apiVersion: 'v1beta' });
     const chat = model.startChat({
       history: isServerChatHistoryEnabled ? getHistory(message.guild.id) : getHistory(message.author.id),
@@ -1882,18 +1923,21 @@ async function toggleServerWideChatHistory(interaction) {
     }
 
     const serverId = interaction.guild.id;
-    if (!serverSettings[serverId]) {
-      serverSettings[serverId] = { serverChatHistory: false };
-    }
+    initializeBlacklistForGuild(serverId);
 
     // Toggle the server-wide chat history setting
     serverSettings[serverId].serverChatHistory = !serverSettings[serverId].serverChatHistory;
     const statusMessage = `Server-wide Chat History is now \`${serverSettings[serverId].serverChatHistory ? "enabled" : "disabled"}\``;
 
+    let warningMessage = "";
+    if (serverSettings[serverId].serverChatHistory && !serverSettings[serverId].customServerPersonality) {
+      warningMessage = "\n\n⚠️ **Warning:** Enabling server-side chat history without enhancing server-wide personality management is not recommended. The bot may get confused between its personalities and conversations with different users.";
+    }
+
     const embed = new EmbedBuilder()
       .setColor(serverSettings[serverId].serverChatHistory ? 0x00FF00 : 0xFF0000)
       .setTitle('Chat History Toggled')
-      .setDescription(statusMessage);
+      .setDescription(statusMessage + warningMessage);
 
     await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
@@ -1913,9 +1957,7 @@ async function toggleServerPersonality(interaction) {
     }
 
     const serverId = interaction.guild.id;
-    if (!serverSettings[serverId]) {
-      serverSettings[serverId] = { customServerPersonality: false };
-    }
+    initializeBlacklistForGuild(serverId);
 
     // Toggle the server-wide personality setting
     serverSettings[serverId].customServerPersonality = !serverSettings[serverId].customServerPersonality;
@@ -1944,9 +1986,7 @@ async function toggleServerResponsePreference(interaction) {
     }
 
     const serverId = interaction.guild.id;
-    if (!serverSettings[serverId]) {
-      serverSettings[serverId] = { serverResponsePreference: false };
-    }
+    initializeBlacklistForGuild(serverId);
 
     // Toggle the server-wide response preference
     serverSettings[serverId].serverResponsePreference = !serverSettings[serverId].serverResponsePreference;
@@ -1975,9 +2015,7 @@ async function toggleSettingSaveButton(interaction) {
     }
 
     const serverId = interaction.guild.id;
-    if (!serverSettings[serverId]) {
-      serverSettings[serverId] = { settingsSaveButton: false };
-    }
+    initializeBlacklistForGuild(serverId);
 
     // Toggle the server-wide settings save button option
     serverSettings[serverId].settingsSaveButton = !serverSettings[serverId].settingsSaveButton;
@@ -2027,11 +2065,7 @@ async function clearServerChatHistory(interaction) {
     }
 
     const serverId = interaction.guild.id;
-
-    // Ensure the server settings exist for chat history
-    if (!serverSettings[serverId]) {
-      serverSettings[serverId] = { serverChatHistory: false };
-    }
+    initializeBlacklistForGuild(serverId);
 
     if (serverSettings[serverId].serverChatHistory) {
       // Clear the server-wide chat history if it's enabled
@@ -2603,7 +2637,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
   const filter = (interaction) => interaction.customId === 'stopGenerating' && interaction.user.id === originalMessage.author.id;
 
   const collector = botMessage.createMessageComponentCollector({ filter, time: 300000 });
-  
+
   try {
     collector.on('collect', async (interaction) => {
       if (interaction.user.id === originalMessage.author.id) {
@@ -2645,7 +2679,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
     if (userPreference === 'embedded') {
       await updateEmbed(botMessage, tempResponse, originalMessage);
     } else {
-      await botMessage.edit({ content: tempResponse });
+      await botMessage.edit({ content: tempResponse, embeds: [] });  // Clear embeds for normal messages
     }
     clearTimeout(updateTimeout);
     updateTimeout = null;
@@ -2694,8 +2728,10 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
           await botMessage.edit({components: [] });
         }
       }
+
       const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
       updateChatHistory(isServerChatHistoryEnabled ? originalMessage.guild.id : userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
+
       break;
     }catch (error) {
       if (activeRequests.has(userId)) {
