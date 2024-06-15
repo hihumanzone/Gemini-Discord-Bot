@@ -17,6 +17,7 @@
           "required": false,
           "choices": [
             { "name": "SD-XL", "value": "SD-XL" },
+            { "name": "SD-3", "value": "SD-3" },
             { "name": "Playground", "value": "Playground" },
             { "name": "Anime", "value": "Anime" },
             { "name": "Stable-Cascade", "value": "Stable-Cascade" },
@@ -115,6 +116,10 @@
           "required": true
         }
       ]
+    },
+    {
+      "name": "status",
+      "description": "Displays bot CPU and RAM usage in detail."
     }
   ]
 }
