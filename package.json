@@ -10,7 +10,7 @@
     "node-fetch": "^2.6.7",
     "pdf-parse": "*",
     "sharp": "*",
-    "ws": "*",
-    "youtube-transcript": "^1.2.1"
+    "youtube-transcript": "*",
+    "systeminformation": "*"
   }
 }
