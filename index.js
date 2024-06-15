@@ -33,6 +33,7 @@ const sharp = require('sharp');
 const pdf = require('pdf-parse');
 const cheerio = require('cheerio');
 const { YoutubeTranscript } = require('youtube-transcript');
+const si = require('systeminformation');
 const axios = require('axios');
 
 const config = require('./config.json');
@@ -167,6 +168,7 @@ const {
   generateWithDallEXL,
   generateWithAnime,
   generateWithSDXL,
+  generateWithSD3,
   generateWithPixArt_Sigma,
   generateWithDalle3,
   generateWithMobius
@@ -323,6 +325,9 @@ client.on('interactionCreate', async (interaction) => {
         break;
       case 'music':
         await handleMusicCommand(interaction);
+        break;
+      case 'status':
+        await handleStatusCommand(interaction);
         break;
       default:
         console.log(`Unknown command: ${interaction.commandName}`);
@@ -563,7 +568,7 @@ async function handleTextMessage(message) {
   const model = await genAI.getGenerativeModel({
     model: "gemini-1.5-flash-latest",
     systemInstruction: { role: "system", parts: [{ text: finalInstructions || defaultPersonality }] }
-  }, { apiVersion: 'v1beta' });
+  });
 
   const chat = model.startChat({
     history: isServerChatHistoryEnabled ? getHistory(guildId) : getHistory(userId),
@@ -1280,7 +1285,7 @@ async function changeImageModel(interaction) {
   try {
     // Define model names in an array
     const models = [
-      'SD-XL', 'Playground', 'Anime', 'Stable-Cascade', 'DallE-XL', 'PixArt-Sigma', 'Mobius'/*, 'DallE-3'*/
+      'SD-XL', 'SD-3', 'Playground', 'Anime', 'Stable-Cascade', 'DallE-XL', 'PixArt-Sigma', 'Mobius'/*, 'DallE-3'*/
       ];
     
     const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
@@ -1327,7 +1332,7 @@ async function changeImageResolution(interaction) {
     const userId = interaction.user.id;
     const selectedModel = userPreferredImageModel[userId];
     let supportedResolution;
-    const supportedModels = ['DallE-XL', 'Anime', 'Stable-Cascade', 'Playground', 'SD-XL', 'PixArt-Sigma', 'Mobius'];
+    const supportedModels = ['DallE-XL', 'Anime', 'Stable-Cascade', 'Playground', 'SD-XL', 'SD-3', 'PixArt-Sigma', 'Mobius'];
     if (supportedModels.includes(selectedModel)) {
       supportedResolution = ['Square', 'Portrait', 'Wide'];
     } else {
@@ -1408,6 +1413,7 @@ const speechMusicModelFunctions = {
 
 const imageModelFunctions = {
   'SD-XL': generateWithSDXL,
+  'SD-3': generateWithSD3,
   'Playground': generateWithPlayground,
   'Anime': generateWithAnime,
   'Stable-Cascade': generateWithSC,
@@ -1483,7 +1489,7 @@ async function togglePromptEnhancer(interaction) {
 
 const diffusionMaster = require('./diffusionMasterPrompt');
 
-async function enhancePrompt1(prompt) {
+async function enhancePrompt(prompt) {
   const retryLimit = 3;
   let currentAttempt = 0;
   let error;
@@ -1559,9 +1565,9 @@ async function enhancePrompt1(prompt) {
   return prompt;
 }
 
-async function enhancePrompt(prompt, attempts = 3) {
+async function enhancePrompt1(prompt, attempts = 3) {
   const generate = async () => {
-    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: diffusionMaster }] } }, { apiVersion: 'v1beta' });
+    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: diffusionMaster }] } });
     const result = await model.generateContent(prompt);
     return result.response.text();
   };
@@ -1747,6 +1753,61 @@ async function handleRespondToAllCommand(interaction) {
     }
   } catch (error) {
     console.log(error.message);
+  }
+}
+
+async function handleStatusCommand(interaction) {
+  try {
+    const initialEmbed = new EmbedBuilder()
+      .setColor(0x0099FF)
+      .setTitle('System Information')
+      .setDescription('Fetching system information...')
+      .setTimestamp();
+
+    const message = await interaction.reply({ embeds: [initialEmbed], fetchReply: true });
+    await addSettingsButton(message);
+
+    const updateMessage = async () => {
+      try {
+        const [cpuLoad, mem, cpuInfo, disks] = await Promise.all([si.currentLoad(), si.mem(), si.cpu(), si.fsSize()]);
+
+        const load = cpuLoad.currentload !== undefined ? cpuLoad.currentload.toFixed(2) : 'N/A';
+        const totalMem = mem.total ? (mem.total / 1024 / 1024 / 1024).toFixed(2) : 'N/A';
+        const usedMem = mem.total && mem.available !== undefined ? ((mem.total - mem.available) / 1024 / 1024 / 1024).toFixed(2) : 'N/A';
+        const usedDisk = disks.reduce((acc, disk) => acc + (disk.used || 0), 0);
+        const totalDisk = disks.reduce((acc, disk) => acc + (disk.size || 0), 0);
+        const usedDiskDisplay = totalDisk ? `${(usedDisk / 1024 / 1024 / 1024).toFixed(2)} GB / ${(totalDisk / 1024 / 1024 / 1024).toFixed(2)} GB` : 'N/A';
+
+        const embed = new EmbedBuilder()
+          .setColor(0x505050)
+          .setTitle('System Information')
+          .addFields(
+            { name: 'CPU Load', value: `${load}%` || "N/A", inline: true },
+            { name: 'CPU Cores', value: `${cpuInfo.cores}` || "N/A", inline: true },
+            { name: 'Total Memory', value: `${totalMem} GB` || "N/A", inline: true },
+            { name: 'Used Memory', value: `${usedMem} GB` || "N/A", inline: true },
+            { name: 'Used Disk Space', value: `${usedDiskDisplay}` || "N/A", inline: true },
+          )
+          .setTimestamp();
+
+        await message.edit({ embeds: [embed] });
+      } catch (error) {
+        console.error('Error updating message:', error);
+      }
+    };
+
+    let timeLeft = 30;
+    const interval = setInterval(async () => {
+      if (timeLeft <= 0) {
+        clearInterval(interval);
+        return;
+      }
+      timeLeft -= 2;
+      await updateMessage();
+    }, 2000);
+  } catch (error) {
+    console.error('Error in handleStatusCommand function:', error);
+    await interaction.reply({ content: 'An error occurred while fetching system information.', ephemeral: true });
   }
 }
 
