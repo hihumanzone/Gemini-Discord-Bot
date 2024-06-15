@@ -1,6 +1,5 @@
 const axios = require('axios');
 const EventSource = require('eventsource');
-const WebSocket = require('ws');
 
 const config = require('./config.json');
 const bannerMusicGen = config.bannerMusicGen;
@@ -614,6 +613,65 @@ function generateWithMobius(prompt, resolution) {
   });
 }
 
+function generateWithSD3(prompt, resolution) {
+  let width, height;
+  if (resolution == 'Square') {
+    width = 1024;
+    height = 1024;
+  } else if (resolution == 'Wide') {
+    width = 1280;
+    height = 768;
+  } else if (resolution == 'Portrait') {
+    width = 768;
+    height = 1280;
+  }
+  return new Promise((resolve, reject) => {
+    try {
+      const url = "https://stabilityai-stable-diffusion-3-medium.hf.space";
+      const randomDigit = generateRandomDigits();
+      const session_hash = generateSessionHash();
+      const urlFirstRequest = `${url}/queue/join?`;
+      const dataFirstRequest = {
+        "data": [prompt, nevPrompt, randomDigit, true, width, height, 5, 35],
+        "event_data": null,
+        "fn_index": 1,
+        "trigger_id": 5,
+        "session_hash": session_hash
+      };
+
+      axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
+
+        const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
+
+        const eventSource = new EventSource(urlSecondRequest);
+
+        eventSource.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+
+          if (data.msg === "process_completed") {
+            eventSource.close();
+            const full_url = data?.output?.data?.[0]?.url;
+            if (full_url) {
+              resolve({ images: [{ url: full_url }], modelUsed: "SD-3" });
+            } else {
+              reject(new Error("Invalid path: URL does not exist."));
+              console.log(data);
+            }
+          }
+        };
+        eventSource.onerror = (error) => {
+          eventSource.close();
+          reject(error);
+        };
+      }).catch(error => {
+        reject(error);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
 async function generateWithDalle3(prompt) {
   try {
     const headers = {
@@ -657,6 +715,7 @@ module.exports = {
   generateWithDallEXL,
   generateWithAnime,
   generateWithSDXL,
+  generateWithSD3,
   generateWithPixArt_Sigma,
   generateWithDalle3,
   generateWithMobius
