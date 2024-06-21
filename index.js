@@ -26,6 +26,7 @@ const {
   HarmBlockThreshold,
   HarmCategory
 } = require('@google/generative-ai');
+const { GoogleAIFileManager, FileState } = require('@google/generative-ai/files');
 const { writeFile, unlink } = require('fs/promises');
 const fs = require('fs');
 const path = require('path');
@@ -49,6 +50,7 @@ const client = new Client({
 });
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+const fileManager = new GoogleAIFileManager(process.env.GOOGLE_API_KEY);
 const token = process.env.DISCORD_BOT_TOKEN;
 const activeRequests = new Set();
 
@@ -67,7 +69,7 @@ let alwaysRespondChannels = {};
 let blacklistedUsers = {};
 
 const CONFIG_DIR = path.join(__dirname, 'config');
-const CHAT_HISTORIES_DIR = path.join(CONFIG_DIR, 'chat_histories');
+const CHAT_HISTORIES_DIR = path.join(CONFIG_DIR, 'chat_histories_2');
 
 const FILE_PATHS = {
   activeUsersInChannels: path.join(CONFIG_DIR, 'active_users_in_channels.json'),
@@ -167,6 +169,7 @@ const {
   generateWithPlayground,
   generateWithDallEXL,
   generateWithAnime,
+  generateWithAnimeAlt,
   generateWithSDXL,
   generateWithSD3,
   generateWithPixArt_Sigma,
@@ -504,7 +507,7 @@ async function handleTextMessage(message) {
   const guildId = message.guild?.id;
   let messageContent = message.content.replace(new RegExp(`<@!?${botId}>`), '').trim();
 
-  if (messageContent === '' && !(message.attachments.size > 0 && (hasImageAttachments(message) || hasTextFileAttachments(message)))) {
+  if (messageContent === '' && !(message.attachments.size > 0 && hasSupportedAttachments(message))) {
     const embed = new EmbedBuilder()
       .setColor(0x00FFFF)
       .setTitle('Empty Message')
@@ -513,34 +516,41 @@ async function handleTextMessage(message) {
     await addSettingsButton(botMessage);
     return;
   }
-  
-  const updateEmbedDescription = (urlHandlingStatus, textAttachmentStatus, imageAttachmentStatus, finalText) => {
-    return `Let me think...\n\n- ${urlHandlingStatus}: Url Handling\n- ${textAttachmentStatus}: Text Attachment Check\n- ${imageAttachmentStatus}: Image Attachment Check\n${finalText || ''}`;
-  };
-  
-  const embed = new EmbedBuilder()
-    .setColor(0x00FFFF)
-    .setTitle('Processing')
-    .setDescription(updateEmbedDescription('[🔁]', '[🔁]', '[🔁]'));
-  const botMessage = await message.reply({ embeds: [embed] });
-  
-  let urlHandlingStatus = '[🔁]';
-  if (getUrlUserPreference(userId) === "ON") {
-    messageContent = await appendSiteContentToText(messageContent);
-    urlHandlingStatus = '[☑️]';
+  message.channel.sendTyping();
+  const typingInterval = setInterval(() => {
+    message.channel.sendTyping();
+  }, 4000);
+  setTimeout(() => {
+    clearInterval(typingInterval);
+  }, 120000);
+  let botMessage = false;
+  let parts;
+  if (process.env.SEND_RETRY_ERRORS_TO_DISCORD === 'true') {
+    clearInterval(typingInterval);
+    const embed = new EmbedBuilder()
+        .setColor(0x00FFFF)
+        .setTitle('Processing')
+        .setDescription(updateEmbedDescription('[🔁]', '[🔁]'));
+    botMessage = await message.reply({ embeds: [embed] });
+    
+    let urlHandlingStatus = '[🔁]';
+    if (getUrlUserPreference(userId) === "ON") {
+      messageContent = await appendSiteContentToText(messageContent);
+      urlHandlingStatus = '[☑️]';
+    } else {
+      urlHandlingStatus = '[🚫]';
+    }
+    embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[🔁]'));
+    await botMessage.edit({ embeds: [embed] });
+    const parts = await processPromptAndMediaAttachments(messageContent, message);
+    embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '### All checks done. Waiting for the response...'));
+    await botMessage.edit({ embeds: [embed] });
   } else {
-    urlHandlingStatus = '[🚫]';
+    if (getUrlUserPreference(userId) === "ON") {
+      messageContent = await appendSiteContentToText(messageContent);
+    }
+    parts = await processPromptAndMediaAttachments(messageContent, message);
   }
-  embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[🔁]', '[🔁]'));
-  await botMessage.edit({ embeds: [embed] });
-  
-  messageContent = await extractFileText(message, messageContent);
-  embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '[🔁]'));
-  await botMessage.edit({ embeds: [embed] });
-  
-  const parts = await processPromptAndImageAttachments(messageContent, message);
-  embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '[☑️]', '### All checks done. Waiting for the response...'));
-  await botMessage.edit({ embeds: [embed] });
 
   const instructions = guildId 
     ? serverSettings[guildId]?.customServerPersonality && customInstructions[guildId]
@@ -575,105 +585,125 @@ async function handleTextMessage(message) {
     safetySettings,
   });
 
-  await handleModelResponse(botMessage, () => chat.sendMessageStream(parts), message);
+  await handleModelResponse(botMessage, chat, parts, message, typingInterval);
 }
 
-function hasImageAttachments(message) {
+function hasSupportedAttachments(message) {
+  const supportedMimeTypes = [
+    'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
+    'audio/wav', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac',
+    'video/mp4', 'video/mpeg', 'video/mov', 'video/avi', 'video/x-flv', 'video/mpg', 
+    'video/webm', 'video/wmv', 'video/3gpp', 
+    'text/plain', 'text/html', 'text/css', 'text/javascript', 'application/x-javascript',
+    'text/x-typescript', 'application/x-typescript', 'text/csv', 'text/markdown', 
+    'text/x-python', 'application/x-python-code', 'application/json', 'text/xml', 
+    'application/rtf', 'text/rtf'
+  ];
+
   return message.attachments.some((attachment) =>
-    attachment.contentType?.startsWith('image/')
+    supportedMimeTypes.includes(attachment.contentType)
   );
 }
 
-function hasTextFileAttachments(message) {
-  const supportedFileExtensions = [
-    'html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf'
-  ];
-
-  return message.attachments.some((attachment) => {
-    const fileExtension = attachment.name.split('.').pop().toLowerCase();
-    return supportedFileExtensions.includes(fileExtension);
+async function downloadFile(url, filePath) {
+  const writer = fs.createWriteStream(filePath);
+  const response = await axios({
+    url,
+    method: 'GET',
+    responseType: 'stream',
+  });
+  response.data.pipe(writer);
+  return new Promise((resolve, reject) => {
+    writer.on('finish', resolve);
+    writer.on('error', reject);
   });
 }
 
-async function processPromptAndImageAttachments(prompt, message) {
-  const attachments = Array.from(message.attachments.values());
+function sanitizeFileName(fileName) {
+  return fileName
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-') // replace non-lowercase alphanumeric and dashes with dashes
+    .replace(/^-+|-+$/g, ''); // remove leading and trailing dashes
+}
+
+async function processPromptAndMediaAttachments(prompt, message) {
+  const attachments = JSON.parse(JSON.stringify(Array.from(message.attachments.values())).replace(/^[^\[]*(\[.*\])[^\]]*$/, '$1'));
   let parts = [{ text: prompt }];
 
+  const supportedMimeTypes = [
+    'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
+    'audio/wav', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac',
+    'video/mp4', 'video/mpeg', 'video/mov', 'video/avi', 'video/x-flv', 'video/mpg',
+    'video/webm', 'video/wmv', 'video/3gpp',
+    'text/plain', 'text/html', 'text/css', 'text/javascript', 'application/x-javascript',
+    'text/x-typescript', 'application/x-typescript', 'text/csv', 'text/markdown',
+    'text/x-python', 'application/x-python-code', 'application/json', 'text/xml',
+    'application/rtf', 'text/rtf'
+  ];
+
   if (attachments.length > 0) {
-    const imageAttachments = attachments.filter(attachment => attachment.contentType && attachment.contentType.startsWith('image/'));
+    const validAttachments = attachments.filter(
+      (attachment) => supportedMimeTypes.includes(attachment.contentType)
+    );
 
-    if (imageAttachments.length > 0) {
+    if (validAttachments.length > 0) {
       const attachmentParts = await Promise.all(
-        imageAttachments.map(async (attachment) => {
-          const response = await fetch(attachment.url);
-          const buffer = await response.arrayBuffer();
-          let imageBuffer = Buffer.from(buffer);
+        validAttachments.map(async (attachment) => {
+          const sanitizedFileName = sanitizeFileName(attachment.name);
+          const filePath = path.join(__dirname, sanitizedFileName);
 
-          if (imageBuffer.length > 5 * 1024 * 1024) {
-            imageBuffer = await sharp(imageBuffer)
-              .resize(3072, 3072, {
-                fit: sharp.fit.inside,
-                withoutEnlargement: true
-              })
-              .jpeg({ quality: 80 })
-              .toBuffer();
+          try {
+            // Download the file
+            await downloadFile(attachment.url, filePath);
 
-            if (imageBuffer.length > 5 * 1024 * 1024) {
-              imageBuffer = await sharp(imageBuffer)
-                .resize(2048, 2048, {
-                  fit: sharp.fit.inside,
-                  withoutEnlargement: true
-                })
-                .jpeg({ quality: 60 })
-                .toBuffer();
+            // Upload the downloaded file
+            const uploadResult = await fileManager.uploadFile(filePath, {
+              mimeType: attachment.contentType,
+              displayName: sanitizedFileName,
+            });
+            const name = uploadResult.file.name;
+            if (name === null) {
+              throw new Error(`Unable to extract file name from upload result: ${nameField}`);
             }
+
+            // Check if the file is a video and wait for its state to be 'ACTIVE'
+            if (attachment.contentType.startsWith('video/')) {
+              let file = await fileManager.getFile(name);
+              while (file.state === FileState.PROCESSING) {
+                process.stdout.write(".");
+                await new Promise((resolve) => setTimeout(resolve, 10_000));
+                file = await fileManager.getFile(name);
+              }
+
+              if (file.state === FileState.FAILED) {
+                throw new Error(`Video processing failed for ${sanitizedFileName}.`);
+              }
+            }
+
+            // Delete the local file
+            fs.unlinkSync(filePath);
+
+            return {
+              fileData: {
+                mimeType: attachment.contentType,
+                fileUri: uploadResult.file.uri,
+              },
+            };
+          } catch (error) {
+            console.error(`Error processing attachment ${sanitizedFileName}:`, error);
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+            }
+            return null;
           }
-
-          return {
-            inlineData: {
-              data: imageBuffer.toString('base64'),
-              mimeType: attachment.contentType || 'application/octet-stream'
-            }
-          };
         })
       );
-      parts = [...parts, ...attachmentParts];
+
+      parts = [...parts, ...attachmentParts.filter(part => part !== null)];
     }
   }
+
   return parts;
-}
-
-async function extractFileText(message, messageContent) {
-  if (message.attachments.size > 0) {
-    let attachments = Array.from(message.attachments.values());
-    for (const attachment of attachments) {
-      const fileType = attachment.name.split('.').pop().toLowerCase();
-      const fileTypes = ['html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf'];
-
-      if (fileTypes.includes(fileType)) {
-        try {
-          let fileContent = await downloadAndReadFile(attachment.url, fileType);
-          messageContent += `\n\n[\`${attachment.name}\` File Content]:\n\`\`\`\n${fileContent}\n\`\`\``;
-        } catch (error) {
-          console.error(`Error reading file ${attachment.name}: ${error.message}`);
-        }
-      }
-    }
-  }
-  return messageContent;
-}
-
-async function downloadAndReadFile(url, fileType) {
-  let response = await fetch(url);
-  if (!response.ok) throw new Error(`Failed to download ${response.statusText}`);
-
-  switch (fileType) {
-    case 'pdf':
-      let buffer = await response.buffer();
-      return (await pdfParse(buffer)).text;
-    default:
-      return await response.text();
-  }
 }
 
 async function scrapeWebpageContent(url) {
@@ -1285,7 +1315,7 @@ async function changeImageModel(interaction) {
   try {
     // Define model names in an array
     const models = [
-      'SD-XL', 'SD-3', 'Playground', 'Anime', 'Stable-Cascade', 'DallE-XL', 'PixArt-Sigma', 'Mobius'/*, 'DallE-3'*/
+      'SD-XL', 'SD-3', 'Playground', 'Anime', 'Anime-Alt', 'Stable-Cascade', 'DallE-XL', 'PixArt-Sigma', 'Mobius'/*, 'DallE-3'*/
       ];
     
     const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
@@ -1332,7 +1362,7 @@ async function changeImageResolution(interaction) {
     const userId = interaction.user.id;
     const selectedModel = userPreferredImageModel[userId];
     let supportedResolution;
-    const supportedModels = ['DallE-XL', 'Anime', 'Stable-Cascade', 'Playground', 'SD-XL', 'SD-3', 'PixArt-Sigma', 'Mobius'];
+    const supportedModels = ['DallE-XL', 'Anime', 'Anime-Alt', 'Stable-Cascade', 'Playground', 'SD-XL', 'SD-3', 'PixArt-Sigma', 'Mobius'];
     if (supportedModels.includes(selectedModel)) {
       supportedResolution = ['Square', 'Portrait', 'Wide'];
     } else {
@@ -1416,6 +1446,7 @@ const imageModelFunctions = {
   'SD-3': generateWithSD3,
   'Playground': generateWithPlayground,
   'Anime': generateWithAnime,
+  'Anime-Alt': generateWithAnimeAlt,
   'Stable-Cascade': generateWithSC,
   'DallE-XL': generateWithDallEXL,
   'DallE-3': generateWithDalle3,
@@ -1489,7 +1520,7 @@ async function togglePromptEnhancer(interaction) {
 
 const diffusionMaster = require('./diffusionMasterPrompt');
 
-async function enhancePrompt(prompt) {
+async function enhancePrompt1(prompt) {
   const retryLimit = 3;
   let currentAttempt = 0;
   let error;
@@ -1565,7 +1596,7 @@ async function enhancePrompt(prompt) {
   return prompt;
 }
 
-async function enhancePrompt1(prompt, attempts = 3) {
+async function enhancePrompt(prompt, attempts = 3) {
   const generate = async () => {
     const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: diffusionMaster }] } });
     const result = await model.generateContent(prompt);
@@ -2670,7 +2701,7 @@ const safetySettings = [{ category: HarmCategory.HARM_CATEGORY_HARASSMENT, thres
 
 // <=====[Model Response Handling]=====>
 
-async function handleModelResponse(botMessage, responseFunc, originalMessage) {
+async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval) {
   const userId = originalMessage.author.id;
   const userPreference = originalMessage.guild && serverSettings[originalMessage.guild.id]?.serverResponsePreference ? serverSettings[originalMessage.guild.id].responseStyle : getUserPreference(userId);
   const maxCharacterLimit = userPreference === 'embedded' ? 3900 : 1900;
@@ -2686,8 +2717,14 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
         .setLabel('Stop Generating')
         .setStyle(ButtonStyle.Danger)
     );
-
+  let botMessage;
+  if (!initialBotMessage) {
+    clearInterval(typingInterval);
+    botMessage = await originalMessage.reply({ content: 'Let me think..', components: [row] });
+  } else {
+    botMessage = initialBotMessage;
   await botMessage.edit({components: [row] });
+  }
 
   let stopGeneration = false;
 
@@ -2736,7 +2773,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
     if (userPreference === 'embedded') {
       await updateEmbed(botMessage, tempResponse, originalMessage);
     } else {
-      await botMessage.edit({ content: tempResponse, embeds: [] });  // Clear embeds for normal messages
+      await botMessage.edit({ content: tempResponse, embeds: [] });
     }
     clearTimeout(updateTimeout);
     updateTimeout = null;
@@ -2744,7 +2781,7 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
 
   while (attempts > 0 && !stopGeneration) {
     try {
-      const messageResult = await responseFunc();
+      const messageResult = await chat.sendMessageStream(parts);
       let finalResponse = '';
       let isLargeResponse = false;
 
@@ -2785,12 +2822,10 @@ async function handleModelResponse(botMessage, responseFunc, originalMessage) {
           await botMessage.edit({components: [] });
         }
       }
-
       const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
-      updateChatHistory(isServerChatHistoryEnabled ? originalMessage.guild.id : userId, originalMessage.content.replace(new RegExp(`<@!?${client.user.id}>`), '').trim(), finalResponse);
-
+      updateChatHistory(isServerChatHistoryEnabled ? originalMessage.guild.id : userId, parts, finalResponse);
       break;
-    }catch (error) {
+    } catch (error) {
       if (activeRequests.has(userId)) {
         activeRequests.delete(userId);
       }
@@ -2878,18 +2913,29 @@ async function attachmentToPart(attachment) {
 }
 
 function getHistory(id) {
-  return chatHistories[id]?.map((line, index) => ({
-    role: index % 2 === 0 ? 'user' : 'model',
-    parts: [{ text: line }],
-  })) || [];
+  const history = chatHistories[id] || [];
+  return history.map(entry => {
+    return {
+      role: entry.role === 'assistant' ? 'model' : entry.role,
+      parts: entry.content
+    };
+  });
 }
 
 function updateChatHistory(id, userMessage, modelResponse) {
   if (!chatHistories[id]) {
     chatHistories[id] = [];
   }
-  chatHistories[id].push(userMessage);
-  chatHistories[id].push(modelResponse);
+
+  chatHistories[id].push({
+    role: 'user',
+    content: userMessage,
+  });
+
+  chatHistories[id].push({
+    role: 'assistant',
+    content: [{ text: modelResponse }],
+  });
 }
 
 // <==========>
