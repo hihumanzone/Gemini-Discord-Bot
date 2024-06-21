@@ -24,7 +24,7 @@ Gemini is an advanced Discord bot that leverages Google's Generative AI models t
 
 2. Install the required dependencies:
    ```
-   npm install dotenv node-fetch@2.6.7 discord.js @google/generative-ai fs sharp pdf-parse cheerio youtube-transcript axios eventsource systeminformation @google/generative-ai/files
+   npm install dotenv node-fetch@2.6.7 discord.js @google/generative-ai fs sharp pdf-parse cheerio youtube-transcript axios eventsource systeminformation
    ```
 
 3. Obtain a Google API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
