@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@google/generative-ai": "*",
+    "@google/generative-ai/files": "*",
     "axios": "*",
     "cheerio": "*",
     "discord.js": "*",
