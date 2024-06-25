@@ -34,7 +34,9 @@ const sharp = require('sharp');
 const pdf = require('pdf-parse');
 const cheerio = require('cheerio');
 const { YoutubeTranscript } = require('youtube-transcript');
-const si = require('systeminformation');
+const osu = require('node-os-utils');
+const mem = osu.mem;
+const cpu = osu.cpu;
 const axios = require('axios');
 
 const config = require('./config.json');
@@ -145,6 +147,27 @@ function loadStateFromFile() {
   }
 }
 
+function resetChatHistories() {
+  chatHistories = {};
+  console.log('Chat histories have been reset.');
+}
+
+function scheduleDailyReset() {
+  const now = new Date();
+  const nextReset = new Date();
+  nextReset.setHours(0, 0, 0, 0);
+  if (nextReset <= now) {
+    nextReset.setDate(now.getDate() + 1);
+  }
+  const timeUntilNextReset = nextReset - now;
+
+  setTimeout(() => {
+    resetChatHistories();
+    scheduleDailyReset();
+  }, timeUntilNextReset);
+}
+
+scheduleDailyReset();
 loadStateFromFile();
 
 // <=====[Configuration]=====>
@@ -1800,45 +1823,57 @@ async function handleStatusCommand(interaction) {
 
     const updateMessage = async () => {
       try {
-        const [cpuLoad, mem, cpuInfo, disks] = await Promise.all([si.currentLoad(), si.mem(), si.cpu(), si.fsSize()]);
+        const [{ totalMemMb, usedMemMb, freeMemMb, freeMemPercentage }, cpuPercentage] = await Promise.all([
+          mem.info(),
+          cpu.usage()
+        ]);
 
-        const load = cpuLoad.currentload !== undefined ? cpuLoad.currentload.toFixed(2) : 'N/A';
-        const totalMem = mem.total ? (mem.total / 1024 / 1024 / 1024).toFixed(2) : 'N/A';
-        const usedMem = mem.total && mem.available !== undefined ? ((mem.total - mem.available) / 1024 / 1024 / 1024).toFixed(2) : 'N/A';
-        const usedDisk = disks.reduce((acc, disk) => acc + (disk.used || 0), 0);
-        const totalDisk = disks.reduce((acc, disk) => acc + (disk.size || 0), 0);
-        const usedDiskDisplay = totalDisk ? `${(usedDisk / 1024 / 1024 / 1024).toFixed(2)} GB / ${(totalDisk / 1024 / 1024 / 1024).toFixed(2)} GB` : 'N/A';
+        const now = new Date();
+        const nextReset = new Date();
+        nextReset.setHours(0, 0, 0, 0);
+        if (nextReset <= now) {
+          nextReset.setDate(now.getDate() + 1);
+        }
+        const timeLeftMillis = nextReset - now;
+        const hours = Math.floor(timeLeftMillis / 3600000);
+        const minutes = Math.floor((timeLeftMillis % 3600000) / 60000);
+        const seconds = Math.floor((timeLeftMillis % 60000) / 1000);
+        const timeLeft = `${hours}h ${minutes}m ${seconds}s`;
 
         const embed = new EmbedBuilder()
           .setColor(0x505050)
           .setTitle('System Information')
           .addFields(
-            { name: 'CPU Load', value: `${load}%` || "N/A", inline: true },
-            { name: 'CPU Cores', value: `${cpuInfo.cores}` || "N/A", inline: true },
-            { name: 'Total Memory', value: `${totalMem} GB` || "N/A", inline: true },
-            { name: 'Used Memory', value: `${usedMem} GB` || "N/A", inline: true },
-            { name: 'Used Disk Space', value: `${usedDiskDisplay}` || "N/A", inline: true },
+            { name: 'Memory (RAM)', value: `Total Memory: ${totalMemMb} MB\nUsed Memory: ${usedMemMb} MB\nFree Memory: ${freeMemMb} MB\nPercentage Of Free Memory: ${freeMemPercentage}%`, inline: true },
+            { name: 'CPU', value: `Percentage of CPU Usage: ${cpuPercentage}%`, inline: true },
+            { name: 'Time Until Next Reset', value: timeLeft, inline: true }
           )
           .setTimestamp();
 
         await message.edit({ embeds: [embed] });
       } catch (error) {
         console.error('Error updating message:', error);
+        clearInterval(interval);
       }
     };
 
-    let timeLeft = 30;
+    await updateMessage();
+
     const interval = setInterval(async () => {
-      if (timeLeft <= 0) {
+      try {
+        await updateMessage();
+      } catch (error) {
         clearInterval(interval);
-        return;
+        console.error('Stopping updates due to error:', error);
       }
-      timeLeft -= 2;
-      await updateMessage();
     }, 2000);
+
+    setTimeout(() => {
+      clearInterval(interval);
+    }, 30000);
+
   } catch (error) {
     console.error('Error in handleStatusCommand function:', error);
-    await interaction.reply({ content: 'An error occurred while fetching system information.', ephemeral: true });
   }
 }
 
