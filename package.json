@@ -12,6 +12,6 @@
     "pdf-parse": "*",
     "sharp": "*",
     "youtube-transcript": "*",
-    "systeminformation": "*"
+    "node-os-utils": "*"
   }
 }
