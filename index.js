@@ -2074,8 +2074,9 @@ async function downloadConversation(interaction) {
 
     let conversationText = '';
     for (let i = 0; i < conversationHistory.length; i++) {
-      const speaker = i % 2 === 0 ? '[User]' : '[Model]';
-      conversationText += `${speaker}:\n${conversationHistory[i]}\n\n`;
+      const role = conversationHistory[i].role === 'user' ? '[User]' : '[Model]';
+      const content = conversationHistory[i].content.map(c => c.text).join('\n');
+      conversationText += `${role}:\n${content}\n\n`;
     }
 
     const tempFileName = path.join(__dirname, `${userId}_conversation.txt`);
@@ -2087,11 +2088,11 @@ async function downloadConversation(interaction) {
       const historyContentEmbed = new EmbedBuilder()
         .setColor(0xFFFFFF)
         .setTitle('Conversation History')
-        .setDescription('Here\'s your conversation history:');
+        .setDescription("Here's your conversation history:");
       await interaction.reply({ embeds: [historyContentEmbed], files: [file] });
     } else {
       try {
-        await interaction.user.send({ content: '> `Here\'s your conversation history:`', files: [file] });
+        await interaction.user.send({ content: "> `Here's your conversation history:`", files: [file] });
         const dmSentEmbed = new EmbedBuilder()
           .setColor(0x00FF00)
           .setTitle('History Sent')
@@ -2356,8 +2357,9 @@ async function downloadServerConversation(interaction) {
 
     let conversationText = '';
     for (let i = 0; i < conversationHistory.length; i++) {
-      const speaker = i % 2 === 0 ? '[User]' : '[Model]';
-      conversationText += `${speaker}:\n${conversationHistory[i]}\n\n`;
+      const role = conversationHistory[i].role === 'user' ? '[User]' : '[Model]';
+      const content = conversationHistory[i].content.map(c => c.text).join('\n');
+      conversationText += `${role}:\n${content}\n\n`;
     }
 
     const tempFileName = path.join(__dirname, `${guildId}_server_conversation.txt`);
@@ -2369,11 +2371,11 @@ async function downloadServerConversation(interaction) {
       const historyContentEmbed = new EmbedBuilder()
         .setColor(0xFFFFFF)
         .setTitle('Server Conversation History')
-        .setDescription('Here\'s the server-wide conversation history:');
+        .setDescription("Here's the server-wide conversation history:");
       await interaction.reply({ embeds: [historyContentEmbed], files: [file] });
     } else {
       try {
-        await interaction.user.send({ content: '> `Here\'s the server-wide conversation history:`', files: [file] });
+        await interaction.user.send({ content: "> `Here's the server-wide conversation history:`", files: [file] });
         const dmSentEmbed = new EmbedBuilder()
           .setColor(0x00FF00)
           .setTitle('History Sent')
