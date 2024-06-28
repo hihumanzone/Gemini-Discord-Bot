@@ -1,6 +1,7 @@
-require('dotenv').config();
-const fetch = require('node-fetch');
-const {
+import dotenv from 'dotenv';
+dotenv.config();
+import fetch from 'node-fetch';
+import {
   Client,
   GatewayIntentBits,
   Partials,
@@ -20,24 +21,24 @@ const {
   StringSelectMenuBuilder,
   REST,
   Routes,
-} = require('discord.js');
-const {
+} from 'discord.js';
+import {
   GoogleGenerativeAI,
   HarmBlockThreshold,
   HarmCategory
-} = require('@google/generative-ai');
-const { GoogleAIFileManager, FileState } = require('@google/generative-ai/files');
-const { writeFile, unlink } = require('fs/promises');
-const fs = require('fs');
-const path = require('path');
-const sharp = require('sharp');
-const pdf = require('pdf-parse');
-const cheerio = require('cheerio');
-const { YoutubeTranscript } = require('youtube-transcript');
-const osu = require('node-os-utils');
-const mem = osu.mem;
-const cpu = osu.cpu;
-const axios = require('axios');
+} from '@google/generative-ai';
+import { GoogleAIFileManager, FileState } from '@google/generative-ai/files';
+import { writeFile, unlink } from 'fs/promises';
+import fs from 'fs';
+import path from 'path';
+import sharp from 'sharp';
+import pdf from 'pdf-parse';
+import cheerio from 'cheerio';
+import { YoutubeTranscript } from 'youtube-transcript';
+import osu from 'node-os-utils';
+const { mem } = osu;
+const { cpu } = osu;
+import axios from 'axios';
 
 const config = require('./config.json');
 
@@ -550,6 +551,10 @@ async function handleTextMessage(message) {
   let parts;
   if (process.env.SEND_RETRY_ERRORS_TO_DISCORD === 'true') {
     clearInterval(typingInterval);
+    const updateEmbedDescription = (urlHandlingStatus, textAttachmentStatus, imageAttachmentStatus, finalText) => {
+      return `Let me think...\n\n- ${urlHandlingStatus}: Url Handling\n- ${textAttachmentStatus}: Text Attachment Check\n- ${imageAttachmentStatus}: Image Attachment Check\n${finalText || ''}`;
+    };
+
     const embed = new EmbedBuilder()
         .setColor(0x00FFFF)
         .setTitle('Processing')
