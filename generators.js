@@ -1,9 +1,8 @@
-const axios = require('axios');
-const EventSource = require('eventsource');
+import axios from 'axios';
+import EventSource from 'eventsource';
 
-const config = require('./config.json');
-const bannerMusicGen = config.bannerMusicGen;
-const nevPrompt = config.nevPrompt;
+import config from './config.json' assert { type: 'json' };
+const { bannerMusicGen, nevPrompt } = config;
 
 
 function getEventId() {
@@ -766,7 +765,7 @@ async function generateWithDalle3(prompt) {
   }
 }
 
-module.exports = {
+export {
   speechGen,
   musicGen,
   generateWithSC,
