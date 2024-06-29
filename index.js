@@ -491,9 +491,6 @@ client.on('interactionCreate', async (interaction) => {
         case 'download_message':
           await downloadMessage(interaction);
           break;
-        case 'exit':
-          await interaction.message.delete();
-          break;
         default:
           if (interaction.customId.startsWith('select-speech-model-')) {
             const selectedModel = interaction.customId.replace('select-speech-model-', '');
@@ -2487,12 +2484,6 @@ async function showSettings(interaction) {
       label: "Download Conversation",
       emoji: "🗃️",
       style: ButtonStyle.Secondary,
-    },
-    {
-      customId: "exit",
-      label: "Exit Settings",
-      emoji: "✖",
-      style: ButtonStyle.Danger,
     },
   ];
 
