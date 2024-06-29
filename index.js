@@ -31,6 +31,7 @@ import { GoogleAIFileManager, FileState } from '@google/generative-ai/files';
 import { writeFile, unlink } from 'fs/promises';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import sharp from 'sharp';
 import pdf from 'pdf-parse';
 import cheerio from 'cheerio';
@@ -40,7 +41,7 @@ const { mem } = osu;
 const { cpu } = osu;
 import axios from 'axios';
 
-const config = require('./config.json');
+import config from './config.json' assert { type: 'json' };
 
 const client = new Client({
   intents: [
@@ -70,6 +71,9 @@ let userPreferredUrlHandle = {};
 let userResponsePreference = {};
 let alwaysRespondChannels = {};
 let blacklistedUsers = {};
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const CONFIG_DIR = path.join(__dirname, 'config');
 const CHAT_HISTORIES_DIR = path.join(CONFIG_DIR, 'chat_histories_2');
@@ -186,7 +190,7 @@ const workInDMs = config.workInDMs;
 const shouldDisplayPersonalityButtons = config.shouldDisplayPersonalityButtons;
 const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
 
-const {
+import {
   speechGen,
   musicGen,
   generateWithSC,
@@ -199,7 +203,7 @@ const {
   generateWithPixArt_Sigma,
   generateWithDalle3,
   generateWithMobius
-} = require('./generators');
+} from './generators.js';
 
 // <==========>
 
@@ -922,7 +926,7 @@ async function handleSpeechCommand(interaction) {
     .setColor(0x00FFFF)
     .setTitle('Generating Speech')
     .setDescription(`Generating your speech, please wait... 💽`);
-  const generatingMsg = await interaction.reply({ embeds: [embed] });
+  await interaction.reply({ embeds: [embed], ephemeral: true });
   try {
     const userId = interaction.user.id;
     const text = interaction.options.getString('prompt');
@@ -930,15 +934,13 @@ async function handleSpeechCommand(interaction) {
     const outputUrl = await generateSpeechWithPrompt(text, userId, language);
     if (outputUrl && outputUrl !== 'Output URL is not available.') {
       await handleSuccessfulSpeechGeneration(interaction, text, language, outputUrl);
-      await generatingMsg.delete();
     } else {
       const embed = new EmbedBuilder()
         .setColor(0xFF0000)
         .setTitle('Error')
-        .setDescription('Sorry, something went wrong, or the output URL is not available.');
+        .setDescription(`Sorry, something went wrong, or the output URL is not available.\n> **Text:**\n\`\`\`\n${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\n\`\`\``);
       const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
       await addSettingsButton(messageReference);
-      await generatingMsg.delete();
     }
   } catch (error) {
     console.log(error);
@@ -946,10 +948,9 @@ async function handleSpeechCommand(interaction) {
       const embed = new EmbedBuilder()
         .setColor(0xFF0000)
         .setTitle('Error')
-        .setDescription(`Sorry, something went wrong and the output is not available.`);
+        .setDescription(`Sorry, something went wrong and the output is not available.\n> **Text:**\n\`\`\`\n${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\n\`\`\````);
       const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
       await addSettingsButton(messageReference);
-      await generatingMsg.delete();
     } catch(error) {}
   }
 }
@@ -959,22 +960,20 @@ async function handleMusicCommand(interaction) {
     .setColor(0x00FFFF)
     .setTitle('Generating Music')
     .setDescription(`Generating your music, please wait... 🎧`);
-  const generatingMsg = await interaction.reply({ content: `${interaction.user}`, embeds: [embed] });
+  await interaction.reply({ embeds: [embed], ephemeral: true });
   try {
     const userId = interaction.user.id;
     const text = interaction.options.getString('prompt');
     const outputUrl = await generateMusicWithPrompt(text, userId);
     if (outputUrl && outputUrl !== 'Output URL is not available.') {
       await handleSuccessfulMusicGeneration(interaction, text, outputUrl);
-      await generatingMsg.delete();
     } else {
       const embed = new EmbedBuilder()
         .setColor(0xFF0000)
         .setTitle('Error')
-        .setDescription('Sorry, something went wrong, or the output URL is not available.');
+        .setDescription(`Sorry, something went wrong, or the output URL is not available.\n> **Text:**\n\`\`\`\n${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\n\`\`\``);
       const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
       await addSettingsButton(messageReference);
-      await generatingMsg.delete();
     }
   } catch (error) {
     console.log(error);
@@ -982,10 +981,9 @@ async function handleMusicCommand(interaction) {
       const embed = new EmbedBuilder()
         .setColor(0xFF0000)
         .setTitle('Error')
-        .setDescription('Sorry, something went wrong and the output is not available.');
+        .setDescription(`Sorry, something went wrong and the output is not available.\n> **Text:**\n\`\`\`\n${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\n\`\`\``);
       const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
       await addSettingsButton(messageReference);
-      await generatingMsg.delete();
     } catch(error) {}
   }
 }
@@ -1151,31 +1149,27 @@ async function genimgslash(prompt, modelInput, interaction) {
     .setColor(0x00FFFF)
     .setTitle('Generating Image')
     .setDescription(`Generating your image with ${preferredModel}, please wait... 🖌️`);
-  const generatingMsg = await interaction.reply({ embeds: [embed] });
+  await interaction.reply({ embeds: [embed], ephemeral: true });
 
   try {
     await generateAndSendImage(prompt, interaction);
   } catch (error) {
     console.error(error);
-    await handleImageGenerationError(interaction, generatingMsg);
+    await handleImageGenerationError(interaction, prompt);
     return;
   }
-
-  await generatingMsg.delete();
 }
 
-async function handleImageGenerationError(interaction, generatingMsg) {
+async function handleImageGenerationError(interaction, prompt) {
   try {
     const embed = new EmbedBuilder()
       .setColor(0xFF0000)
       .setTitle('Error')
-      .setDescription('Sorry, the image could not be generated. Please try again later.');
+      .setDescription(`Sorry, the image could not be generated. Please try again later.\n> **Text:**\n\`\`\`\n${prompt.length > 3900 ? prompt.substring(0, 3900) + '...' : prompt}\n\`\`\``);
     const errorMsg = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
     await addSettingsButton(errorMsg);
   } catch (err) {
     console.error("Error sending error message: ", err);
-  } finally {
-    await generatingMsg.delete();
   }
 }
 
@@ -1249,22 +1243,20 @@ async function handleModalSubmit(interaction) {
       .setColor(0x00FFFF)
       .setTitle('Generating Speech')
       .setDescription(`Generating your speech, please wait... 💽`);
-    const generatingMsg = await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed], ephemeral: true });
     try {
       const userId = interaction.user.id;
       const text = interaction.fields.getTextInputValue('text-speech-input');
       const outputUrl = await generateSpeechWithPrompt(text, userId, 'en');
       if (outputUrl && outputUrl !== 'Output URL is not available.') {
         await handleSuccessfulSpeechGeneration(interaction, text, "English", outputUrl);
-        await generatingMsg.delete();
       } else {
         const embed = new EmbedBuilder()
           .setColor(0xFF0000)
           .setTitle('Error')
-          .setDescription('Sorry, something went wrong or the output URL is not available.');
+          .setDescription(`Sorry, something went wrong or the output URL is not available.\n> **Text:**\n\`\`\`\n${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\n\`\`\``);
         const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
         await addSettingsButton(messageReference);
-        await generatingMsg.delete();
       }
     } catch (error) {
       console.log(error);
@@ -1272,10 +1264,9 @@ async function handleModalSubmit(interaction) {
         const embed = new EmbedBuilder()
           .setColor(0xFF0000)
           .setTitle('Error')
-          .setDescription('Sorry, something went wrong or the output URL is not available.');
+          .setDescription(`Sorry, something went wrong or the output URL is not available.\n> **Text:**\n\`\`\`\n${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\n\`\`\``);
         const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
         await addSettingsButton(messageReference);
-        await generatingMsg.delete();
       } catch(error) {}
     }
   } else if (interaction.customId === 'text-music-modal') {
@@ -1283,22 +1274,20 @@ async function handleModalSubmit(interaction) {
       .setColor(0x00FFFF)
       .setTitle('Generating Music')
       .setDescription(`Generating your music, please wait... 🎧`);
-    const generatingMsg = await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed], ephemeral: true });
     try {
       const userId = interaction.user.id;
       const text = interaction.fields.getTextInputValue('text-music-input');
       const outputUrl = await generateMusicWithPrompt(text, userId);
       if (outputUrl && outputUrl !== 'Output URL is not available.') {
         await handleSuccessfulMusicGeneration(interaction, text, outputUrl);
-        await generatingMsg.delete();
       } else {
         const embed = new EmbedBuilder()
           .setColor(0xFF0000)
           .setTitle('Error')
-          .setDescription('Sorry, something went wrong or the output URL is not available.');
+          .setDescription(`Sorry, something went wrong or the output URL is not available.\n> **Text:**\n\`\`\`\n${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\n\`\`\``);
         const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
         await addSettingsButton(messageReference);
-        await generatingMsg.delete();
       }
     } catch (error) {
       console.log(error);
@@ -1306,34 +1295,30 @@ async function handleModalSubmit(interaction) {
         const embed = new EmbedBuilder()
           .setColor(0xFF0000)
           .setTitle('Error')
-          .setDescription('Sorry, something went wrong or the output URL is not available.');
+          .setDescription(`Sorry, something went wrong or the output URL is not available.\n> **Text:**\n\`\`\`\n${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\n\`\`\``);
         const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
         await addSettingsButton(messageReference);
-        await generatingMsg.delete();
       } catch(error) {}
     }
   } else if (interaction.customId === 'generate-image-modal') {
     const prompt = interaction.fields.getTextInputValue('image-prompt-input');
-
     const embed = new EmbedBuilder()
       .setColor(0x00FFFF)
       .setTitle('Generating Image')
       .setDescription(`Generating your image, please wait... 🖌️`);
-    const generatingMsg = await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed], ephemeral: true });
 
     try {
       await generateAndSendImage(prompt, interaction);
-      await generatingMsg.delete();
     } catch (error) {
       console.log(error);
       try {
         const embed = new EmbedBuilder()
           .setColor(0xFF0000)
           .setTitle('Error')
-          .setDescription('Sorry, could not generate the image. Please try again later.');
+          .setDescription(`Sorry, could not generate the image. Please try again later.\n> **Prompt:**\n\`\`\`\n${prompt.length > 3900 ? prompt.substring(0, 3900) + '...' : prompt}\n\`\`\``);
         const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
         await addSettingsButton(messageReference);
-        await generatingMsg.delete();
       } catch(error) {}
     }
   }
@@ -1546,7 +1531,7 @@ async function togglePromptEnhancer(interaction) {
   }
 }
 
-const diffusionMaster = require('./diffusionMasterPrompt');
+import { diffusionMaster } from './diffusionMasterPrompt.js';
 
 async function enhancePrompt1(prompt) {
   const retryLimit = 3;
@@ -2547,42 +2532,16 @@ async function showSettings(interaction) {
   }
 
   // Reply to the interaction
-  let secondsLeft = 30;
-  const countdownMessage = `**This Message Will Get Deleted In: ${secondsLeft}s**`;
   const embed = new EmbedBuilder()
     .setColor(0x00FFFF)
     .setTitle('Settings')
-    .setDescription(countdownMessage);
+    .setDescription('Please choose an option from the buttons below:');
   
   await interaction.reply({
     embeds: [embed],
-    components: actionRows
+    components: actionRows,
+    ephemeral: true
   });
-
-  const countdownInterval = setInterval(async () => {
-    secondsLeft--;
-    if (secondsLeft > 0) {
-      try {
-        const updateMessage = `**This Message Will Get Deleted In: ${secondsLeft}s**`;
-        const embed = new EmbedBuilder()
-          .setColor(0x00FFFF)
-          .setTitle('Settings')
-          .setDescription(updateMessage);
-        
-        await interaction.editReply({
-          embeds: [embed],
-          components: actionRows
-        });
-      } catch (error) {
-        clearInterval(countdownInterval);
-      }
-    } else {
-      clearInterval(countdownInterval);
-      try {
-        interaction.deleteReply();
-      } catch (error) {}
-    }
-  }, 1000);
 }
 
 async function showDashboard(interaction) {
@@ -3006,7 +2965,7 @@ async function retryOperation(fn, maxRetries, delayMs = 1000) {
   throw new Error(`Operation failed after ${maxRetries} attempts: ${error.message}`);
 }
 
-const nsfwWordsArray = require('./nsfwWords.json');
+import nsfwWordsArray from './nsfwWords.json' assert { type: 'json' };
 
 function filterPrompt(text) {
   nsfwWordsArray.forEach(word => {
