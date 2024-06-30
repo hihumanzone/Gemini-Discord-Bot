@@ -75,44 +75,46 @@ function speechGen(prompt, language) {
         y = 'EN-Default';
     }
   }
-  return new Promise(async (resolve, reject) => {
+  return new Promise((resolve, reject) => {
     try {
-      const sessionHash = generateSessionHash();
+      const url = "https://mrfakename-melotts.hf.space";
+      const session_hash = generateSessionHash();
+      const urlFirstRequest = `${url}/queue/join?`;
+      const dataFirstRequest = {
+        "data": [prompt, y, 1, x],
+        "event_data": null,
+        "fn_index": 1,
+        "trigger_id": 8,
+        "session_hash": session_hash
+      };
 
-      // First request to join the queue
-      await fetch("https://mrfakename-melotts.hf.space/queue/join?", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: [prompt, y, 1, x],
-          event_data: null,
-          fn_index: 1,
-          trigger_id: 8,
-          session_hash: sessionHash
-        }),
-      });
+      axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
 
-      // Replace this part to use EventSource for listening to the event stream
-      const es = new EventSource(`https://mrfakename-melotts.hf.space/queue/data?session_hash=${sessionHash}`);
+        const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
 
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.url;
-          if (!outputUrl) {
-            reject(new Error("Output URL does not exist, path might be invalid."));
-            console.log(data);
-          } else {
-            resolve(outputUrl);
+        const eventSource = new EventSource(urlSecondRequest);
+
+        eventSource.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+
+          if (data.msg === "process_completed") {
+            eventSource.close();
+            const full_url = data?.output?.data?.[0]?.url;
+            if (full_url) {
+              resolve(full_url);
+            } else {
+              reject(new Error("Invalid path: URL does not exist."));
+              console.log(data);
+            }
           }
-        }
-      };
-
-      es.onerror = (error) => {
-        es.close();
+        };
+        eventSource.onerror = (error) => {
+          eventSource.close();
+          reject(error);
+        };
+      }).catch(error => {
         reject(error);
-      };
+      });
     } catch (error) {
       reject(error);
     }
@@ -187,74 +189,6 @@ async function musicGen(prompt) {
   }
 }
 
-function generateWithSC(prompt,  resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = 1024;
-    height = 1024;
-  } else if (resolution == 'Wide') {
-    width = 1280;
-    height = 768;
-  } else if (resolution == 'Portrait') {
-    width = 768;
-    height = 1280;
-  }
-  return new Promise(async (resolve, reject) => {
-    try {
-      const randomDigit = generateRandomDigits();
-      const sessionHash = generateSessionHash();
-
-      await fetch("https://multimodalart-stable-cascade.hf.space/run/predict", {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          "data": [0, true],
-          "event_data": null,
-          "fn_index": 2,
-          "trigger_id": 6,
-          "session_hash": sessionHash
-        })
-      });
-
-      // Second request to initiate the image generation
-      const queueResponse = await fetch("https://multimodalart-stable-cascade.hf.space/queue/join?", {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          "data": [prompt, nevPrompt, randomDigit, width, height, 30, 4, 12, 0, 1],
-          "event_data": null,
-          "fn_index": 3,
-          "trigger_id": 6,
-          "session_hash": sessionHash
-        })
-      });
-
-      // Setting up event source for listening to the progress
-      const es = new EventSource(`https://multimodalart-stable-cascade.hf.space/queue/data?session_hash=${sessionHash}`);
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.url;
-          if (outputUrl) {
-            resolve({ images: [{ url: outputUrl }], modelUsed: "Stable-Cascade" });
-          } else {
-            reject(new Error("Output URL is missing"));
-            console.log(data);
-          }
-        }
-      };
-
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
 async function generateWithPlayground(prompt, resolution) {
   let width, height;
   if (resolution == 'Square') {
@@ -319,209 +253,94 @@ async function generateWithPlayground(prompt, resolution) {
   });
 }
 
-function generateWithDallEXL(prompt, resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = 1024;
-    height = 1024;
-  } else if (resolution == 'Wide') {
-    width = 1280;
-    height = 768;
-  } else if (resolution == 'Portrait') {
-    width = 768;
-    height = 1280;
+const modelsData = {
+  "Stable-Cascade": {
+    url: "https://multimodalart-stable-cascade.hf.space",
+    fnIndex: 3,
+    triggerId: 6,
+    useSize: false,
+    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, randomDigit, width, height, 30, 4, 12, 0, 1]
+  },
+  "DallE-XL": {
+    url: "https://ehristoforu-dalle-3-xl-lora-v2.hf.space",
+    fnIndex: 3,
+    triggerId: 6,
+    useSize: false,
+    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, true, randomDigit, width, height, 6, true]
+  },
+  "Anime": {
+    url: "https://cagliostrolab-animagine-xl-3-1.hf.space",
+    fnIndex: 5,
+    triggerId: 49,
+    useSize: true,
+    dataPattern: (prompt, randomDigit, size) => [prompt, nevPrompt, randomDigit, 1024, 1024, 7, 35, "DPM++ SDE Karras", size, "(None)", "Standard v3.1", false, 0.55, 1.5, true]
+  },
+  "Anime-Alt": {
+    url: "https://linaqruf-kivotos-xl-2-0.hf.space",
+    fnIndex: 6,
+    triggerId: 41,
+    useSize: true,
+    dataPattern: (prompt, randomDigit, size) => [prompt, nevPrompt, randomDigit, 1024, 1024, 7, 35, "DPM++ 2M SDE Karras", size, false, 0.55, 1.5, true]
+  },
+  "SD-XL": {
+    url: "https://kingnish-sdxl-flash.hf.space",
+    fnIndex: 2,
+    triggerId: 5,
+    useSize: false,
+    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, true, randomDigit, width, height, 4, 12, true, 1]
+  },
+  "PixArt-Sigma": {
+    url: "https://pixart-alpha-pixart-sigma.hf.space",
+    fnIndex: 3,
+    triggerId: 7,
+    useSize: false,
+    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, "(No style)", true, 1, randomDigit, width, height, "SA-Solver", 4.5, 3, 14, 35, true]
+  },
+  "Mobius": {
+    url: "https://corcelio-mobius.hf.space",
+    fnIndex: 3,
+    triggerId: 6,
+    useSize: false,
+    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, true, randomDigit, width, height, 3.5, true]
+  },
+  "SD-3": {
+    url: "https://stabilityai-stable-diffusion-3-medium.hf.space",
+    fnIndex: 1,
+    triggerId: 5,
+    useSize: false,
+    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, randomDigit, true, width, height, 5, 35]
   }
-  return new Promise(async (resolve, reject) => {
-    try {
-      const randomDigits = generateRandomDigits();
-      const sessionHash = generateSessionHash();
+};
 
-      // First request to join the queue
-      await fetch("https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/join?", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: [prompt, nevPrompt, true, randomDigits, width, height, 6, true],
-          event_data: null,
-          fn_index: 3,
-          trigger_id: 6,
-          session_hash: sessionHash
-        }),
-      });
-
-      // Replace this part to use EventSource for listening to the event stream
-      const es = new EventSource(`https://ehristoforu-dalle-3-xl-lora-v2.hf.space/queue/data?session_hash=${sessionHash}`);
-
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
-          if (!outputUrl) {
-            reject(new Error("Output URL does not exist, path might be invalid."));
-            console.log(data);
-          } else {
-            resolve({ images: [{ url: outputUrl }], modelUsed: "DallE-XL" });
-          }
-        }
-      };
-
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
-    } catch (error) {
-      reject(error);
-    }
-  });
+function getResolution(resolution) {
+  switch (resolution) {
+    case 'Square': return { width: 1024, height: 1024, size: '1024 x 1024' };
+    case 'Wide': return { width: 1280, height: 768, size: '1344 x 768' };
+    case 'Portrait': return { width: 768, height: 1280, size: '832 x 1216' };
+    default: throw new Error("Invalid resolution");
+  }
 }
 
-function generateWithAnime(prompt, resolution) {
-  let size;
-  if (resolution == 'Square') {
-    size = '1024 x 1024';
-  } else if (resolution == 'Wide') {
-    size = '1344 x 768';
-  } else if (resolution == 'Portrait') {
-    size = '832 x 1216';
-  }
-  return new Promise(async (resolve, reject) => {
-    const randomDigit = generateRandomDigits();
-    const sessionHash = generateSessionHash();
-
-    try {
-      // First request to initiate the process
-      await fetch("https://cagliostrolab-animagine-xl-3-1.hf.space/queue/join?", {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          data: [
-            prompt, nevPrompt, randomDigit, 1024, 1024, 7, 35, "DPM++ SDE Karras", size,"(None)", "Standard v3.1", false, 0.55, 1.5, true
-          ],
-          event_data: null,
-          fn_index: 5,
-          trigger_id: 49,
-          session_hash: sessionHash,
-        }),
-      });
-
-      // Using EventSource to listen for server-sent events
-      const es = new EventSource(`https://cagliostrolab-animagine-xl-3-1.hf.space/queue/data?session_hash=${sessionHash}`);
-
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
-          if (!outputUrl) {
-            reject(new Error('Invalid or missing output URL'));
-            console.log(data);
-          } else {
-            resolve({ images: [{ url: outputUrl }], modelUsed: "Anime" });
-          }
-        }
-      };
-
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
-
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithAnimeAlt(prompt, resolution) {
-  let size;
-  if (resolution == 'Square') {
-    size = '1024 x 1024';
-  } else if (resolution == 'Wide') {
-    size = '1344 x 768';
-  } else if (resolution == 'Portrait') {
-    size = '832 x 1216';
-  }
-  return new Promise(async (resolve, reject) => {
-    const randomDigit = generateRandomDigits();
-    const sessionHash = generateSessionHash();
-
-    try {
-      // First request to initiate the process
-      await fetch("https://linaqruf-kivotos-xl-2-0.hf.space/queue/join?", {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          data: [
-            prompt, nevPrompt, randomDigit, 1024, 1024, 7, 35, "DPM++ 2M SDE Karras", size, false, 0.55, 1.5, true
-          ],
-          event_data: null,
-          fn_index: 6,
-          trigger_id: 41,
-          session_hash: sessionHash,
-        }),
-      });
-
-      // Using EventSource to listen for server-sent events
-      const es = new EventSource(`https://linaqruf-kivotos-xl-2-0.hf.space/queue/data?session_hash=${sessionHash}`);
-
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.msg === 'process_completed') {
-          es.close();
-          const outputUrl = data?.output?.data?.[0]?.[0]?.image?.url;
-          if (!outputUrl) {
-            reject(new Error('Invalid or missing output URL'));
-            console.log(data);
-          } else {
-            resolve({ images: [{ url: outputUrl }], modelUsed: "Anime-Alt" });
-          }
-        }
-      };
-
-      es.onerror = (error) => {
-        es.close();
-        reject(error);
-      };
-
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithSDXL(prompt, resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = 1024;
-    height = 1024;
-  } else if (resolution == 'Wide') {
-    width = 1280;
-    height = 768;
-  } else if (resolution == 'Portrait') {
-    width = 768;
-    height = 1280;
-  }
+function generateImage(prompt, resolution, model) {
   return new Promise((resolve, reject) => {
     try {
-      const url = "https://kingnish-sdxl-flash.hf.space";
+      const { width, height, size } = getResolution(resolution);
+      const { url, fnIndex, triggerId, useSize, dataPattern } = modelsData[model];
       const randomDigit = generateRandomDigits();
       const session_hash = generateSessionHash();
+
+      const data = useSize ? dataPattern(prompt, randomDigit, size) : dataPattern(prompt, randomDigit, width, height);
+
       const urlFirstRequest = `${url}/queue/join?`;
       const dataFirstRequest = {
-        "data": [prompt, nevPrompt, true, randomDigit, width, height, 4, 12, true, 1],
+        "data": data,
         "event_data": null,
-        "fn_index": 2,
-        "trigger_id": 5,
+        "fn_index": fnIndex,
+        "trigger_id": triggerId,
         "session_hash": session_hash
       };
 
       axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-
         const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
 
         const eventSource = new EventSource(urlSecondRequest);
@@ -531,199 +350,21 @@ function generateWithSDXL(prompt, resolution) {
 
           if (data.msg === "process_completed") {
             eventSource.close();
-            const full_url = data?.output?.data?.[0]?.[0]?.image?.url;
+            const full_url = data?.output?.data?.[0]?.[0]?.image?.url || data?.output?.data?.[0]?.url;
             if (full_url) {
-              resolve({ images: [{ url: full_url }], modelUsed: "SD-XL" });
+              resolve({ images: [{ url: full_url }], modelUsed: model });
             } else {
               reject(new Error("Invalid path: URL does not exist."));
-              console.log(data);
+              console.error(data);
             }
           }
         };
+
         eventSource.onerror = (error) => {
           eventSource.close();
           reject(error);
         };
-      }).catch(error => {
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithPixArt_Sigma(prompt, resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = 1024;
-    height = 1024;
-  } else if (resolution == 'Wide') {
-    width = 1280;
-    height = 768;
-  } else if (resolution == 'Portrait') {
-    width = 768;
-    height = 1280;
-  }
-  return new Promise((resolve, reject) => {
-    try {
-      const url = "https://pixart-alpha-pixart-sigma.hf.space";
-      const randomDigit = generateRandomDigits();
-      const session_hash = generateSessionHash();
-      const urlFirstRequest = `${url}/queue/join?`;
-      const dataFirstRequest = {
-        "data": [prompt, nevPrompt, "(No style)", true, 1, randomDigit, width, height, "SA-Solver", 4.5, 3, 14, 35, true],
-        "event_data": null,
-        "fn_index": 3,
-        "trigger_id": 7,
-        "session_hash": session_hash
-      };
-
-      axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-
-        const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
-        const eventSource = new EventSource(urlSecondRequest);
-
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-
-          if (data.msg === "process_completed") {
-            eventSource.close();
-            const full_url = data?.output?.data?.[0]?.[0]?.image?.url;
-            if (full_url) {
-              resolve({ images: [{ url: full_url }], modelUsed: "PixArt-Sigma" });
-            } else {
-              reject(new Error("Invalid path: URL does not exist."));
-              console.log(data);
-            }
-          }
-        };
-        eventSource.onerror = (error) => {
-          eventSource.close();
-          reject(error);
-        };
-      }).catch(error => {
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithMobius(prompt, resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = 1024;
-    height = 1024;
-  } else if (resolution == 'Wide') {
-    width = 1280;
-    height = 768;
-  } else if (resolution == 'Portrait') {
-    width = 768;
-    height = 1280;
-  }
-  return new Promise((resolve, reject) => {
-    try {
-      const url = "https://corcelio-mobius.hf.space";
-      const randomDigit = generateRandomDigits();
-      const session_hash = generateSessionHash();
-      const urlFirstRequest = `${url}/queue/join?`;
-      const dataFirstRequest = {
-        "data": [prompt, nevPrompt, true, randomDigit, width, height, 3.5, true],
-        "event_data": null,
-        "fn_index": 3,
-        "trigger_id": 6,
-        "session_hash": session_hash
-      };
-
-      axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-
-        const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
-        const eventSource = new EventSource(urlSecondRequest);
-
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-
-          if (data.msg === "process_completed") {
-            eventSource.close();
-            const full_url = data?.output?.data?.[0]?.[0]?.image?.url;
-            if (full_url) {
-              resolve({ images: [{ url: full_url }], modelUsed: "Mobius" });
-            } else {
-              reject(new Error("Invalid path: URL does not exist."));
-              console.log(data);
-            }
-          }
-        };
-        eventSource.onerror = (error) => {
-          eventSource.close();
-          reject(error);
-        };
-      }).catch(error => {
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function generateWithSD3(prompt, resolution) {
-  let width, height;
-  if (resolution == 'Square') {
-    width = 1024;
-    height = 1024;
-  } else if (resolution == 'Wide') {
-    width = 1280;
-    height = 768;
-  } else if (resolution == 'Portrait') {
-    width = 768;
-    height = 1280;
-  }
-  return new Promise((resolve, reject) => {
-    try {
-      const url = "https://stabilityai-stable-diffusion-3-medium.hf.space";
-      const randomDigit = generateRandomDigits();
-      const session_hash = generateSessionHash();
-      const urlFirstRequest = `${url}/queue/join?`;
-      const dataFirstRequest = {
-        "data": [prompt, nevPrompt, randomDigit, true, width, height, 5, 35],
-        "event_data": null,
-        "fn_index": 1,
-        "trigger_id": 5,
-        "session_hash": session_hash
-      };
-
-      axios.post(urlFirstRequest, dataFirstRequest).then(responseFirst => {
-
-        const urlSecondRequest = `${url}/queue/data?session_hash=${session_hash}`;
-
-        const eventSource = new EventSource(urlSecondRequest);
-
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-
-          if (data.msg === "process_completed") {
-            eventSource.close();
-            const full_url = data?.output?.data?.[0]?.url;
-            if (full_url) {
-              resolve({ images: [{ url: full_url }], modelUsed: "SD-3" });
-            } else {
-              reject(new Error("Invalid path: URL does not exist."));
-              console.log(data);
-            }
-          }
-        };
-        eventSource.onerror = (error) => {
-          eventSource.close();
-          reject(error);
-        };
-      }).catch(error => {
-        reject(error);
-      });
+      }).catch(reject);
     } catch (error) {
       reject(error);
     }
@@ -768,14 +409,7 @@ async function generateWithDalle3(prompt) {
 export {
   speechGen,
   musicGen,
-  generateWithSC,
   generateWithPlayground,
-  generateWithDallEXL,
-  generateWithAnime,
-  generateWithAnimeAlt,
-  generateWithSDXL,
-  generateWithSD3,
-  generateWithPixArt_Sigma,
-  generateWithDalle3,
-  generateWithMobius
+  generateImage,
+  generateWithDalle3
 };
