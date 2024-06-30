@@ -193,16 +193,9 @@ const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
 import {
   speechGen,
   musicGen,
-  generateWithSC,
   generateWithPlayground,
-  generateWithDallEXL,
-  generateWithAnime,
-  generateWithAnimeAlt,
-  generateWithSDXL,
-  generateWithSD3,
-  generateWithPixArt_Sigma,
-  generateWithDalle3,
-  generateWithMobius
+  generateImage,
+  generateWithDalle3
 } from './generators.js';
 
 // <==========>
@@ -1126,7 +1119,7 @@ async function genimg(prompt, message) {
       const embed = new EmbedBuilder()
         .setColor(0xFF0000)
         .setTitle('Error')
-        .setDescription('Sorry, could not generate the image. Please try again later.');
+        .setDescription(`Sorry, could not generate the image. Please try again later.\n> **Prompt:**\n\`\`\`\n${prompt.length > 3900 ? prompt.substring(0, 3900) + '...' : prompt}\n\`\`\``);
       const messageReference = await message.reply({ embeds: [embed] });
       await addSettingsButton(messageReference);
       await generatingMsg.delete();
@@ -1145,7 +1138,7 @@ async function genimgslash(prompt, modelInput, interaction) {
   const embed = new EmbedBuilder()
     .setColor(0x00FFFF)
     .setTitle('Generating Image')
-    .setDescription(`Generating your image with ${preferredModel}, please wait... 🖌️`);
+    .setDescription(`Generating your image with \`${preferredModel}\`, please wait... 🖌️`);
   await interaction.reply({ embeds: [embed], ephemeral: true });
 
   try {
@@ -1162,7 +1155,7 @@ async function handleImageGenerationError(interaction, prompt) {
     const embed = new EmbedBuilder()
       .setColor(0xFF0000)
       .setTitle('Error')
-      .setDescription(`Sorry, the image could not be generated. Please try again later.\n> **Text:**\n\`\`\`\n${prompt.length > 3900 ? prompt.substring(0, 3900) + '...' : prompt}\n\`\`\``);
+      .setDescription(`Sorry, the image could not be generated. Please try again later.\n> **Prompt:**\n\`\`\`\n${prompt.length > 3900 ? prompt.substring(0, 3900) + '...' : prompt}\n\`\`\``);
     const errorMsg = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
     await addSettingsButton(errorMsg);
   } catch (err) {
@@ -1372,8 +1365,8 @@ async function changeImageResolution(interaction) {
     const userId = interaction.user.id;
     const selectedModel = userPreferredImageModel[userId];
     let supportedResolution;
-    const supportedModels = ['DallE-XL', 'Anime', 'Anime-Alt', 'Stable-Cascade', 'Playground', 'SD-XL', 'SD-3', 'PixArt-Sigma', 'Mobius'];
-    if (supportedModels.includes(selectedModel)) {
+    const unsupportedModels = [];
+    if (!unsupportedModels.includes(selectedModel)) {
       supportedResolution = ['Square', 'Portrait', 'Wide'];
     } else {
       supportedResolution = ['Square'];
@@ -1452,16 +1445,16 @@ const speechMusicModelFunctions = {
 };
 
 const imageModelFunctions = {
-  'SD-XL': generateWithSDXL,
-  'SD-3': generateWithSD3,
+  'SD-XL': generateImage,
+  'SD-3': generateImage,
   'Playground': generateWithPlayground,
-  'Anime': generateWithAnime,
-  'Anime-Alt': generateWithAnimeAlt,
-  'Stable-Cascade': generateWithSC,
-  'DallE-XL': generateWithDallEXL,
+  'Anime': generateImage,
+  'Anime-Alt': generateImage,
+  'Stable-Cascade': generateImage,
+  'DallE-XL': generateImage,
   'DallE-3': generateWithDalle3,
-  'PixArt-Sigma': generateWithPixArt_Sigma,
-  'Mobius': generateWithMobius
+  'PixArt-Sigma': generateImage,
+  'Mobius': generateImage
 };
 
 async function handleImageSelectModel(interaction, model) {
@@ -1471,7 +1464,7 @@ async function handleImageSelectModel(interaction, model) {
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
       .setTitle('Model Selected')
-      .setDescription(`Image Generation Model Selected: ${model}`);
+      .setDescription(`Image Generation Model Selected: \`${model}\``);
     
     await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
@@ -1486,7 +1479,7 @@ async function handleImageSelectResolution(interaction, resolution) {
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
       .setTitle('Resolution Selected')
-      .setDescription(`Image Generation Resolution Selected: ${resolution}`);
+      .setDescription(`Image Generation Resolution Selected: \`${resolution}\``);
     
     await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
@@ -1501,7 +1494,7 @@ async function handleSpeechSelectModel(interaction, model) {
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
       .setTitle('Model Selected')
-      .setDescription(`Speech Generation Model Selected: ${model}`);
+      .setDescription(`Speech Generation Model Selected: \`${model}\``);
     
     await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch(error) {
@@ -1520,7 +1513,7 @@ async function togglePromptEnhancer(interaction) {
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
       .setTitle('Prompt Enhancer Status')
-      .setDescription(`Prompt Enhancer is now ${newState}.`);
+      .setDescription(`Prompt Enhancer is now \`${newState}\`.`);
     
     await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
@@ -1660,7 +1653,13 @@ async function generateImageWithPrompt(prompt, userId) {
     } else {
       enhancedPromptStatus = 'Disabled';
     }
-    const imageResult = await retryOperation(() => generateFunction(finalPrompt, resolution), 3);
+
+    const generate = generateFunction === generateImage ?
+      () => generateImage(finalPrompt, resolution, selectedModel) :
+      () => generateFunction(finalPrompt, resolution);
+
+    const imageResult = await retryOperation(generate, 3);
+
     return {
       imageResult,
       enhancedPrompt: enhancedPromptStatus
@@ -1831,8 +1830,8 @@ async function handleStatusCommand(interaction) {
           .setColor(0x505050)
           .setTitle('System Information')
           .addFields(
-            { name: 'Memory (RAM)', value: `Total Memory: ${totalMemMb} MB\nUsed Memory: ${usedMemMb} MB\nFree Memory: ${freeMemMb} MB\nPercentage Of Free Memory: ${freeMemPercentage}%`, inline: true },
-            { name: 'CPU', value: `Percentage of CPU Usage: ${cpuPercentage}%`, inline: true },
+            { name: 'Memory (RAM)', value: `Total Memory: \`${totalMemMb}\` MB\nUsed Memory: \`${usedMemMb}\` MB\nFree Memory: \`${freeMemMb}\` MB\nPercentage Of Free Memory: \`${freeMemPercentage}\`%`, inline: true },
+            { name: 'CPU', value: `Percentage of CPU Usage: \`${cpuPercentage}\`%`, inline: true },
             { name: 'Time Until Next Reset', value: timeLeft, inline: true }
           )
           .setTimestamp();
