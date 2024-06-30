@@ -27,7 +27,7 @@ import {
   HarmBlockThreshold,
   HarmCategory
 } from '@google/generative-ai';
-import { GoogleAIFileManager, FileState } from '@google/generative-ai/files';
+import { GoogleAIFileManager, FileState } from '@google/generative-ai/server';
 import { writeFile, unlink } from 'fs/promises';
 import fs from 'fs';
 import path from 'path';
@@ -2011,12 +2011,13 @@ async function downloadMessage(interaction) {
       const dmContentEmbed = new EmbedBuilder()
         .setColor(0xFFFFFF)
         .setTitle('Message Content Downloaded')
-        .setDescription('Here is the content of the message:');
+        .setDescription('Here is the content of the message.');
       await interaction.reply({ embeds: [dmContentEmbed], files: [attachment] });
     } else {
       try {
-        await interaction.user.send({ 
-          content: '> `Here is the content of the message:`', files: [attachment] 
+        await interaction.user.send({
+          content: 'Here is the content of the message:',
+          files: [attachment]
         });
         const dmSentEmbed = new EmbedBuilder()
           .setColor(0x00FF00)
