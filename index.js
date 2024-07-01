@@ -33,7 +33,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import sharp from 'sharp';
-import pdf from 'pdf-parse';
 import cheerio from 'cheerio';
 import { YoutubeTranscript } from 'youtube-transcript';
 import osu from 'node-os-utils';
@@ -543,10 +542,10 @@ async function handleTextMessage(message) {
   }, 120000);
   let botMessage = false;
   let parts;
-  if (process.env.SEND_RETRY_ERRORS_TO_DISCORD === 'true') {
+  if (SEND_RETRY_ERRORS_TO_DISCORD) {
     clearInterval(typingInterval);
-    const updateEmbedDescription = (urlHandlingStatus, textAttachmentStatus, imageAttachmentStatus, finalText) => {
-      return `Let me think...\n\n- ${urlHandlingStatus}: Url Handling\n- ${textAttachmentStatus}: Text Attachment Check\n- ${imageAttachmentStatus}: Image Attachment Check\n${finalText || ''}`;
+    const updateEmbedDescription = (urlHandlingStatus, textAttachmentStatus, finalText) => {
+      return `Let me think...\n- ${urlHandlingStatus}: Url Handling\n- ${textAttachmentStatus}: Text Attachment Check\n${finalText || ''}`;
     };
 
     const embed = new EmbedBuilder()
@@ -564,7 +563,7 @@ async function handleTextMessage(message) {
     }
     embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[🔁]'));
     await botMessage.edit({ embeds: [embed] });
-    const parts = await processPromptAndMediaAttachments(messageContent, message);
+    parts = await processPromptAndMediaAttachments(messageContent, message);
     embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '### All checks done. Waiting for the response...'));
     await botMessage.edit({ embeds: [embed] });
   } else {
@@ -614,11 +613,11 @@ function hasSupportedAttachments(message) {
   const supportedMimeTypes = [
     'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
     'audio/wav', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac',
-    'video/mp4', 'video/mpeg', 'video/mov', 'video/avi', 'video/x-flv', 'video/mpg', 
-    'video/webm', 'video/wmv', 'video/3gpp', 
+    'video/mp4', 'video/mpeg', 'video/mov', 'video/avi', 'video/x-flv', 'video/mpg',
+    'video/webm', 'video/wmv', 'video/3gpp',
     'text/plain', 'text/html', 'text/css', 'text/javascript', 'application/x-javascript',
-    'text/x-typescript', 'application/x-typescript', 'text/csv', 'text/markdown', 
-    'text/x-python', 'application/x-python-code', 'application/json', 'text/xml', 
+    'text/x-typescript', 'application/x-typescript', 'text/csv', 'text/markdown',
+    'text/x-python', 'application/x-python-code', 'application/json', 'text/xml',
     'application/rtf', 'text/rtf'
   ];
 
@@ -2821,7 +2820,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       if (activeRequests.has(userId)) {
         activeRequests.delete(userId);
       }
-      console.error(error.message);
+      console.error(error);
       attempts--;
     
       if (attempts === 0 || stopGeneration) {
