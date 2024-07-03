@@ -283,11 +283,11 @@ const modelsData = {
     dataPattern: (prompt, randomDigit, size) => [prompt, nevPrompt, randomDigit, 1024, 1024, 7, 35, "DPM++ 2M SDE Karras", size, false, 0.55, 1.5, true]
   },
   "SD-XL": {
-    url: "https://kingnish-sdxl-flash.hf.space",
-    fnIndex: 2,
-    triggerId: 5,
+    url: "https://typegpt-image-gen-pro.hf.space",
+    fnIndex: 3,
+    triggerId: 10,
     useSize: false,
-    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, true, randomDigit, width, height, 4, 12, true, 1]
+    dataPattern: (prompt, randomDigit, width, height) => ["Image Generation", null, prompt, 35, "Randomize Seed", randomDigit, 7.3, 1.7, width, height, "BEST"]
   },
   "PixArt-Sigma": {
     url: "https://pixart-alpha-pixart-sigma.hf.space",
@@ -350,7 +350,7 @@ function generateImage(prompt, resolution, model) {
 
           if (data.msg === "process_completed") {
             eventSource.close();
-            const full_url = data?.output?.data?.[0]?.[0]?.image?.url || data?.output?.data?.[0]?.url;
+            const full_url = data?.output?.data?.[0]?.[0]?.image?.url || data?.output?.data?.[0]?.url || data?.output?.data?.[1]?.url;
             if (full_url) {
               resolve({ images: [{ url: full_url }], modelUsed: model });
             } else {
