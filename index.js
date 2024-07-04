@@ -32,6 +32,7 @@ import { writeFile, unlink } from 'fs/promises';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import pdf from 'pdf-parse';
 import sharp from 'sharp';
 import cheerio from 'cheerio';
 import { YoutubeTranscript } from 'youtube-transcript';
@@ -255,7 +256,7 @@ client.once('ready', async () => {
 
 client.on('messageCreate', async (message) => {
   try {
-    if (message.author.bot) return;
+    if (message.author.id === client.user.id) return;
 
     const isDM = message.channel.type === ChannelType.DM;
     const mentionPattern = new RegExp(`^<@!?${client.user.id}>(?:\\s+)?(generate|imagine)`, 'i');
@@ -302,7 +303,7 @@ client.on('messageCreate', async (message) => {
       }
     }
   } catch (error) {
-    console.error('Error processing the message:', error.message);
+    console.error('Error processing the message:', error);
     if (activeRequests.has(message.author.id)) {
       activeRequests.delete(message.author.id);
     }
@@ -544,14 +545,14 @@ async function handleTextMessage(message) {
   let parts;
   if (SEND_RETRY_ERRORS_TO_DISCORD) {
     clearInterval(typingInterval);
-    const updateEmbedDescription = (urlHandlingStatus, textAttachmentStatus, finalText) => {
-      return `Let me think...\n- ${urlHandlingStatus}: Url Handling\n- ${textAttachmentStatus}: Text Attachment Check\n${finalText || ''}`;
+    const updateEmbedDescription = (urlHandlingStatus, textAttachmentStatus, imageAttachmentStatus, finalText) => {
+      return `Let me think...\n\n- ${urlHandlingStatus}: Url Handling\n- ${textAttachmentStatus}: Text Attachment Check\n- ${imageAttachmentStatus}: Media Attachment Check\n${finalText || ''}`;
     };
 
     const embed = new EmbedBuilder()
-        .setColor(0x00FFFF)
-        .setTitle('Processing')
-        .setDescription(updateEmbedDescription('[🔁]', '[🔁]'));
+      .setColor(0x00FFFF)
+      .setTitle('Processing')
+      .setDescription(updateEmbedDescription('[🔁]', '[🔁]', '[🔁]'));
     botMessage = await message.reply({ embeds: [embed] });
     
     let urlHandlingStatus = '[🔁]';
@@ -561,15 +562,21 @@ async function handleTextMessage(message) {
     } else {
       urlHandlingStatus = '[🚫]';
     }
-    embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[🔁]'));
+    embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[🔁]', '[🔁]'));
     await botMessage.edit({ embeds: [embed] });
+    
+    messageContent = await extractFileText(message, messageContent);
+    embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '[🔁]'));
+    await botMessage.edit({ embeds: [embed] });
+    
     parts = await processPromptAndMediaAttachments(messageContent, message);
-    embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '### All checks done. Waiting for the response...'));
+    embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '[☑️]', '### All checks done. Waiting for the response...'));
     await botMessage.edit({ embeds: [embed] });
   } else {
     if (getUrlUserPreference(userId) === "ON") {
       messageContent = await appendSiteContentToText(messageContent);
     }
+    messageContent = await extractFileText(message, messageContent);
     parts = await processPromptAndMediaAttachments(messageContent, message);
   }
 
@@ -614,16 +621,17 @@ function hasSupportedAttachments(message) {
     'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
     'audio/wav', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac',
     'video/mp4', 'video/mpeg', 'video/mov', 'video/avi', 'video/x-flv', 'video/mpg',
-    'video/webm', 'video/wmv', 'video/3gpp',
-    'text/plain', 'text/html', 'text/css', 'text/javascript', 'application/x-javascript',
-    'text/x-typescript', 'application/x-typescript', 'text/csv', 'text/markdown',
-    'text/x-python', 'application/x-python-code', 'application/json', 'text/xml',
-    'application/rtf', 'text/rtf'
+    'video/webm', 'video/wmv', 'video/3gpp'
   ];
 
-  return message.attachments.some((attachment) =>
-    supportedMimeTypes.includes(attachment.contentType)
-  );
+  const supportedFileExtensions = [
+    'html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf'
+  ];
+
+  return message.attachments.some((attachment) => {
+    const fileExtension = attachment.name.split('.').pop().toLowerCase();
+    return supportedMimeTypes.includes(attachment.contentType) || supportedFileExtensions.includes(fileExtension);
+  });
 }
 
 async function downloadFile(url, filePath) {
@@ -655,11 +663,7 @@ async function processPromptAndMediaAttachments(prompt, message) {
     'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
     'audio/wav', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac',
     'video/mp4', 'video/mpeg', 'video/mov', 'video/avi', 'video/x-flv', 'video/mpg',
-    'video/webm', 'video/wmv', 'video/3gpp',
-    'text/plain', 'text/html', 'text/css', 'text/javascript', 'application/x-javascript',
-    'text/x-typescript', 'application/x-typescript', 'text/csv', 'text/markdown',
-    'text/x-python', 'application/x-python-code', 'application/json', 'text/xml',
-    'application/rtf', 'text/rtf'
+    'video/webm', 'video/wmv', 'video/3gpp'
   ];
 
   if (attachments.length > 0) {
@@ -725,6 +729,39 @@ async function processPromptAndMediaAttachments(prompt, message) {
   }
 
   return parts;
+}
+
+async function extractFileText(message, messageContent) {
+  if (message.attachments.size > 0) {
+    let attachments = Array.from(message.attachments.values());
+    for (const attachment of attachments) {
+      const fileType = attachment.name.split('.').pop().toLowerCase();
+      const fileTypes = ['html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf'];
+
+      if (fileTypes.includes(fileType)) {
+        try {
+          let fileContent = await downloadAndReadFile(attachment.url, fileType);
+          messageContent += `\n\n[\`${attachment.name}\` File Content]:\n\`\`\`\n${fileContent}\n\`\`\``;
+        } catch (error) {
+          console.error(`Error reading file ${attachment.name}: ${error.message}`);
+        }
+      }
+    }
+  }
+  return messageContent;
+}
+
+async function downloadAndReadFile(url, fileType) {
+  let response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to download ${response.statusText}`);
+
+  switch (fileType) {
+    case 'pdf':
+      let buffer = await response.arrayBuffer();
+      return (await pdf(buffer)).text;
+    default:
+      return await response.text();
+  }
 }
 
 async function scrapeWebpageContent(url) {
@@ -2890,16 +2927,6 @@ async function sendAsTextFile(text, message) {
     await unlink(filename);
   } catch (error) {
     console.error('An error occurred:', error);
-  }
-}
-
-async function attachmentToPart(attachment) {
-  try {
-    const response = await fetch(attachment.url);
-    const buffer = await response.buffer();
-    return { inlineData: { data: buffer.toString('base64'), mimeType: attachment.contentType } };
-  } catch (error) {
-    console.log(error.message);
   }
 }
 
