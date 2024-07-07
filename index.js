@@ -22,24 +22,26 @@ import {
   REST,
   Routes,
 } from 'discord.js';
+import OpenAI from "openai";
 import {
   GoogleGenerativeAI,
   HarmBlockThreshold,
   HarmCategory
 } from '@google/generative-ai';
-import { GoogleAIFileManager, FileState } from '@google/generative-ai/server';
+import { CohereClient } from 'cohere-ai';
 import { writeFile, unlink } from 'fs/promises';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pdf from 'pdf-parse';
 import sharp from 'sharp';
+import url from 'url';
 import cheerio from 'cheerio';
 import { YoutubeTranscript } from 'youtube-transcript';
+import axios from 'axios';
 import osu from 'node-os-utils';
 const { mem } = osu;
 const { cpu } = osu;
-import axios from 'axios';
 
 import config from './config.json' assert { type: 'json' };
 
@@ -53,8 +55,6 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const fileManager = new GoogleAIFileManager(process.env.GOOGLE_API_KEY);
 const token = process.env.DISCORD_BOT_TOKEN;
 const activeRequests = new Set();
 
@@ -64,6 +64,7 @@ let activeUsersInChannels = {};
 let customInstructions = {};
 let serverSettings = {};
 let userPreferredImageModel = {};
+let userPreferredTextModel = {};
 let userPreferredImageResolution = {};
 let userPreferredImagePromptEnhancement = {};
 let userPreferredSpeechModel = {};
@@ -75,7 +76,7 @@ let blacklistedUsers = {};
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const CONFIG_DIR = path.join(__dirname, 'config');
+const CONFIG_DIR = path.join(__dirname, 'data');
 const CHAT_HISTORIES_DIR = path.join(CONFIG_DIR, 'chat_histories_2');
 
 const FILE_PATHS = {
@@ -83,6 +84,7 @@ const FILE_PATHS = {
   customInstructions: path.join(CONFIG_DIR, 'custom_instructions.json'),
   serverSettings: path.join(CONFIG_DIR, 'server_settings.json'),
   userPreferredImageModel: path.join(CONFIG_DIR, 'user_preferred_image_model.json'),
+  userPreferredTextModel: path.join(CONFIG_DIR, 'user_preferred_text_model.json'),
   userPreferredImageResolution: path.join(CONFIG_DIR, 'user_preferred_image_resolution.json'),
   userPreferredImagePromptEnhancement: path.join(CONFIG_DIR, 'user_preferred_image_prompt_enhancement.json'),
   userPreferredSpeechModel: path.join(CONFIG_DIR, 'user_preferred_speech_model.json'),
@@ -179,6 +181,7 @@ loadStateFromFile();
 
 const defaultResponseFormat = config.defaultResponseFormat;
 const defaultImgModel = config.defaultImgModel;
+const defaultTextModel = config.defaultTextModel;
 const defaultUrlReading = config.defaultUrlReading;
 const activities = config.activities.map(activity => ({
   name: activity.name,
@@ -448,6 +451,9 @@ client.on('interactionCreate', async (interaction) => {
         case 'change-image-model':
           await changeImageModel(interaction);
           break;
+        case 'change-text-model':
+          await changeTextModel(interaction);
+          break;
         case 'toggle-prompt-enhancer':
           await togglePromptEnhancer(interaction);
           break;
@@ -507,6 +513,9 @@ client.on('interactionCreate', async (interaction) => {
     } else if (interaction.customId === 'select-image-resolution') {
       const selectedResolution = interaction.values[0];
       await handleImageSelectResolution(interaction, selectedResolution);
+    } else if (interaction.customId === 'select-text-model') {
+      const selectedModel = interaction.values[0];
+      await handleTextSelectModel(interaction, selectedModel);
     }
   } catch (error) {
     console.error('Error handling select menu interaction:', error.message);
@@ -603,27 +612,18 @@ async function handleTextMessage(message) {
   const isServerChatHistoryEnabled = guildId ? serverSettings[guildId]?.serverChatHistory : false;
   const finalInstructions = isServerChatHistoryEnabled ? instructions + infoStr : instructions;
 
-  const model = await genAI.getGenerativeModel({
-    model: "gemini-1.5-flash-latest",
-    systemInstruction: { role: "system", parts: [{ text: finalInstructions || defaultPersonality }] }
-  });
+  const systemInstruction = finalInstructions || defaultPersonality;
 
-  const chat = model.startChat({
-    history: isServerChatHistoryEnabled ? getHistory(guildId) : getHistory(userId),
-    safetySettings,
-  });
+  const history = isServerChatHistoryEnabled ? getHistory(guildId) : getHistory(userId);
 
-  await handleModelResponse(botMessage, chat, parts, message, typingInterval);
+  await handleModelResponse(botMessage, systemInstruction, history, parts, message, typingInterval);
 }
 
-function hasSupportedAttachments(message) {
-  const supportedMimeTypes = [
-    'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
-    'audio/wav', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac',
-    'video/mp4', 'video/mpeg', 'video/mov', 'video/avi', 'video/x-flv', 'video/mpg',
-    'video/webm', 'video/wmv', 'video/3gpp'
-  ];
+const supportedMimeTypes = [
+  'image/png', 'image/jpg', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif'
+];
 
+function hasSupportedAttachments(message) {
   const supportedFileExtensions = [
     'html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf'
   ];
@@ -634,37 +634,9 @@ function hasSupportedAttachments(message) {
   });
 }
 
-async function downloadFile(url, filePath) {
-  const writer = fs.createWriteStream(filePath);
-  const response = await axios({
-    url,
-    method: 'GET',
-    responseType: 'stream',
-  });
-  response.data.pipe(writer);
-  return new Promise((resolve, reject) => {
-    writer.on('finish', resolve);
-    writer.on('error', reject);
-  });
-}
-
-function sanitizeFileName(fileName) {
-  return fileName
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '-') // replace non-lowercase alphanumeric and dashes with dashes
-    .replace(/^-+|-+$/g, ''); // remove leading and trailing dashes
-}
-
 async function processPromptAndMediaAttachments(prompt, message) {
   const attachments = JSON.parse(JSON.stringify(Array.from(message.attachments.values())).replace(/^[^\[]*(\[.*\])[^\]]*$/, '$1'));
-  let parts = [{ text: prompt }];
-
-  const supportedMimeTypes = [
-    'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
-    'audio/wav', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac',
-    'video/mp4', 'video/mpeg', 'video/mov', 'video/avi', 'video/x-flv', 'video/mpg',
-    'video/webm', 'video/wmv', 'video/3gpp'
-  ];
+  let parts = [{ type: "text", text: prompt }];
 
   if (attachments.length > 0) {
     const validAttachments = attachments.filter(
@@ -672,63 +644,109 @@ async function processPromptAndMediaAttachments(prompt, message) {
     );
 
     if (validAttachments.length > 0) {
-      const attachmentParts = await Promise.all(
-        validAttachments.map(async (attachment) => {
-          const sanitizedFileName = sanitizeFileName(attachment.name);
-          const filePath = path.join(__dirname, sanitizedFileName);
+      const attachmentParts = validAttachments.map((attachment) => ({
+        type: "image_url",
+        image_url: attachment.url
+      }));
 
-          try {
-            // Download the file
-            await downloadFile(attachment.url, filePath);
-
-            // Upload the downloaded file
-            const uploadResult = await fileManager.uploadFile(filePath, {
-              mimeType: attachment.contentType,
-              displayName: sanitizedFileName,
-            });
-            const name = uploadResult.file.name;
-            if (name === null) {
-              throw new Error(`Unable to extract file name from upload result: ${nameField}`);
-            }
-
-            // Check if the file is a video and wait for its state to be 'ACTIVE'
-            if (attachment.contentType.startsWith('video/')) {
-              let file = await fileManager.getFile(name);
-              while (file.state === FileState.PROCESSING) {
-                process.stdout.write(".");
-                await new Promise((resolve) => setTimeout(resolve, 10_000));
-                file = await fileManager.getFile(name);
-              }
-
-              if (file.state === FileState.FAILED) {
-                throw new Error(`Video processing failed for ${sanitizedFileName}.`);
-              }
-            }
-
-            // Delete the local file
-            fs.unlinkSync(filePath);
-
-            return {
-              fileData: {
-                mimeType: attachment.contentType,
-                fileUri: uploadResult.file.uri,
-              },
-            };
-          } catch (error) {
-            console.error(`Error processing attachment ${sanitizedFileName}:`, error);
-            if (fs.existsSync(filePath)) {
-              fs.unlinkSync(filePath);
-            }
-            return null;
-          }
-        })
-      );
-
-      parts = [...parts, ...attachmentParts.filter(part => part !== null)];
+      parts = [...parts, ...attachmentParts];
     }
   }
 
   return parts;
+}
+
+async function convertStructureForGemini(input) {
+  async function convertContent(content) {
+    const textPart = content.find(part => part.type === 'text');
+    const newContent = await processPromptAndImageAttachmentsForGemini(textPart ? textPart.text : '', { attachments: new Map() });
+
+    const imageParts = content.filter(part => part.type === 'image_url');
+    if (imageParts.length > 0) {
+      return await convertInputToExpectedFormatForGemini(content);
+    }
+    return newContent;
+  }
+  
+  return await Promise.all(input.map(async entry => {
+    const role = entry.role === 'user' ? 'user' : 'model';
+    const parts = entry.content;
+
+    let convertedParts;
+    if (Array.isArray(parts)) {
+      convertedParts = await convertContent(parts);
+    } else {
+      convertedParts = [{ text: parts }];
+    }
+
+    return {
+      role: role,
+      parts: convertedParts
+    };
+  }));
+}
+
+async function processPromptAndImageAttachmentsForGemini(prompt, message) {
+  const attachments = Array.from(message.attachments.values());
+  let parts = [{ text: prompt }];
+
+  if (attachments.length > 0) {
+    const imageAttachments = attachments.filter(attachment => attachment.contentType && attachment.contentType.startsWith('image/'));
+
+    if (imageAttachments.length > 0) {
+      const attachmentParts = await Promise.all(
+        imageAttachments.map(async (attachment) => {
+          const response = await fetch(attachment.url);
+          const buffer = await response.arrayBuffer();
+          let imageBuffer = Buffer.from(buffer);
+
+          if (imageBuffer.length > 5 * 1024 * 1024) {
+            imageBuffer = await sharp(imageBuffer)
+              .resize(3072, 3072, {
+                fit: sharp.fit.inside,
+                withoutEnlargement: true
+              })
+              .jpeg({ quality: 80 })
+              .toBuffer();
+
+            if (imageBuffer.length > 5 * 1024 * 1024) {
+              imageBuffer = await sharp(imageBuffer)
+                .resize(2048, 2048, {
+                  fit: sharp.fit.inside,
+                  withoutEnlargement: true
+                })
+                .jpeg({ quality: 60 })
+                .toBuffer();
+            }
+          }
+
+          return {
+            inlineData: {
+              data: imageBuffer.toString('base64'),
+              mimeType: attachment.contentType || 'application/octet-stream'
+            }
+          };
+        })
+      );
+      parts = [...parts, ...attachmentParts];
+    }
+  }
+  return parts;
+}
+
+async function convertInputToExpectedFormatForGemini(content) {
+  const prompt = content.find(part => part.type === 'text')?.text || '';
+  const imageUrls = content.filter(part => part.type === 'image_url').map(part => part.image_url);
+
+  const message = {
+    attachments: new Map(imageUrls.map((imageUrl, index) => {
+      const parsedUrl = url.parse(imageUrl);
+      const extension = path.extname(parsedUrl.pathname).replace(".", "") || 'jpeg';
+      return [index, { url: imageUrl, contentType: `image/${extension}` }];
+    }))
+  };
+  
+  return processPromptAndImageAttachmentsForGemini(prompt, message);
 }
 
 async function extractFileText(message, messageContent) {
@@ -1396,6 +1414,53 @@ async function changeImageModel(interaction) {
   }
 }
 
+async function changeTextModel(interaction) {
+  try {
+    // Define model names in an array
+    const models = [
+      'Cohere Command R Plus (Web)', 'Groq Llama 3 70B', 'Groq Llama 3 8B', 'Groq Gemma 2 9B',
+      'Together Qwen 2 72B', 'Together Llama 3 70B', 'Together DBRX', 'OpenRouter Phi-3 Medium 128K', 'OpenRouter Gemma 2 9B', 'OpenRouter Llama 3 8B', 'KrakenAI Gemini 1.5 Flash', 'KrakenAI Claude 3.5 Sonnet', 'Google Gemini 1.5 Flash', 'Google Gemini 1.5 Pro'
+    ];
+
+    const selectedModel = userPreferredTextModel[interaction.user.id] || defaultTextModel;
+
+    // Create a select menu
+    let selectMenu = new StringSelectMenuBuilder()
+      .setCustomId('select-text-model')
+      .setPlaceholder('Select Text Generation Model')
+      .setMinValues(1)
+      .setMaxValues(1);
+
+    // Add options to select menu
+    models.forEach((model) => {
+      selectMenu.addOptions([
+        {
+          label: model,
+          value: model,
+          description: `Select to use ${model} model.`,
+          default: model === selectedModel,
+        },
+      ]);
+    });
+
+    // Create an action row and add the select menu to it
+    const actionRow = new ActionRowBuilder().addComponents(selectMenu);
+
+    const embed = new EmbedBuilder()
+      .setColor(0xFFFFFF)
+      .setTitle('Select Text Generation Model')
+      .setDescription('Select the model you want to use for text generation.');
+
+    await interaction.reply({
+      embeds: [embed],
+      components: [actionRow],
+      ephemeral: true
+    });
+  } catch (error) {
+    console.log(error.message);
+  }
+}
+
 async function changeImageResolution(interaction) {
   try {
     const userId = interaction.user.id;
@@ -1508,6 +1573,21 @@ async function handleImageSelectModel(interaction, model) {
   }
 }
 
+async function handleTextSelectModel(interaction, model) {
+  try {
+    const userId = interaction.user.id;
+    userPreferredTextModel[userId] = model;
+    const embed = new EmbedBuilder()
+      .setColor(0x00FF00)
+      .setTitle('Model Selected')
+      .setDescription(`Text Generation Model Selected: \`${model}\``);
+    
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+  } catch (error) {
+    console.log(error.message);
+  }
+}
+
 async function handleImageSelectResolution(interaction, resolution) {
   try {
     const userId = interaction.user.id;
@@ -1559,7 +1639,7 @@ async function togglePromptEnhancer(interaction) {
 
 import { diffusionMaster } from './diffusionMasterPrompt.js';
 
-async function enhancePrompt1(prompt) {
+async function enhancePrompt(prompt) {
   const retryLimit = 3;
   let currentAttempt = 0;
   let error;
@@ -1567,7 +1647,6 @@ async function enhancePrompt1(prompt) {
   while (currentAttempt < retryLimit) {
     try {
       currentAttempt += 1;
-      console.log(`Attempt ${currentAttempt}`);
 
       let response = await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -1618,7 +1697,6 @@ async function enhancePrompt1(prompt) {
         } else {
           throw new Error(`Enhanced prompt not found`);
         }
-        console.log(content);
         return content;
       } else {
         console.log('Error processing response data');
@@ -1633,39 +1711,6 @@ async function enhancePrompt1(prompt) {
     console.error('Retries exhausted or an error occurred:', error.message);
   }
   return prompt;
-}
-
-async function enhancePrompt(prompt, attempts = 3) {
-  const generate = async () => {
-    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: diffusionMaster }] } });
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  };
-
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    try {
-      const textResponse = await Promise.race([
-        generate(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
-      ]);
-
-      let content = textResponse;
-      const codeBlockPattern = /```([^`]+)```/s;
-      const match = content.match(codeBlockPattern);
-      if (match) {
-        content = match[1].trim();
-      } else {
-        throw new Error(`Enhanced prompt not found`);
-      }
-      return content;
-    } catch (error) {
-      console.error(`Attempt ${attempt} failed:`, error);
-      if (attempt === attempts) {
-        console.log('All attempts failed, returning the original prompt.');
-        return prompt;
-      }
-    }
-  }
 }
 
 async function generateImageWithPrompt(prompt, userId) {
@@ -2093,7 +2138,14 @@ async function downloadConversation(interaction) {
     let conversationText = '';
     for (let i = 0; i < conversationHistory.length; i++) {
       const role = conversationHistory[i].role === 'user' ? '[User]' : '[Model]';
-      const content = conversationHistory[i].content.map(c => c.text).join('\n');
+      let content;
+    
+      if (Array.isArray(conversationHistory[i].content)) {
+        content = conversationHistory[i].content.map(c => c.text).join('\n');
+      } else {
+        content = conversationHistory[i].content;
+      }
+    
       conversationText += `${role}:\n${content}\n\n`;
     }
 
@@ -2376,7 +2428,14 @@ async function downloadServerConversation(interaction) {
     let conversationText = '';
     for (let i = 0; i < conversationHistory.length; i++) {
       const role = conversationHistory[i].role === 'user' ? '[User]' : '[Model]';
-      const content = conversationHistory[i].content.map(c => c.text).join('\n');
+      let content;
+    
+      if (Array.isArray(conversationHistory[i].content)) {
+        content = conversationHistory[i].content.map(c => c.text).join('\n');
+      } else {
+        content = conversationHistory[i].content;
+      }
+    
       conversationText += `${role}:\n${content}\n\n`;
     }
 
@@ -2454,6 +2513,12 @@ async function showSettings(interaction) {
       label: "Clear Memory",
       emoji: "🧹",
       style: ButtonStyle.Danger,
+    },
+    {
+      customId: "change-text-model",
+      label: "Change Text Model",
+      emoji: "📜",
+      style: ButtonStyle.Secondary,
     },
     {
       customId: "generate-image",
@@ -2721,16 +2786,83 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-const safetySettings = [{ category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE, }, { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE, }, { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE, }, { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE, }, ];
-
 // <==========>
 
 
 
 // <=====[Model Response Handling]=====>
 
-async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval) {
+
+async function handleModelResponse(initialBotMessage, systemInstruction, history, parts, originalMessage, typingInterval) {
   const userId = originalMessage.author.id;
+  const selectedModel = userPreferredTextModel[userId] || defaultTextModel;
+  let PROVIDER;
+  let MODEL;
+
+  // Determine the provider and model based on the selected model
+  switch (selectedModel) {
+    case "Cohere Command R Plus (Web)":
+      PROVIDER = 'COHERE';
+      MODEL = 'Cohere Command R Plus (Web)';
+      break;
+    case "Groq Llama 3 70B":
+      PROVIDER = 'GROQ';
+      MODEL = 'llama3-70b-8192';
+      break;
+    case "Groq Llama 3 8B":
+      PROVIDER = 'GROQ';
+      MODEL = 'llama3-8b-8192';
+      break;
+    case "Groq Gemma 2 9B":
+      PROVIDER = 'GROQ';
+      MODEL = 'gemma2-9b-it';
+      break;
+    case "Together Qwen 2 72B":
+      PROVIDER = 'TOGETHER';
+      MODEL = 'Qwen/Qwen2-72B-Instruct';
+      break;
+    case "Together Llama 3 70B":
+      PROVIDER = 'TOGETHER';
+      MODEL = 'meta-llama/Llama-3-70b-chat-hf';
+      break;
+    case "Together DBRX":
+      PROVIDER = 'TOGETHER';
+      MODEL = 'databricks/dbrx-instruct';
+      break;
+    case "OpenRouter Phi-3 Medium 128K":
+      PROVIDER = 'OPENROUTER';
+      MODEL = 'microsoft/phi-3-medium-128k-instruct:free';
+      break;
+    case "OpenRouter Gemma 2 9B":
+      PROVIDER = 'OPENROUTER';
+      MODEL = 'google/gemma-2-9b-it:free';
+      break;
+    case "OpenRouter Llama 3 8B":
+      PROVIDER = 'OPENROUTER';
+      MODEL = 'meta-llama/llama-3-8b-instruct:free';
+      break;
+    case "KrakenAI Gemini 1.5 Flash":
+      PROVIDER = 'KRAKENAI';
+      MODEL = 'gemini-1.5-flash';
+      break;
+    case "KrakenAI Claude 3.5 Sonnet":
+      PROVIDER = 'KRAKENAI';
+      MODEL = 'claude-3.5-sonnet';
+      break;
+    case "Google Gemini 1.5 Flash":
+      PROVIDER = 'GOOGLE';
+      MODEL = 'gemini-1.5-flash';
+      break;
+    case "Google Gemini 1.5 Pro":
+      PROVIDER = 'GOOGLE';
+      MODEL = 'gemini-1.5-pro';
+      break;
+    default:
+      PROVIDER = 'COHERE';
+      MODEL = 'Cohere Command R Plus (Web)';
+      break;
+  }
+
   const userPreference = originalMessage.guild && serverSettings[originalMessage.guild.id]?.serverResponsePreference ? serverSettings[originalMessage.guild.id].responseStyle : getUserPreference(userId);
   const maxCharacterLimit = userPreference === 'embedded' ? 3900 : 1900;
   let attempts = 3;
@@ -2744,14 +2876,15 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         .setCustomId('stopGenerating')
         .setLabel('Stop Generating')
         .setStyle(ButtonStyle.Danger)
-    );
+  );
+
   let botMessage;
   if (!initialBotMessage) {
     clearInterval(typingInterval);
     botMessage = await originalMessage.reply({ content: 'Let me think..', components: [row] });
   } else {
     botMessage = initialBotMessage;
-  await botMessage.edit({components: [row] });
+    await botMessage.edit({ components: [row] });
   }
 
   let stopGeneration = false;
@@ -2799,7 +2932,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       await botMessage.edit({ content: '...' });
     }
     if (userPreference === 'embedded') {
-      await updateEmbed(botMessage, tempResponse, originalMessage);
+      await updateEmbed(botMessage, tempResponse, originalMessage, selectedModel);
     } else {
       await botMessage.edit({ content: tempResponse, embeds: [] });
     }
@@ -2809,29 +2942,232 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
 
   while (attempts > 0 && !stopGeneration) {
     try {
-      const messageResult = await chat.sendMessageStream(parts);
       let finalResponse = '';
       let isLargeResponse = false;
+      
+      if (PROVIDER === 'COHERE') {
+        const cohere = new CohereClient({
+          token: process.env.COHERE_API_KEY,
+        });
+        const messages = [
+          { role: 'SYSTEM', message: systemInstruction },
+          ...convertToCohereFormat(history)
+        ];
 
-      for await (const chunk of messageResult.stream) {
-        if (stopGeneration) break;
+        const chatStream = await cohere.chatStream({
+          chatHistory: messages,
+          message: extractText(parts),
+          connectors: [{ id: 'web-search' }],
+        });
 
-        const chunkText = await chunk.text();
-        finalResponse += chunkText;
-        tempResponse += chunkText;
+        for await (const message of chatStream) {
+          if (stopGeneration) break;
+          
+          if (message.eventType === 'text-generation') {
+            const chunkText = message.text || "";
+            finalResponse += chunkText;
+            tempResponse += chunkText;
 
-        if (finalResponse.length > maxCharacterLimit) {
-          if (!isLargeResponse) {
-            isLargeResponse = true;
-            const embed = new EmbedBuilder()
-              .setColor(0xFFFF00)
-              .setTitle('Response Overflow')
-              .setDescription('The response got too large, will be sent as a text file once it is completed.');
-            
-            await botMessage.edit({ embeds: [embed] });
+            if (finalResponse.length > maxCharacterLimit) {
+              if (!isLargeResponse) {
+                isLargeResponse = true;
+                const embed = new EmbedBuilder()
+                  .setColor(0xFFFF00)
+                  .setTitle('Response Overflow')
+                  .setDescription('The response got too large, will be sent as a text file once it is completed.');
+                await botMessage.edit({ embeds: [embed] });
+              }
+            } else if (!updateTimeout) {
+              updateTimeout = setTimeout(updateMessage, 500);
+            }
           }
-        } else if (!updateTimeout) {
-          updateTimeout = setTimeout(updateMessage, 500);
+        }
+      } else if (PROVIDER === 'TOGETHER') {
+        const openai = new OpenAI({
+          baseURL: 'https://api.together.xyz/v1',
+          apiKey: process.env.OPENAI_TOGETHER_API_KEY
+        });
+        const messages = [
+          { role: "system", content: systemInstruction },
+          ...convertToTextFormat(history),
+          { role: "user", content: extractText(parts) }
+        ];
+
+        const completion = await openai.chat.completions.create({
+          model: MODEL,
+          messages: messages,
+          stream: true,
+        });
+
+        for await (const chunk of completion) {
+          if (stopGeneration) break;
+
+          const chunkText = chunk.choices[0]?.delta?.content || "";
+          finalResponse += chunkText;
+          tempResponse += chunkText;
+
+          if (finalResponse.length > maxCharacterLimit) {
+            if (!isLargeResponse) {
+              isLargeResponse = true;
+              const embed = new EmbedBuilder()
+                .setColor(0xFFFF00)
+                .setTitle('Response Overflow')
+                .setDescription('The response got too large, will be sent as a text file once it is completed.');
+              await botMessage.edit({ embeds: [embed] });
+            }
+          } else if (!updateTimeout) {
+            updateTimeout = setTimeout(updateMessage, 500);
+          }
+        }
+      } else if (PROVIDER === 'GROQ') {
+        const openai = new OpenAI({
+          baseURL: 'https://api.groq.com/openai/v1',
+          apiKey: process.env.OPENAI_GROQ_API_KEY
+        });
+        const messages = [
+          { role: "system", content: systemInstruction },
+          ...convertToTextFormat(history),
+          { role: "user", content: extractText(parts) }
+        ];
+
+        const completion = await openai.chat.completions.create({
+          model: MODEL,
+          messages: messages,
+          stream: true,
+        });
+
+        for await (const chunk of completion) {
+          if (stopGeneration) break;
+
+          const chunkText = chunk.choices[0]?.delta?.content || "";
+          finalResponse += chunkText;
+          tempResponse += chunkText;
+
+          if (finalResponse.length > maxCharacterLimit) {
+            if (!isLargeResponse) {
+              isLargeResponse = true;
+              const embed = new EmbedBuilder()
+                .setColor(0xFFFF00)
+                .setTitle('Response Overflow')
+                .setDescription('The response got too large, will be sent as a text file once it is completed.');
+              await botMessage.edit({ embeds: [embed] });
+            }
+          } else if (!updateTimeout) {
+            updateTimeout = setTimeout(updateMessage, 500);
+          }
+        }
+      } else if (PROVIDER === 'OPENROUTER') {
+        const openai = new OpenAI({
+          baseURL: 'https://openrouter.ai/api/v1',
+          apiKey: process.env.OPENAI_OPENROUTER_API_KEY
+        });
+        const messages = [
+          { role: "system", content: systemInstruction },
+          ...convertToTextFormat(history),
+          { role: "user", content: extractText(parts) }
+        ];
+
+        const completion = await openai.chat.completions.create({
+          model: MODEL,
+          messages: messages,
+          max_tokens: 8192,
+          stream: true,
+        });
+
+        for await (const chunk of completion) {
+          if (stopGeneration) break;
+
+          const chunkText = chunk.choices[0]?.delta?.content || "";
+          finalResponse += chunkText;
+          tempResponse += chunkText;
+
+          if (finalResponse.length > maxCharacterLimit) {
+            if (!isLargeResponse) {
+              isLargeResponse = true;
+              const embed = new EmbedBuilder()
+                .setColor(0xFFFF00)
+                .setTitle('Response Overflow')
+                .setDescription('The response got too large, will be sent as a text file once it is completed.');
+              await botMessage.edit({ embeds: [embed] });
+            }
+          } else if (!updateTimeout) {
+            updateTimeout = setTimeout(updateMessage, 500);
+          }
+        }
+      } else if (PROVIDER === 'KRAKENAI') {
+        const openai = new OpenAI({
+          baseURL: 'https://api.cracked.systems/v1',
+          apiKey: process.env.OPENAI_KRAKENAI_API_KEY
+        });
+        const messages = [
+          { role: "system", content: systemInstruction },
+          ...convertToTextFormatWithUrl(history),
+          { role: "user", content: extractTextWithUrl(parts) }
+        ];
+
+        const completion = await openai.chat.completions.create({
+          model: MODEL,
+          messages: messages,
+          max_tokens: 4096,
+          stream: true,
+        });
+
+        for await (const chunk of completion) {
+          if (stopGeneration) break;
+
+          const chunkText = chunk.choices[0]?.delta?.content || "";
+          finalResponse += chunkText;
+          tempResponse += chunkText;
+
+          if (finalResponse.length > maxCharacterLimit) {
+            if (!isLargeResponse) {
+              isLargeResponse = true;
+              const embed = new EmbedBuilder()
+                .setColor(0xFFFF00)
+                .setTitle('Response Overflow')
+                .setDescription('The response got too large, will be sent as a text file once it is completed.');
+              await botMessage.edit({ embeds: [embed] });
+            }
+          } else if (!updateTimeout) {
+            updateTimeout = setTimeout(updateMessage, 500);
+          }
+        }
+      } else if (PROVIDER === 'GOOGLE') {
+        const safetySettings = [{ category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE, }, { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE, }, { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE, }, { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE, }, ];
+        
+        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+        
+        const model = await genAI.getGenerativeModel({
+          model: MODEL,
+          systemInstruction: { role: "system", parts: [{ text: systemInstruction }] }
+        });
+        
+        const chat = model.startChat({
+          history: await convertStructureForGemini(history),
+          safetySettings,
+        });
+
+        const messageResult = await chat.sendMessageStream(await convertInputToExpectedFormatForGemini(parts));
+
+        for await (const chunk of messageResult.stream) {
+          if (stopGeneration) break;
+        
+          const chunkText = await chunk.text();
+          finalResponse += chunkText;
+          tempResponse += chunkText;
+        
+          if (finalResponse.length > maxCharacterLimit) {
+            if (!isLargeResponse) {
+              isLargeResponse = true;
+              const embed = new EmbedBuilder()
+                .setColor(0xFFFF00)
+                .setTitle('Response Overflow')
+                .setDescription('The response got too large, will be sent as a text file once it is completed.');
+              await botMessage.edit({ embeds: [embed] });
+            }
+          } else if (!updateTimeout) {
+            updateTimeout = setTimeout(updateMessage, 500);
+          }
         }
       }
 
@@ -2847,7 +3183,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         if (shouldAddDownloadButton) {
           await addDownloadButton(botMessage);
         } else {
-          await botMessage.edit({components: [] });
+          await botMessage.edit({ components: [] });
         }
       }
       const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
@@ -2859,7 +3195,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       }
       console.error(error);
       attempts--;
-    
+
       if (attempts === 0 || stopGeneration) {
         if (!stopGeneration) {
           if (SEND_RETRY_ERRORS_TO_DISCORD) {
@@ -2874,8 +3210,10 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
             const simpleErrorEmbed = new EmbedBuilder()
               .setColor(0xFF0000)
               .setTitle('Bot Overloaded')
-              .setDescription('Something seems off, the bot might be overloaded! :(');
-            await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>`, embeds: [simpleErrorEmbed] });
+              .setDescription('Something seems off. Try clearing your conversation history, or the bot might be overloaded! :(');
+            const errorMsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>`, embeds: [simpleErrorEmbed] });
+            await addSettingsButton(errorMsg);
+            await addSettingsButton(botMessage);
           }
         }
         break;
@@ -2897,16 +3235,16 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
   }
 }
 
-async function updateEmbed(botMessage, finalResponse, message) {
+async function updateEmbed(botMessage, finalResponse, message, selectedModel) {
   try {
     const isGuild = message.guild !== null;
     const embed = new EmbedBuilder()
       .setColor(0x505050)
       .setDescription(finalResponse)
-      .setAuthor({ name: `To ${message.author.displayName}`, iconURL: message.author.displayAvatarURL() })
+      .setAuthor({ name: `To ${message.author.displayName} - ${selectedModel}`, iconURL: message.author.displayAvatarURL() })
       .setTimestamp();
     if (isGuild) {
-      embed.setFooter({ text: message.guild.name, iconURL: message.guild.iconURL() || 'https://ai.google.dev/static/site-assets/images/share.png' });
+      embed.setFooter({ text: message.guild.name, iconURL: message.guild.iconURL() || 'https://static.xx.fbcdn.net/rsrc.php/v3/ya/r/KR57YnNJ9wh.png' });
     }
 
     await botMessage.edit({ content: ' ', embeds: [embed] });
@@ -2932,12 +3270,7 @@ async function sendAsTextFile(text, message) {
 
 function getHistory(id) {
   const history = chatHistories[id] || [];
-  return history.map(entry => {
-    return {
-      role: entry.role === 'assistant' ? 'model' : entry.role,
-      parts: entry.content
-    };
-  });
+  return history;
 }
 
 function updateChatHistory(id, userMessage, modelResponse) {
@@ -2952,7 +3285,96 @@ function updateChatHistory(id, userMessage, modelResponse) {
 
   chatHistories[id].push({
     role: 'assistant',
-    content: [{ text: modelResponse }],
+    content: modelResponse,
+  });
+}
+
+function convertToCohereFormat(input) {
+  return input.map(item => {
+    let message;
+
+    if (Array.isArray(item.content)) {
+      message = item.content.map(contentItem => contentItem.text).join(" ");
+    } else {
+      message = item.content;
+    }
+
+    return {
+      role: item.role.toUpperCase(),
+      message: message
+    };
+  });
+}
+
+function convertToTextFormat(input) {
+  return input.map(item => {
+    let message;
+
+    if (Array.isArray(item.content)) {
+      message = item.content.map(contentItem => contentItem.text).join(" ");
+    } else {
+      message = item.content;
+    }
+
+    return {
+      role: item.role,
+      content: message
+    };
+  });
+}
+
+function convertToHfFormat(jsonArray) {
+    return jsonArray.map(item => {
+        if (Array.isArray(item.content)) {
+            return item.content.map(contentItem => contentItem.text).join(" ");
+        } else {
+            return item.content;
+        }
+    });
+}
+
+function extractText(messages) {
+  return messages
+    .filter(message => message.type === 'text')
+    .map(message => message.text)
+    .join(' ');
+}
+
+function extractTextWithUrl(messages) {
+  return messages
+    .map(message => {
+      if (message.type === 'text') {
+        return message.text;
+      } else if (message.type === 'image_url') {
+        return message.image_url;
+      }
+      return '';
+    })
+    .filter(text => text !== '')
+    .join('\n');
+}
+
+function convertToTextFormatWithUrl(input) {
+  return input.map(item => {
+    let message;
+
+    if (Array.isArray(item.content)) {
+      message = item.content.map(contentItem => {
+        if (contentItem.type === 'text') {
+          return contentItem.text;
+        } else if (contentItem.type === 'image_url') {
+          return contentItem.image_url;
+        }
+        return '';
+      }).filter(text => text !== '').join('\n');
+    } else {
+      message = item.content;
+    }
+
+    return {
+      role: item.role,
+      content: message
+    };
   });
 }
 
