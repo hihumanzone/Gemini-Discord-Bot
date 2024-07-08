@@ -1,10 +1,7 @@
 {
   "type": "module",
   "dependencies": {
-    "openai": "*",
     "@google/generative-ai": "*",
-    "url": "*",
-    "cohere-ai": "*",
     "axios": "*",
     "cheerio": "*",
     "discord.js": "*",
