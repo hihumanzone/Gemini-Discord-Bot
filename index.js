@@ -2867,7 +2867,9 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
               .setColor(0xFF0000)
               .setTitle('Bot Overloaded')
               .setDescription('Something seems off, the bot might be overloaded! :(');
-            await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>`, embeds: [simpleErrorEmbed] });
+            const errorMsg = await originalMessage.channel.send({ content: `<@${originalMessage.author.id}>`, embeds: [simpleErrorEmbed] });
+            await addSettingsButton(errorMsg);
+            await addSettingsButton(botMessage);
           }
         }
         break;
