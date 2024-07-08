@@ -1,9 +1,9 @@
 import axios from 'axios';
 import EventSource from 'eventsource';
+import fs from 'fs';
 
-import config from './config.json' assert { type: 'json' };
+const config = JSON.parse(fs.readFileSync('config.json', 'utf-8'));
 const { bannerMusicGen, nevPrompt } = config;
-
 
 function getEventId() {
   const bytes = new Uint8Array(16);
@@ -309,6 +309,13 @@ const modelsData = {
     triggerId: 5,
     useSize: false,
     dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, randomDigit, true, width, height, 5, 35]
+  },
+  "Kolors": {
+    url: "https://gokaygokay-kolors.hf.space",
+    fnIndex: 0,
+    triggerId: 23,
+    useSize: false,
+    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, width, height, 35, 5, 1, true, randomDigit]
   }
 };
 
