@@ -12,6 +12,7 @@
     "sharp": "*",
     "pdf-parse": "*",
     "youtube-transcript": "*",
-    "node-os-utils": "*"
+    "node-os-utils": "*",
+    "ws": "*"
   }
 }
