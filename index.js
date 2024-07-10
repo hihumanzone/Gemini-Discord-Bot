@@ -179,6 +179,7 @@ loadStateFromFile();
 
 const defaultResponseFormat = config.defaultResponseFormat;
 const defaultImgModel = config.defaultImgModel;
+const hexColour = config.hexColour;
 const defaultUrlReading = config.defaultUrlReading;
 const activities = config.activities.map(activity => ({
   name: activity.name,
@@ -972,7 +973,7 @@ async function handleSuccessfulSpeechGeneration(interaction, text, language, out
     const isGuild = interaction.guild !== null;
     const file = new AttachmentBuilder(outputUrl).setName('speech.wav');
     const embed = new EmbedBuilder()
-      .setColor(0x505050)
+      .setColor(hexColour)
       .setAuthor({ name: `To ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL() })
       .setDescription(`Here Is Your Generated Speech\n**Prompt:**\n\`\`\`${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\`\`\``)
       .addFields(
@@ -996,7 +997,7 @@ async function handleSuccessfulMusicGeneration(interaction, text, outputUrl) {
     const isGuild = interaction.guild !== null;
     const file = new AttachmentBuilder(outputUrl).setName('music.mp4');
     const embed = new EmbedBuilder()
-      .setColor(0x505050)
+      .setColor(hexColour)
       .setAuthor({ name: `To ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL() })
       .setDescription(`Here Is Your Generated Music\n**Prompt:**\n\`\`\`${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\`\`\``)
       .addFields(
@@ -1078,7 +1079,7 @@ async function genimg(prompt, message) {
     const imageExtension = path.extname(imageUrl) || '.png';
     const attachment = new AttachmentBuilder(imageUrl, { name: `generated-image${imageExtension}` });
     const embed = new EmbedBuilder()
-      .setColor(0x505050)
+      .setColor(hexColour)
       .setAuthor({ name: `To ${message.author.displayName}`, iconURL: message.author.displayAvatarURL() })
       .setDescription(`Here Is Your Generated Image\n**Original Prompt:**\n\`\`\`${prompt.length > 3900 ? prompt.substring(0, 3900) + '...' : prompt}\`\`\``)
       .addFields(
@@ -1162,7 +1163,7 @@ async function generateAndSendImage(prompt, interaction) {
     const attachment = new AttachmentBuilder(imageUrl, { name: `generated-image${imageExtension}` });
     
     const embed = new EmbedBuilder()
-      .setColor(0x505050)
+      .setColor(hexColour)
       .setAuthor({ name: `To ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL() })
       .setDescription(`Here Is Your Generated Image\n**Original Prompt:**\n\`\`\`${prompt.length > 3900 ? prompt.substring(0, 3900) + '...' : prompt}\`\`\``)
       .addFields(
@@ -1817,7 +1818,7 @@ async function handleStatusCommand(interaction) {
         const timeLeft = `${hours}h ${minutes}m ${seconds}s`;
 
         const embed = new EmbedBuilder()
-          .setColor(0x505050)
+          .setColor(hexColour)
           .setTitle('System Information')
           .addFields(
             { name: 'Memory (RAM)', value: `Total Memory: \`${totalMemMb}\` MB\nUsed Memory: \`${usedMemMb}\` MB\nFree Memory: \`${freeMemMb}\` MB\nPercentage Of Free Memory: \`${freeMemPercentage}\`%`, inline: true },
@@ -2817,7 +2818,7 @@ async function updateEmbed(botMessage, finalResponse, message) {
   try {
     const isGuild = message.guild !== null;
     const embed = new EmbedBuilder()
-      .setColor(0x505050)
+      .setColor(hexColour)
       .setDescription(finalResponse)
       .setAuthor({ name: `To ${message.author.displayName}`, iconURL: message.author.displayAvatarURL() })
       .setTimestamp();
