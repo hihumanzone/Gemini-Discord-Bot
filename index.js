@@ -312,206 +312,168 @@ client.on('messageCreate', async (message) => {
 
 client.on('interactionCreate', async (interaction) => {
   try {
-    if (!interaction.isCommand()) return;
-    switch (interaction.commandName) {
-      case 'respond_to_all':
-        await handleRespondToAllCommand(interaction);
-        break;
-      case 'whitelist':
-        await handleWhitelistCommand(interaction);
-        break;
-      case 'blacklist':
-        await handleBlacklistCommand(interaction);
-        break;
-      case 'imagine':
-        await handleImagineCommand(interaction);
-        break;
-      case 'clear_memory':
-        const serverChatHistoryEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverChatHistory : false;
-        if (!serverChatHistoryEnabled) {
-          await clearChatHistory(interaction);
-        } else {
-          const embed = new EmbedBuilder()
-            .setColor(0xFF5555)
-            .setTitle('Feature Disabled')
-            .setDescription('Clearing chat history is not enabled for this server, Server-Wide chat history is active.');
-          await interaction.reply({ embeds: [embed] });
-        }
-        break;
-      case 'speech':
-        await handleSpeechCommand(interaction);
-        break;
-      case 'settings':
-        await showSettings(interaction);
-        break;
-      case 'server_settings':
-        await showDashboard(interaction);
-        break;
-      case 'music':
-        await handleMusicCommand(interaction);
-        break;
-      case 'status':
-        await handleStatusCommand(interaction);
-        break;
-      default:
-        console.log(`Unknown command: ${interaction.commandName}`);
-        break;
-    }
-  } catch (error) {
-    console.error('Error handling command:', error.message);
-  }
-});
-
-client.on('interactionCreate', async (interaction) => {
-  try {
-    if (interaction.isButton()) {
-      if (interaction.guild) {
-        initializeBlacklistForGuild(interaction.guild.id);
-        if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
-          const embed = new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('Blacklisted')
-            .setDescription('You are blacklisted and cannot use this interaction.');
-          return interaction.reply({ embeds: [embed], ephemeral: true });
-        }
-      }
-      switch (interaction.customId) {
-        case 'server-chat-history':
-          await toggleServerWideChatHistory(interaction);
-          break;
-        case 'clear-server':
-          await clearServerChatHistory(interaction);
-          break;
-        case 'settings-save-buttons':
-          await toggleSettingSaveButton(interaction);
-          break;
-        case 'custom-server-personality':
-          await serverPersonality(interaction);
-          break;
-        case 'toggle-server-personality':
-          await toggleServerPersonality(interaction);
-          break;
-        case 'download-server-conversation':
-          await downloadServerConversation(interaction);
-          break;
-        case 'response-server-mode':
-          await toggleServerPreference(interaction);
-          break;
-        case 'toggle-response-server-mode':
-          await toggleServerResponsePreference(interaction);
-          break;
-        case 'settings':
-          await showSettings(interaction);
-          break;
-        case 'clear':
-          const serverChatHistoryEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverChatHistory : false;
-          if (!serverChatHistoryEnabled) {
-            await clearChatHistory(interaction);
-          } else {
-            const embed = new EmbedBuilder()
-              .setColor(0xFF5555)
-              .setTitle('Feature Disabled')
-              .setDescription('Clearing chat history is not enabled for this server, Server-Wide chat history is active.');
-            await interaction.reply({ embeds: [embed], ephemeral: true });
-          }
-          break;
-        case 'always-respond':
-          await alwaysRespond(interaction);
-          break;
-        case 'custom-personality':
-          const serverCustomEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.customServerPersonality : false;
-          if (!serverCustomEnabled) {
-            await setCustomPersonality(interaction);
-          } else {
-            const embed = new EmbedBuilder()
-              .setColor(0xFF5555)
-              .setTitle('Feature Disabled')
-              .setDescription('Custom personality is not enabled for this server, Server-Wide personality is active.');
-            await interaction.reply({ embeds: [embed], ephemeral: true });
-          }
-          break;
-        case 'remove-personality':
-          const isServerEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.customServerPersonality : false;
-          if (!isServerEnabled) {
-            await removeCustomPersonality(interaction);
-          } else {
-            const embed = new EmbedBuilder()
-              .setColor(0xFF5555)
-              .setTitle('Feature Disabled')
-              .setDescription('Custom personality is not enabled for this server, Server-Wide personality is active.');
-            await interaction.reply({ embeds: [embed], ephemeral: true });
-          }
-          break;
-        case 'generate-image':
-          await handleGenerateImageButton(interaction);
-          break;
-        case 'change-image-model':
-          await changeImageModel(interaction);
-          break;
-        case 'toggle-prompt-enhancer':
-          await togglePromptEnhancer(interaction);
-          break;
-        case 'change-image-resolution':
-          await changeImageResolution(interaction);
-          break;
-        case 'toggle-response-mode':
-          const serverResponsePreferenceEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverResponsePreference : false;
-          if (!serverResponsePreferenceEnabled) {
-            await toggleUserPreference(interaction);
-          } else {
-            const embed = new EmbedBuilder()
-              .setColor(0xFF5555)
-              .setTitle('Feature Disabled')
-              .setDescription('Toggling Response Mode is not enabled for this server, Server-Wide Response Mode is active.');
-            await interaction.reply({ embeds: [embed], ephemeral: true });
-          }
-          break;
-       case 'toggle-url-mode':
-          await toggleUrlUserPreference(interaction);
-          break;
-        case 'generate-speech':
-          await processSpeechGet(interaction);
-          break;
-        case 'generate-music':
-          await processMusicGet(interaction);
-          break;
-        case 'change-speech-model':
-          await changeSpeechModel(interaction);
-          break;
-        case 'download-conversation':
-          await downloadConversation(interaction);
-          break;
-        case 'download_message':
-          await downloadMessage(interaction);
-          break;
-        default:
-          if (interaction.customId.startsWith('select-speech-model-')) {
-            const selectedModel = interaction.customId.replace('select-speech-model-', '');
-            await handleSpeechSelectModel(interaction, selectedModel);
-          }
-      }
+    if (interaction.isCommand()) {
+      await handleCommandInteraction(interaction);
+    } else if (interaction.isButton()) {
+      await handleButtonInteraction(interaction);
     } else if (interaction.isModalSubmit()) {
       await handleModalSubmit(interaction);
+    } else if (interaction.isStringSelectMenu()) {
+      await handleSelectMenuInteraction(interaction);
     }
   } catch (error) {
-    console.error('Error handling command:', error.message);
+    console.error('Error handling interaction:', error.message);
   }
 });
 
-client.on('interactionCreate', async (interaction) => {
-  try {
-    if (!interaction.isStringSelectMenu()) return;
-    if (interaction.customId === 'select-image-model') {
-      const selectedModel = interaction.values[0];
-      await handleImageSelectModel(interaction, selectedModel);
-    } else if (interaction.customId === 'select-image-resolution') {
-      const selectedResolution = interaction.values[0];
-      await handleImageSelectResolution(interaction, selectedResolution);
-    }
-  } catch (error) {
-    console.error('Error handling select menu interaction:', error.message);
+async function handleCommandInteraction(interaction) {
+  if (!interaction.isCommand()) return;
+
+  const commandHandlers = {
+    respond_to_all: handleRespondToAllCommand,
+    whitelist: handleWhitelistCommand,
+    blacklist: handleBlacklistCommand,
+    imagine: handleImagineCommand,
+    clear_memory: handleClearMemoryCommand,
+    speech: handleSpeechCommand,
+    settings: showSettings,
+    server_settings: showDashboard,
+    music: handleMusicCommand,
+    status: handleStatusCommand
+  };
+
+  const handler = commandHandlers[interaction.commandName];
+  if (handler) {
+    await handler(interaction);
+  } else {
+    console.log(`Unknown command: ${interaction.commandName}`);
   }
-});
+}
+
+async function handleButtonInteraction(interaction) {
+  if (!interaction.isButton()) return;
+
+  if (interaction.guild) {
+    initializeBlacklistForGuild(interaction.guild.id);
+    if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Blacklisted')
+        .setDescription('You are blacklisted and cannot use this interaction.');
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+  }
+
+  const buttonHandlers = {
+    'server-chat-history': toggleServerWideChatHistory,
+    'clear-server': clearServerChatHistory,
+    'settings-save-buttons': toggleSettingSaveButton,
+    'custom-server-personality': serverPersonality,
+    'toggle-server-personality': toggleServerPersonality,
+    'download-server-conversation': downloadServerConversation,
+    'response-server-mode': toggleServerPreference,
+    'toggle-response-server-mode': toggleServerResponsePreference,
+    'settings': showSettings,
+    'clear-memory': handleClearMemoryCommand,
+    'always-respond': alwaysRespond,
+    'custom-personality': handleCustomPersonalityCommand,
+    'remove-personality': handleRemovePersonalityCommand,
+    'generate-image': handleGenerateImageButton,
+    'change-image-model': changeImageModel,
+    'toggle-prompt-enhancer': togglePromptEnhancer,
+    'change-image-resolution': changeImageResolution,
+    'toggle-response-mode': handleToggleResponseMode,
+    'toggle-url-mode': toggleUrlUserPreference,
+    'generate-speech': processSpeechGet,
+    'generate-music': processMusicGet,
+    'change-speech-model': changeSpeechModel,
+    'download-conversation': downloadConversation,
+    'download_message': downloadMessage,
+    'general-settings': handleSubButtonInteraction,
+    'image-settings': handleSubButtonInteraction,
+    'speech-settings': handleSubButtonInteraction,
+    'music-settings': handleSubButtonInteraction,
+  };
+
+  for (const [key, handler] of Object.entries(buttonHandlers)) {
+    if (interaction.customId.startsWith(key)) {
+      if (key === 'select-speech-model-') {
+        const selectedModel = interaction.customId.replace('select-speech-model-', '');
+        await handleSpeechSelectModel(interaction, selectedModel);
+      } else {
+        await handler(interaction);
+      }
+      break;
+    }
+  }
+}
+
+async function handleSelectMenuInteraction(interaction) {
+  if (!interaction.isStringSelectMenu()) return;
+
+  const selectMenuHandlers = {
+    'select-image-model': handleImageSelectModel,
+    'select-image-resolution': handleImageSelectResolution
+  };
+
+  const handler = selectMenuHandlers[interaction.customId];
+  if (handler) {
+    const selectedValue = interaction.values[0];
+    await handler(interaction, selectedValue);
+  }
+}
+
+async function handleClearMemoryCommand(interaction) {
+  const serverChatHistoryEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverChatHistory : false;
+  if (!serverChatHistoryEnabled) {
+    await clearChatHistory(interaction);
+  } else {
+    const embed = new EmbedBuilder()
+      .setColor(0xFF5555)
+      .setTitle('Feature Disabled')
+      .setDescription('Clearing chat history is not enabled for this server, Server-Wide chat history is active.');
+    await interaction.reply({ embeds: [embed] });
+  }
+}
+
+async function handleCustomPersonalityCommand(interaction) {
+  const serverCustomEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.customServerPersonality : false;
+  if (!serverCustomEnabled) {
+    await setCustomPersonality(interaction);
+  } else {
+    const embed = new EmbedBuilder()
+      .setColor(0xFF5555)
+      .setTitle('Feature Disabled')
+      .setDescription('Custom personality is not enabled for this server, Server-Wide personality is active.');
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+  }
+}
+
+async function handleRemovePersonalityCommand(interaction) {
+  const isServerEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.customServerPersonality : false;
+  if (!isServerEnabled) {
+    await removeCustomPersonality(interaction);
+  } else {
+    const embed = new EmbedBuilder()
+      .setColor(0xFF5555)
+      .setTitle('Feature Disabled')
+      .setDescription('Custom personality is not enabled for this server, Server-Wide personality is active.');
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+  }
+}
+
+async function handleToggleResponseMode(interaction) {
+  const serverResponsePreferenceEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverResponsePreference : false;
+  if (!serverResponsePreferenceEnabled) {
+    await toggleUserPreference(interaction);
+  } else {
+    const embed = new EmbedBuilder()
+      .setColor(0xFF5555)
+      .setTitle('Feature Disabled')
+      .setDescription('Toggling Response Mode is not enabled for this server, Server-Wide Response Mode is active.');
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+  }
+}
 
 // <==========>
 
@@ -2427,140 +2389,100 @@ async function toggleServerPreference(interaction) {
 }
 
 async function showSettings(interaction) {
-  if (interaction.guild) {
-    initializeBlacklistForGuild(interaction.guild.id);
-    if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
-      const embed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Blacklisted')
-        .setDescription('You are blacklisted and cannot use this interaction.');
-      
-      return interaction.reply({ embeds: [embed], ephemeral: true });
-    }
-  }
-
-  // Define button configurations in an array
-  let buttonConfigs = [
-    {
-      customId: "clear",
-      label: "Clear Memory",
-      emoji: "🧹",
-      style: ButtonStyle.Danger,
-    },
-    {
-      customId: "generate-image",
-      label: "Generate Image",
-      emoji: "🎨",
-      style: ButtonStyle.Primary,
-    },
-    {
-      customId: "change-image-model",
-      label: "Change Image Model",
-      emoji: "👨‍🎨",
-      style: ButtonStyle.Secondary,
-    },
-    {
-      customId: "toggle-prompt-enhancer",
-      label: "Toggle Prompt Enhancer",
-      emoji: "🪄",
-      style: ButtonStyle.Secondary,
-    },
-    {
-      customId: "change-image-resolution",
-      label: "Change Image Resolution",
-      emoji: "🖼️",
-      style: ButtonStyle.Secondary,
-    },
-    {
-      customId: "generate-speech",
-      label: "Generate Speech",
-      emoji: "🎤",
-      style: ButtonStyle.Primary,
-    },
-    {
-      customId: "change-speech-model",
-      label: "Change Speech Model",
-      emoji: "🔈",
-      style: ButtonStyle.Secondary,
-    },
-    {
-      customId: "generate-music",
-      label: "Generate Music",
-      emoji: "🎹",
-      style: ButtonStyle.Primary,
-    },
-    {
-      customId: "always-respond",
-      label: "Always Respond",
-      emoji: "↩️",
-      style: ButtonStyle.Secondary,
-    },
-    {
-      customId: "toggle-response-mode",
-      label: "Toggle Response Mode",
-      emoji: "📝",
-      style: ButtonStyle.Secondary,
-    },
-    {
-      customId: "toggle-url-mode",
-      label: "Toggle URL Mode",
-      emoji: "🌐",
-      style: ButtonStyle.Secondary,
-    },
-    {
-      customId: "download-conversation",
-      label: "Download Conversation",
-      emoji: "🗃️",
-      style: ButtonStyle.Secondary,
-    },
-  ];
-
-  // Conditionally add personality buttons
-  if (shouldDisplayPersonalityButtons) {
-    buttonConfigs.splice(1, 0,
-      {
-        customId: "custom-personality",
-        label: "Custom Personality",
-        emoji: "🙌",
-        style: ButtonStyle.Primary,
-      },
-      {
-        customId: "remove-personality",
-        label: "Remove Personality",
-        emoji: "🤖",
-        style: ButtonStyle.Danger,
+  try {
+    if (interaction.guild) {
+      initializeBlacklistForGuild(interaction.guild.id);
+      if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
+        const embed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('Blacklisted')
+          .setDescription('You are blacklisted and cannot use this interaction.');
+        return interaction.reply({ embeds: [embed], ephemeral: true });
       }
-    );
-  }
+    }
 
-  // Generate buttons from configurations
-  const allButtons = buttonConfigs.map((config) =>
-    new ButtonBuilder()
+    const mainButtons = [
+      { customId: 'clear-memory', label: 'Clear Memory', emoji: '🧹', style: ButtonStyle.Danger },
+      { customId: 'general-settings', label: 'General Settings', emoji: '⚙️', style: ButtonStyle.Secondary },
+      { customId: 'image-settings', label: 'Image Settings', emoji: '🖼️', style: ButtonStyle.Secondary },
+      { customId: 'speech-settings', label: 'Speech Settings', emoji: '🎤', style: ButtonStyle.Secondary },
+      { customId: 'music-settings', label: 'Music Settings', emoji: '🎵', style: ButtonStyle.Secondary },
+    ];
+
+    const mainButtonsComponents = mainButtons.map(config =>
+      new ButtonBuilder()
       .setCustomId(config.customId)
       .setLabel(config.label)
       .setEmoji(config.emoji)
       .setStyle(config.style)
-  );
-
-  // Split buttons into action rows
-  const actionRows = [];
-  while (allButtons.length > 0) {
-    actionRows.push(
-      new ActionRowBuilder().addComponents(allButtons.splice(0, 5))
     );
-  }
 
-  // Reply to the interaction
-  const embed = new EmbedBuilder()
-    .setColor(0x00FFFF)
-    .setTitle('Settings')
-    .setDescription('Please choose an option from the buttons below:');
-  
-  await interaction.reply({
-    embeds: [embed],
-    components: actionRows,
-    ephemeral: true
-  });
+    const mainActionRow = new ActionRowBuilder().addComponents(...mainButtonsComponents);
+
+    const embed = new EmbedBuilder()
+      .setColor(0x00FFFF)
+      .setTitle('Settings')
+      .setDescription('Please choose a category from the buttons below:');
+
+    await interaction.reply({ embeds: [embed], components: [mainActionRow], ephemeral: true });
+  } catch (error) {
+    console.error('Error showing settings:', error.message);
+  }
+}
+
+async function handleSubButtonInteraction(interaction) {
+  const subButtonConfigs = {
+    'general-settings': [
+      { customId: 'always-respond', label: 'Always Respond', emoji: '↩️', style: ButtonStyle.Secondary },
+      { customId: 'toggle-response-mode', label: 'Toggle Response Mode', emoji: '📝', style: ButtonStyle.Secondary },
+      { customId: 'toggle-url-mode', label: 'Toggle URL Mode', emoji: '🌐', style: ButtonStyle.Secondary },
+      { customId: 'download-conversation', label: 'Download Conversation', emoji: '🗃️', style: ButtonStyle.Secondary },
+      // Add conditionally shown buttons
+      ...(shouldDisplayPersonalityButtons ? [
+        { customId: 'custom-personality', label: 'Custom Personality', emoji: '🙌', style: ButtonStyle.Primary },
+        { customId: 'remove-personality', label: 'Remove Personality', emoji: '🤖', style: ButtonStyle.Danger },
+      ] : []),
+    ],
+    'image-settings': [
+      { customId: 'generate-image', label: 'Generate Image', emoji: '🎨', style: ButtonStyle.Primary },
+      { customId: 'change-image-model', label: 'Change Image Model', emoji: '👨‍🎨', style: ButtonStyle.Secondary },
+      { customId: 'toggle-prompt-enhancer', label: 'Toggle Prompt Enhancer', emoji: '🪄', style: ButtonStyle.Secondary },
+      { customId: 'change-image-resolution', label: 'Change Image Resolution', emoji: '🖼️', style: ButtonStyle.Secondary },
+    ],
+    'speech-settings': [
+      { customId: 'generate-speech', label: 'Generate Speech', emoji: '🎤', style: ButtonStyle.Primary },
+      { customId: 'change-speech-model', label: 'Change Speech Model', emoji: '🔈', style: ButtonStyle.Secondary },
+    ],
+    'music-settings': [
+      { customId: 'generate-music', label: 'Generate Music', emoji: '🎹', style: ButtonStyle.Primary },
+    ],
+  };
+
+  if (subButtonConfigs[interaction.customId]) {
+    const subButtons = subButtonConfigs[interaction.customId].map(config =>
+      new ButtonBuilder()
+      .setCustomId(config.customId)
+      .setLabel(config.label)
+      .setEmoji(config.emoji)
+      .setStyle(config.style)
+    );
+
+    const actionRows = [];
+    while (subButtons.length > 0) {
+      actionRows.push(new ActionRowBuilder().addComponents(subButtons.splice(0, 5)));
+    }
+
+    await interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x00FFFF)
+          .setTitle(`${interaction.customId.replace('-', ' ').toUpperCase()} Settings`)
+          .setDescription('Please choose an option from the buttons below:'),
+      ],
+      components: actionRows,
+      ephemeral: true,
+    });
+  }
 }
 
 async function showDashboard(interaction) {
