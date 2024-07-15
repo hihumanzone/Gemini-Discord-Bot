@@ -2708,8 +2708,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
     }
     if (tempResponse.trim() === "") {
       await botMessage.edit({ content: '...' });
-    }
-    if (userPreference === 'embedded') {
+    } else if (userPreference === 'embedded') {
       await updateEmbed(botMessage, tempResponse, originalMessage);
     } else {
       await botMessage.edit({ content: tempResponse, embeds: [] });
