@@ -33,7 +33,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pdf from 'pdf-parse';
-import sharp from 'sharp';
 import cheerio from 'cheerio';
 import { YoutubeTranscript } from 'youtube-transcript';
 import osu from 'node-os-utils';
