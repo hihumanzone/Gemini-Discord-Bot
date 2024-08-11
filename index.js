@@ -33,7 +33,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pdf from 'pdf-parse';
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';
 import { YoutubeTranscript } from 'youtube-transcript';
 import osu from 'node-os-utils';
 const { mem } = osu;
@@ -893,6 +893,23 @@ const appendSiteContentToText = async (text) => {
 
 async function handleImagineCommand(interaction) {
   try {
+    if (!workInDMs && interaction.channel.type === ChannelType.DM) {
+      const embed = new EmbedBuilder()
+        .setColor(hexColour)
+        .setTitle('DMs Disabled')
+        .setDescription('DM interactions are disabled for this bot.');
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    if (interaction.guild) {
+      initializeBlacklistForGuild(interaction.guild.id);
+      if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
+        const embed = new EmbedBuilder()
+          .setColor(hexColour)
+          .setTitle('Blacklisted')
+          .setDescription('You are blacklisted and cannot use this interaction.');
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+      }
+    }
     const prompt = interaction.options.getString('prompt');
     const model = interaction.options.getString('model');
     const resolution = interaction.options.getString('resolution');
@@ -906,12 +923,29 @@ async function handleImagineCommand(interaction) {
 }
 
 async function handleSpeechCommand(interaction) {
-  const embed = new EmbedBuilder()
-    .setColor(0x00FFFF)
-    .setTitle('Generating Speech')
-    .setDescription(`Generating your speech, please wait... 💽`);
-  await interaction.reply({ embeds: [embed], ephemeral: true });
   try {
+    if (!workInDMs && interaction.channel.type === ChannelType.DM) {
+      const embed = new EmbedBuilder()
+        .setColor(hexColour)
+        .setTitle('DMs Disabled')
+        .setDescription('DM interactions are disabled for this bot.');
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    if (interaction.guild) {
+      initializeBlacklistForGuild(interaction.guild.id);
+      if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
+        const embed = new EmbedBuilder()
+          .setColor(hexColour)
+          .setTitle('Blacklisted')
+          .setDescription('You are blacklisted and cannot use this interaction.');
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+      }
+    }
+    const embed = new EmbedBuilder()
+      .setColor(hexColour)
+      .setTitle('Generating Speech')
+      .setDescription(`Generating your speech, please wait... 💽`);
+    await interaction.reply({ embeds: [embed], ephemeral: true });
     const userId = interaction.user.id;
     const text = interaction.options.getString('prompt');
     const language = interaction.options.getString('language');
@@ -940,12 +974,29 @@ async function handleSpeechCommand(interaction) {
 }
 
 async function handleMusicCommand(interaction) {
-  const embed = new EmbedBuilder()
-    .setColor(0x00FFFF)
-    .setTitle('Generating Music')
-    .setDescription(`Generating your music, please wait... 🎧`);
-  await interaction.reply({ embeds: [embed], ephemeral: true });
   try {
+    if (!workInDMs && interaction.channel.type === ChannelType.DM) {
+      const embed = new EmbedBuilder()
+        .setColor(hexColour)
+        .setTitle('DMs Disabled')
+        .setDescription('DM interactions are disabled for this bot.');
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    if (interaction.guild) {
+      initializeBlacklistForGuild(interaction.guild.id);
+      if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
+        const embed = new EmbedBuilder()
+          .setColor(hexColour)
+          .setTitle('Blacklisted')
+          .setDescription('You are blacklisted and cannot use this interaction.');
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+      }
+    }
+    const embed = new EmbedBuilder()
+      .setColor(hexColour)
+      .setTitle('Generating Music')
+      .setDescription(`Generating your music, please wait... 🎧`);
+    await interaction.reply({ embeds: [embed], ephemeral: true });
     const userId = interaction.user.id;
     const text = interaction.options.getString('prompt');
     const outputUrl = await generateMusicWithPrompt(text, userId);
@@ -1312,7 +1363,7 @@ async function changeImageModel(interaction) {
   try {
     // Define model names in an array
     const models = [
-      'SD-XL', 'SD-3', 'Playground', 'Anime', 'Anime-Alt', 'Stable-Cascade', 'DallE-XL', 'PixArt-Sigma', 'Mobius', 'Kolors'/*, 'DallE-3'*/
+      'SD-XL', 'Playground', 'Anime', 'FLUX.1 [dev]', 'FLUX.1 [schnell]', 'DallE-XL', 'PixArt-Sigma', 'Kolors'/*, 'DallE-3'*/
       ];
     
     const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
@@ -1440,16 +1491,15 @@ const speechMusicModelFunctions = {
 
 const imageModelFunctions = {
   'SD-XL': generateImage,
-  'SD-3': generateImage,
   'Kolors': generateImage,
   'Playground': generateWithPlayground,
   'Anime': generateImage,
-  'Anime-Alt': generateImage,
-  'Stable-Cascade': generateImage,
   'DallE-XL': generateImage,
   'DallE-3': generateWithDalle3,
   'PixArt-Sigma': generateImage,
-  'Mobius': generateImage
+  'FLUX.1 [dev]': generateImage,
+  'FLUX.1 [schnell]': generateImage,
+  'AuraFlow 0.2': generateImage
 };
 
 async function handleImageSelectModel(interaction, model) {
@@ -2707,7 +2757,8 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
     }
     if (tempResponse.trim() === "") {
       await botMessage.edit({ content: '...' });
-    } else if (userPreference === 'embedded') {
+    }
+    if (userPreference === 'embedded') {
       await updateEmbed(botMessage, tempResponse, originalMessage);
     } else {
       await botMessage.edit({ content: tempResponse, embeds: [] });
