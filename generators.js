@@ -6,6 +6,7 @@ import fs from 'fs';
 const config = JSON.parse(fs.readFileSync('config.json', 'utf-8'));
 const { bannerMusicGen, nevPrompt } = config;
 
+
 function getEventId() {
   const bytes = new Uint8Array(16);
   for (let i = 0; i < 16; i++) {
@@ -255,13 +256,6 @@ async function generateWithPlayground(prompt, resolution) {
 }
 
 const modelsData = {
-  "Stable-Cascade": {
-    url: "https://multimodalart-stable-cascade.hf.space",
-    fnIndex: 3,
-    triggerId: 6,
-    useSize: false,
-    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, randomDigit, width, height, 30, 4, 12, 0, 1]
-  },
   "DallE-XL": {
     url: "https://ehristoforu-dalle-3-xl-lora-v2.hf.space",
     fnIndex: 3,
@@ -276,37 +270,16 @@ const modelsData = {
     useSize: true,
     dataPattern: (prompt, randomDigit, size) => [prompt, nevPrompt, randomDigit, 1024, 1024, 7, 35, "DPM++ SDE Karras", size, "(None)", "Standard v3.1", false, 0.55, 1.5, true]
   },
-  "Anime-Alt": {
-    url: "https://linaqruf-kivotos-xl-2-0.hf.space",
-    fnIndex: 6,
-    triggerId: 41,
-    useSize: true,
-    dataPattern: (prompt, randomDigit, size) => [prompt, nevPrompt, randomDigit, 1024, 1024, 7, 35, "DPM++ 2M SDE Karras", size, false, 0.55, 1.5, true]
-  },
   "SD-XL": {
-    url: "https://typegpt-image-gen-pro.hf.space",
-    fnIndex: 3,
-    triggerId: 10,
+    url: "https://kingnish-sdxl-flash.hf.space",
+    fnIndex: 2,
+    triggerId: 5,
     useSize: false,
-    dataPattern: (prompt, randomDigit, width, height) => ["Image Generation", null, prompt, 35, "Randomize Seed", randomDigit, 7.3, 1.7, width, height, "BEST"]
+    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, true, randomDigit, width, height, 3, 12, true, 1]
   },
   "PixArt-Sigma": {
-    url: "https://pixart-alpha-pixart-sigma.hf.space",
-    fnIndex: 3,
-    triggerId: 7,
-    useSize: false,
-    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, "(No style)", true, 1, randomDigit, width, height, "SA-Solver", 4.5, 3, 14, 35, true]
-  },
-  "Mobius": {
-    url: "https://corcelio-mobius.hf.space",
-    fnIndex: 3,
-    triggerId: 6,
-    useSize: false,
-    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, true, randomDigit, width, height, 3.5, true]
-  },
-  "SD-3": {
-    url: "https://stabilityai-stable-diffusion-3-medium.hf.space",
-    fnIndex: 1,
+    url: "https://dataautogpt3-pixart-sigma-900m.hf.space",
+    fnIndex: 2,
     triggerId: 5,
     useSize: false,
     dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, randomDigit, true, width, height, 5, 35]
@@ -316,7 +289,21 @@ const modelsData = {
     fnIndex: 0,
     triggerId: 23,
     useSize: false,
-    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, width, height, 35, 5, 1, true, randomDigit]
+    dataPattern: (prompt, randomDigit, width, height) => [prompt, nevPrompt, height, width, 35, 5, 1, true, randomDigit]
+  },
+  "FLUX.1 [dev]": {
+    url: "https://black-forest-labs-flux-1-dev.hf.space",
+    fnIndex: 2,
+    triggerId: 5,
+    useSize: false,
+    dataPattern: (prompt, randomDigit, width, height) => [prompt, randomDigit, true, width, height, 4, 35]
+  },
+  "FLUX.1 [schnell]": {
+    url: "https://multimodalart-flux-1-merged.hf.space",
+    fnIndex: 2,
+    triggerId: 5,
+    useSize: false,
+    dataPattern: (prompt, randomDigit, width, height) => [prompt, randomDigit, true, width, height, 3.5, 16]
   }
 };
 
