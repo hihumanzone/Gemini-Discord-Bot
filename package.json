@@ -9,7 +9,6 @@
     "eventsource": "*",
     "fs": "*",
     "node-fetch": "*",
-    "sharp": "*",
     "pdf-parse": "*",
     "youtube-transcript": "*",
     "node-os-utils": "*",
