@@ -942,7 +942,7 @@ async function handleSpeechCommand(interaction) {
       }
     }
     const embed = new EmbedBuilder()
-      .setColor(hexColour)
+      .setColor(0x00FFFF)
       .setTitle('Generating Speech')
       .setDescription(`Generating your speech, please wait... 💽`);
     await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -993,7 +993,7 @@ async function handleMusicCommand(interaction) {
       }
     }
     const embed = new EmbedBuilder()
-      .setColor(hexColour)
+      .setColor(0x00FFFF)
       .setTitle('Generating Music')
       .setDescription(`Generating your music, please wait... 🎧`);
     await interaction.reply({ embeds: [embed], ephemeral: true });
