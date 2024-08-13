@@ -195,7 +195,9 @@ import {
   musicGen,
   generateWithPlayground,
   generateImage,
-  generateWithDalle3
+  generateWithDalle3,
+  imgModels,
+  imageModelFunctions
 } from './generators.js';
 
 // <==========>
@@ -204,23 +206,13 @@ import {
 
 // <=====[Register Commands And Activities]=====>
 
+import { commands } from './commands.js';
+
 let activityIndex = 0;
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
 
-  // Load commands from commands.json
-  const commandsPath = path.join(__dirname, 'commands.json');
-  let commands = [];
-  if (fs.existsSync(commandsPath)) {
-    const commandsData = fs.readFileSync(commandsPath, 'utf-8');
-    commands = JSON.parse(commandsData).commands;
-  } else {
-    console.error('commands.json file not found.');
-    return;
-  }
-
   const rest = new REST({ version: '10' }).setToken(token);
-
   try {
     console.log('Started refreshing application (/) commands.');
 
@@ -1361,11 +1353,6 @@ async function handleModalSubmit(interaction) {
 
 async function changeImageModel(interaction) {
   try {
-    // Define model names in an array
-    const models = [
-      'SD-XL', 'Playground', 'Anime', 'FLUX.1 [dev]', 'FLUX.1 [schnell]', 'DallE-XL', 'PixArt-Sigma', 'Kolors'/*, 'DallE-3'*/
-      ];
-    
     const selectedModel = userPreferredImageModel[interaction.user.id] || defaultImgModel;
 
     // Create a select menu
@@ -1376,7 +1363,7 @@ async function changeImageModel(interaction) {
       .setMaxValues(1);
 
     // Add options to select menu
-    models.forEach((model) => {
+    imgModels.forEach((model) => {
       selectMenu.addOptions([
         {
           label: model,
@@ -1487,19 +1474,6 @@ async function changeSpeechModel(interaction) {
 const speechMusicModelFunctions = {
   '1': speechGen,
   'MusicGen': musicGen
-};
-
-const imageModelFunctions = {
-  'SD-XL': generateImage,
-  'Kolors': generateImage,
-  'Playground': generateWithPlayground,
-  'Anime': generateImage,
-  'DallE-XL': generateImage,
-  'DallE-3': generateWithDalle3,
-  'PixArt-Sigma': generateImage,
-  'FLUX.1 [dev]': generateImage,
-  'FLUX.1 [schnell]': generateImage,
-  'AuraFlow 0.2': generateImage
 };
 
 async function handleImageSelectModel(interaction, model) {
