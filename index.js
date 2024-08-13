@@ -176,6 +176,38 @@ loadStateFromFile();
 
 // <=====[Configuration]=====>
 
+const MODEL = "gemini-1.5-flash-latest";
+
+/*
+`BLOCK_NONE`  -  Always show regardless of probability of unsafe content
+`BLOCK_ONLY_HIGH`  -  Block when high probability of unsafe content
+`BLOCK_MEDIUM_AND_ABOVE`  -  Block when medium or high probability of unsafe content
+`BLOCK_LOW_AND_ABOVE`  -  Block when low, medium or high probability of unsafe content
+`HARM_BLOCK_THRESHOLD_UNSPECIFIED`  -  Threshold is unspecified, block using default threshold
+*/
+const safetySettings = [
+  {
+    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+];
+
+const generationConfig = {
+  temperature: 1.0
+};
+
 const defaultResponseFormat = config.defaultResponseFormat;
 const defaultImgModel = config.defaultImgModel;
 const hexColour = config.hexColour;
@@ -563,8 +595,8 @@ async function handleTextMessage(message) {
   const finalInstructions = isServerChatHistoryEnabled ? instructions + infoStr : instructions;
 
   const model = await genAI.getGenerativeModel({
-    model: "gemini-1.5-flash-latest",
-    systemInstruction: { role: "system", parts: [{ text: finalInstructions || defaultPersonality }] }
+    model: MODEL,
+    systemInstruction: { role: "system", parts: [{ text: finalInstructions || defaultPersonality }], generationConfig }
   });
 
   const chat = model.startChat({
@@ -2654,8 +2686,6 @@ function getUrlUserPreference(userId) {
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-
-const safetySettings = [{ category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE, }, { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE, }, { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE, }, { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE, }, ];
 
 // <==========>
 
