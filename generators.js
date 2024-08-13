@@ -401,10 +401,24 @@ async function generateWithDalle3(prompt) {
   }
 }
 
+const imgModels = [
+  ...Object.keys(modelsData),
+  'Playground',
+  'DallE-3'
+];
+
+const imageModelFunctions = {
+  ...Object.fromEntries(Object.keys(modelsData).map(model => [model, generateImage])),
+  'Playground': generateWithPlayground,
+  'DallE-3': generateWithDalle3
+};
+
 export {
   speechGen,
   musicGen,
   generateWithPlayground,
   generateImage,
-  generateWithDalle3
+  generateWithDalle3,
+  imgModels,
+  imageModelFunctions
 };
