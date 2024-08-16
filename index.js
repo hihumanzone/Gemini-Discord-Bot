@@ -596,7 +596,7 @@ async function handleTextMessage(message) {
 
   const model = await genAI.getGenerativeModel({
     model: MODEL,
-    systemInstruction: { role: "system", parts: [{ text: finalInstructions || defaultPersonality }], generationConfig }
+    systemInstruction: { role: "system", parts: [{ text: finalInstructions || defaultPersonality }] }, generationConfig
   });
 
   const chat = model.startChat({
