@@ -1,5 +1,6 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { YoutubeTranscript } from 'youtube-transcript';
 
 const function_declarations = [
   {
@@ -29,6 +30,20 @@ const function_declarations = [
       },
       required: ["url"]
     }
+  },
+  {
+    name: "get_youtube_transcript",
+    parameters: {
+      type: "object",
+      description: "Returns the transcript of a specified YouTube video. Use this to learn about the content of YouTube videos.",
+      properties: {
+        url: {
+          type: "string",
+          description: "URL of the YouTube video to retrieve the transcript from."
+        }
+      },
+      required: ["url"]
+    }
   }
 ];
 
@@ -41,7 +56,7 @@ async function webSearch(args, name) {
         functionResponse: {
           name: name,
           response: {
-            name: name,
+            query: query,
             content: result
           }
         }
@@ -56,7 +71,7 @@ async function webSearch(args, name) {
         functionResponse: {
           name: name,
           response: {
-            name: name,
+            query: query,
             content: errorMessage
           }
         }
@@ -75,7 +90,7 @@ async function searchWebpage(args, name) {
         functionResponse: {
           name: name,
           response: {
-            name: name,
+            url: url,
             content: result
           }
         }
@@ -90,7 +105,7 @@ async function searchWebpage(args, name) {
         functionResponse: {
           name: name,
           response: {
-            name: name,
+            url: url,
             content: errorMessage
           }
         }
@@ -164,10 +179,45 @@ async function performSearch(query) {
   return JSON.stringify(resultObject.reduce((acc, curr) => Object.assign(acc, curr), note), null, 2);
 }
 
+async function getYoutubeTranscript(args, name) {
+  const url = args.url;
+  try {
+    const transcript = await YoutubeTranscript.fetchTranscript(url);
+    const function_call_result_message = [
+      {
+        functionResponse: {
+          name: name,
+          response: {
+            url: url,
+            content: transcript
+          }
+        }
+      }
+    ];
+    return function_call_result_message;
+  } catch (error) {
+    const errorMessage = `Error fetching the transcript: ${error}`
+    console.error(errorMessage);
+    const function_call_result_message = [
+      {
+        functionResponse: {
+          name: name,
+          response: {
+            url: url,
+            content: errorMessage
+          }
+        }
+      }
+    ];
+    return function_call_result_message;
+  }
+}
+
 async function manageToolCall(toolCall) {
   const tool_calls_to_function = {
     "web_search": webSearch,
-    "search_webpage": searchWebpage
+    "search_webpage": searchWebpage,
+    "get_youtube_transcript": getYoutubeTranscript
   }
   const functionName = toolCall.name;
   const func = tool_calls_to_function[functionName];
