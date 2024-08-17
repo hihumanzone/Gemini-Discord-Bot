@@ -1,6 +1,5 @@
 import dotenv from 'dotenv';
 dotenv.config();
-import fetch from 'node-fetch';
 import {
   Client,
   GatewayIntentBits,
@@ -32,7 +31,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import pdf from 'pdf-parse';
 import * as cheerio from 'cheerio';
-import { YoutubeTranscript } from 'youtube-transcript';
 import osu from 'node-os-utils';
 const { mem } = osu;
 const { cpu } = osu;
@@ -64,7 +62,6 @@ let userPreferredImageModel = {};
 let userPreferredImageResolution = {};
 let userPreferredImagePromptEnhancement = {};
 let userPreferredSpeechModel = {};
-let userPreferredUrlHandle = {};
 let userResponsePreference = {};
 let alwaysRespondChannels = {};
 let blacklistedUsers = {};
@@ -83,7 +80,6 @@ const FILE_PATHS = {
   userPreferredImageResolution: path.join(CONFIG_DIR, 'user_preferred_image_resolution.json'),
   userPreferredImagePromptEnhancement: path.join(CONFIG_DIR, 'user_preferred_image_prompt_enhancement.json'),
   userPreferredSpeechModel: path.join(CONFIG_DIR, 'user_preferred_speech_model.json'),
-  userPreferredUrlHandle: path.join(CONFIG_DIR, 'user_preferred_url_handle.json'),
   userResponsePreference: path.join(CONFIG_DIR, 'user_response_preference.json'),
   alwaysRespondChannels: path.join(CONFIG_DIR, 'always_respond_channels.json'),
   blacklistedUsers: path.join(CONFIG_DIR, 'blacklisted_users.json')
@@ -209,7 +205,6 @@ const generationConfig = {
 const defaultResponseFormat = config.defaultResponseFormat;
 const defaultImgModel = config.defaultImgModel;
 const hexColour = config.hexColour;
-const defaultUrlReading = config.defaultUrlReading;
 const activities = config.activities.map(activity => ({
   name: activity.name,
   type: ActivityType[activity.type]
@@ -408,7 +403,6 @@ async function handleButtonInteraction(interaction) {
     'toggle-prompt-enhancer': togglePromptEnhancer,
     'change-image-resolution': changeImageResolution,
     'toggle-response-mode': handleToggleResponseMode,
-    'toggle-url-mode': toggleUrlUserPreference,
     'generate-speech': processSpeechGet,
     'generate-music': processMusicGet,
     'change-speech-model': changeSpeechModel,
@@ -490,7 +484,7 @@ async function handleRemovePersonalityCommand(interaction) {
 async function handleToggleResponseMode(interaction) {
   const serverResponsePreferenceEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverResponsePreference : false;
   if (!serverResponsePreferenceEnabled) {
-    await toggleUserPreference(interaction);
+    await toggleUserResponsePreference(interaction);
   } else {
     const embed = new EmbedBuilder()
       .setColor(0xFF5555)
@@ -536,37 +530,24 @@ async function handleTextMessage(message) {
   let parts;
   if (SEND_RETRY_ERRORS_TO_DISCORD) {
     clearInterval(typingInterval);
-    const updateEmbedDescription = (urlHandlingStatus, textAttachmentStatus, imageAttachmentStatus, finalText) => {
-      return `Let me think...\n\n- ${urlHandlingStatus}: Url Handling\n- ${textAttachmentStatus}: Text Attachment Check\n- ${imageAttachmentStatus}: Media Attachment Check\n${finalText || ''}`;
+    const updateEmbedDescription = (textAttachmentStatus, imageAttachmentStatus, finalText) => {
+      return `Let me think...\n\n- ${textAttachmentStatus}: Text Attachment Check\n- ${imageAttachmentStatus}: Media Attachment Check\n${finalText || ''}`;
     };
 
     const embed = new EmbedBuilder()
       .setColor(0x00FFFF)
       .setTitle('Processing')
-      .setDescription(updateEmbedDescription('[🔁]', '[🔁]', '[🔁]'));
+      .setDescription(updateEmbedDescription('[🔁]', '[🔁]'));
     botMessage = await message.reply({ embeds: [embed] });
 
-    let urlHandlingStatus = '[🔁]';
-    if (getUrlUserPreference(userId) === "ON") {
-      messageContent = await appendSiteContentToText(messageContent);
-      urlHandlingStatus = '[☑️]';
-    } else {
-      urlHandlingStatus = '[🚫]';
-    }
-    embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[🔁]', '[🔁]'));
-    await botMessage.edit({ embeds: [embed] });
-
     messageContent = await extractFileText(message, messageContent);
-    embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '[🔁]'));
+    embed.setDescription(updateEmbedDescription('[☑️]', '[🔁]'));
     await botMessage.edit({ embeds: [embed] });
 
     parts = await processPromptAndMediaAttachments(messageContent, message);
-    embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '[☑️]', '### All checks done. Waiting for the response...'));
+    embed.setDescription(updateEmbedDescription('[☑️]', '[☑️]', '### All checks done. Waiting for the response...'));
     await botMessage.edit({ embeds: [embed] });
   } else {
-    if (getUrlUserPreference(userId) === "ON") {
-      messageContent = await appendSiteContentToText(messageContent);
-    }
     messageContent = await extractFileText(message, messageContent);
     parts = await processPromptAndMediaAttachments(messageContent, message);
   }
@@ -745,169 +726,6 @@ async function downloadAndReadFile(url, fileType) {
       return await response.text();
   }
 }
-
-async function scrapeWebpageContent(url) {
-  try {
-    const timeoutPromise = new Promise((resolve, reject) => {
-      setTimeout(() => reject(new Error("Timeout")), 5000);
-    });
-    const response = await Promise.race([
-      fetch(url),
-      timeoutPromise
-    ]);
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    $('script, style').remove();
-    let bodyText = $('body').text();
-    bodyText = bodyText.replace(/<[^>]*>?/gm, '');
-    return bodyText.trim();
-  } catch (error) {
-    console.error('Error:', error);
-    if (error.message === 'Timeout') {
-      return "ERROR: The website is not responding..";
-    } else {
-      throw new Error('Could not scrape content from webpage');
-    }
-  }
-}
-
-// Function to extract all URLs from the text
-function extractURLs(text) {
-  const urlPattern = /https?:\/\/[^\s]+/g;
-  return text.match(urlPattern) || [];
-}
-
-// Function to extract YouTube video IDs from URLs
-function extractYouTubeIDs(urls) {
-  const videoIDs = [];
-  const regexPatterns = [
-    /https:\/\/youtu\.be\/(\w+)/g, // Short-link pattern
-    /https:\/\/www\.youtube\.com\/watch\?v=([\w-]+)/g, // Standard YouTube link
-    /https:\/\/m\.youtube\.com\/watch\?v=([\w-]+)/g // Mobile YouTube link
-  ];
-
-  urls.forEach(url => {
-    regexPatterns.forEach(pattern => {
-      const match = pattern.exec(url);
-      if (match) {
-        videoIDs.push(match[1]);
-      }
-    });
-  });
-
-  return videoIDs;
-}
-
-// Function to extract non-YouTube URLs
-function extractNonYouTubeURLs(urls) {
-  const nonYouTubeURLs = [];
-  const youtubePatterns = [
-    /https:\/\/youtu\.be\/(\w+)/,
-    /https:\/\/www\.youtube\.com\/watch\?v=([\w-]+)/,
-    /https:\/\/m\.youtube\.com\/watch\?v=([\w-]+)/
-  ];
-
-  urls.forEach(url => {
-    if (!youtubePatterns.some(pattern => pattern.test(url))) {
-      nonYouTubeURLs.push(url);
-    }
-  });
-
-  return nonYouTubeURLs;
-}
-
-// Function to fetch YouTube transcripts and append to text
-async function fetchAndAppendYouTubeTranscripts(text, videoIDs) {
-  let modifiedText = text;
-  const transcriptsPromise = videoIDs.map((id, index) => {
-    const commonUrlPrefix = `https://youtu.be/${id}`;
-    modifiedText = modifiedText.replace(
-      new RegExp(`(${commonUrlPrefix})`, 'g'),
-      `[Reference Number ${index + 1}]($1)`
-    );
-
-    return YoutubeTranscript.fetchTranscript(id)
-      .then(transcript => {
-        const transcriptText = transcript.map(entry => entry.text).join(' ');
-        return {
-          index: index + 1,
-          text: transcriptText,
-          url: commonUrlPrefix,
-        };
-      })
-      .catch(error => {
-        console.error(`Error fetching transcript for video ID ${id}:`, error);
-        return {
-          index: index + 1,
-          text: "Error: The transcript is not available for this video.",
-          url: commonUrlPrefix,
-        };
-      });
-  });
-
-  try {
-    const transcripts = await Promise.all(transcriptsPromise);
-    transcripts.forEach(transcript => {
-      if (transcript) {
-        modifiedText += `\n\n[Transcript Of Video Number [${transcript.index}](${transcript.url})]:\n${transcript.text}`;
-      }
-    });
-
-    return modifiedText;
-  } catch (error) {
-    console.error("An error occurred while appending transcripts to the text", error);
-    return modifiedText;
-  }
-}
-
-// Function to fetch content from non-YouTube URLs and append to text
-async function fetchAndAppendWebpageContent(text, nonYouTubeURLs) {
-  let modifiedText = text;
-  const contentPromises = nonYouTubeURLs.map(async (url, index) => {
-    try {
-      const webpageContent = await scrapeWebpageContent(url);
-      modifiedText = modifiedText.replace(
-        new RegExp(`(${url})`, 'g'),
-        `[Reference Number ${index + 1}]($1)`
-      );
-      return `\n\n[Text Inside The Website [${index + 1}](${url})]:\n"${webpageContent}"`;
-    } catch (error) {
-      console.error(`Error fetching content for URL ${url}:`, error);
-      return `\n\n[Text Inside The Website [${index + 1}](${url})]:\n"Error: Unable to fetch content."`;
-    }
-  });
-
-  try {
-    const contents = await Promise.all(contentPromises);
-    contents.forEach(content => {
-      modifiedText += content;
-    });
-
-    return modifiedText;
-  } catch (error) {
-    console.error("An error occurred while appending webpage content to the text", error);
-    return modifiedText;
-  }
-}
-
-// Main function to append site content to text
-const appendSiteContentToText = async (text) => {
-  const urls = extractURLs(text);
-  const videoIDs = extractYouTubeIDs(urls);
-  const nonYouTubeURLs = extractNonYouTubeURLs(urls);
-
-  let modifiedText = text;
-
-  if (videoIDs.length > 0) {
-    modifiedText = await fetchAndAppendYouTubeTranscripts(modifiedText, videoIDs);
-  }
-
-  if (nonYouTubeURLs.length > 0) {
-    modifiedText = await fetchAndAppendWebpageContent(modifiedText, nonYouTubeURLs);
-  }
-
-  return modifiedText;
-};
 
 // <==========>
 
@@ -2152,22 +1970,11 @@ async function removeCustomPersonality(interaction) {
   }
 }
 
-async function toggleUrlUserPreference(interaction) {
-  try {
-    const userId = interaction.user.id;
-    const currentPreference = getUrlUserPreference(userId);
-    userPreferredUrlHandle[userId] = currentPreference === 'OFF' ? 'ON' : 'OFF';
-    await handleSubButtonInteraction(interaction, true);
-  } catch (error) {
-    console.log(error.message);
-  }
-}
-
 // Function to toggle user preference
-async function toggleUserPreference(interaction) {
+async function toggleUserResponsePreference(interaction) {
   try {
     const userId = interaction.user.id;
-    const currentPreference = getUserPreference(userId);
+    const currentPreference = getUserResponsePreference(userId);
     userResponsePreference[userId] = currentPreference === 'normal' ? 'embedded' : 'normal';
     await handleSubButtonInteraction(interaction, true);
   } catch (error) {
@@ -2478,13 +2285,11 @@ async function handleSubButtonInteraction(interaction, update = false) {
   if (!activeUsersInChannels[channelId]) {
     activeUsersInChannels[channelId] = {};
   }
-  const responseMode = getUserPreference(userId);
-  const urlMode = getUrlUserPreference(userId);
+  const responseMode = getUserResponsePreference(userId);
   const subButtonConfigs = {
     'general-settings': [
       { customId: 'always-respond', label: `Always Respond: ${activeUsersInChannels[channelId][userId] ? 'ON' : 'OFF'}`, emoji: '↩️', style: ButtonStyle.Secondary },
       { customId: 'toggle-response-mode', label: `Toggle Response Mode: ${responseMode}`, emoji: '📝', style: ButtonStyle.Secondary },
-      { customId: 'toggle-url-mode', label: `Toggle URL Mode: ${urlMode}`, emoji: '🌐', style: ButtonStyle.Secondary },
       { customId: 'download-conversation', label: 'Download Conversation', emoji: '🗃️', style: ButtonStyle.Secondary },
       ...(shouldDisplayPersonalityButtons ? [
         { customId: 'custom-personality', label: 'Custom Personality', emoji: '🙌', style: ButtonStyle.Primary },
@@ -2675,12 +2480,8 @@ async function addSettingsButton(botMessage) {
 }
 
 // Function to get user preference
-function getUserPreference(userId) {
+function getUserResponsePreference(userId) {
   return userResponsePreference[userId] || defaultResponseFormat;
-}
-
-function getUrlUserPreference(userId) {
-  return userPreferredUrlHandle[userId] || defaultUrlReading;
 }
 
 function delay(ms) {
@@ -2695,8 +2496,8 @@ function delay(ms) {
 
 async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval) {
   const userId = originalMessage.author.id;
-  const userPreference = originalMessage.guild && serverSettings[originalMessage.guild.id]?.serverResponsePreference ? serverSettings[originalMessage.guild.id].responseStyle : getUserPreference(userId);
-  const maxCharacterLimit = userPreference === 'embedded' ? 3900 : 1900;
+  const userResponsePreference = originalMessage.guild && serverSettings[originalMessage.guild.id]?.serverResponsePreference ? serverSettings[originalMessage.guild.id].responseStyle : getUserResponsePreference(userId);
+  const maxCharacterLimit = userResponsePreference === 'embedded' ? 3900 : 1900;
   let attempts = 3;
   const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
 
@@ -2763,7 +2564,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
     }
     if (tempResponse.trim() === "") {
       await botMessage.edit({ content: '...' });
-    } else if (userPreference === 'embedded') {
+    } else if (userResponsePreference === 'embedded') {
       await updateEmbed(botMessage, tempResponse, originalMessage, functionCallsString);
     } else {
       await botMessage.edit({ content: tempResponse, embeds: [] });
