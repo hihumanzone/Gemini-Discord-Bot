@@ -2,7 +2,6 @@
   "defaultResponseFormat": "embedded",
   "hexColour": "#505050",
   "defaultImgModel": "SD-XL",
-  "defaultUrlReading": "ON",
   "workInDMs": true,
   "shouldDisplayPersonalityButtons": true,
   "SEND_RETRY_ERRORS_TO_DISCORD": false,
