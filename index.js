@@ -12,8 +12,6 @@ import {
   TextInputBuilder,
   TextInputStyle,
   ModalBuilder,
-  ModalSubmitInteraction,
-  SlashCommandBuilder,
   PermissionsBitField,
   EmbedBuilder,
   AttachmentBuilder,
@@ -231,6 +229,8 @@ import {
   imgModels,
   imageModelFunctions
 } from './generators.js';
+
+import { function_declarations, manageToolCall, processFunctionCallsNames } from './function_calling.js';
 
 // <==========>
 
@@ -545,7 +545,7 @@ async function handleTextMessage(message) {
       .setTitle('Processing')
       .setDescription(updateEmbedDescription('[🔁]', '[🔁]', '[🔁]'));
     botMessage = await message.reply({ embeds: [embed] });
-    
+
     let urlHandlingStatus = '[🔁]';
     if (getUrlUserPreference(userId) === "ON") {
       messageContent = await appendSiteContentToText(messageContent);
@@ -555,11 +555,11 @@ async function handleTextMessage(message) {
     }
     embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[🔁]', '[🔁]'));
     await botMessage.edit({ embeds: [embed] });
-    
+
     messageContent = await extractFileText(message, messageContent);
     embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '[🔁]'));
     await botMessage.edit({ embeds: [embed] });
-    
+
     parts = await processPromptAndMediaAttachments(messageContent, message);
     embed.setDescription(updateEmbedDescription(urlHandlingStatus, '[☑️]', '[☑️]', '### All checks done. Waiting for the response...'));
     await botMessage.edit({ embeds: [embed] });
@@ -596,7 +596,7 @@ async function handleTextMessage(message) {
 
   const model = await genAI.getGenerativeModel({
     model: MODEL,
-    systemInstruction: { role: "system", parts: [{ text: finalInstructions || defaultPersonality }] }, generationConfig
+    systemInstruction: { role: "system", parts: [{ text: finalInstructions || defaultPersonality }] }, generationConfig, tools: { functionDeclarations: function_declarations }
   });
 
   const chat = model.startChat({
@@ -1240,7 +1240,7 @@ async function generateAndSendImage(prompt, interaction) {
     const isGuild = interaction.guild !== null;
     const imageExtension = path.extname(imageUrl) || '.png';
     const attachment = new AttachmentBuilder(imageUrl, { name: `generated-image${imageExtension}` });
-    
+
     const embed = new EmbedBuilder()
       .setColor(hexColour)
       .setAuthor({ name: `To ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL() })
@@ -1413,7 +1413,7 @@ async function changeImageModel(interaction) {
       .setColor(0xFFFFFF)
       .setTitle('Select Image Generation Model')
       .setDescription('Select the model you want to use for image generation.');
-    
+
     await interaction.reply({
       embeds: [embed],
       components: [actionRow],
@@ -1435,7 +1435,7 @@ async function changeImageResolution(interaction) {
     } else {
       supportedResolution = ['Square'];
     }
-    
+
     const selectedResolution = userPreferredImageResolution[userId] || 'Square';
 
     // Create a select menu
@@ -1462,7 +1462,7 @@ async function changeImageResolution(interaction) {
       .setColor(0xFFFFFF)
       .setTitle('Select Image Generation Resolution')
       .setDescription('Select the resolution you want to use for image generation.');
-    
+
     await interaction.reply({
       embeds: [embed],
       components: [actionRow],
@@ -1495,7 +1495,7 @@ async function changeSpeechModel(interaction) {
     .setColor(0xFFFFFF)
     .setTitle('Select Speech Generation Model')
     .setDescription('Choose the model you want to use for speech generation.');
-  
+
   await interaction.reply({
     embeds: [embed],
     components: actionRows,
@@ -1516,7 +1516,7 @@ async function handleImageSelectModel(interaction, model) {
       .setColor(0x00FF00)
       .setTitle('Model Selected')
       .setDescription(`Image Generation Model Selected: \`${model}\``);
-    
+
     await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.log(error.message);
@@ -1531,7 +1531,7 @@ async function handleImageSelectResolution(interaction, resolution) {
       .setColor(0x00FF00)
       .setTitle('Resolution Selected')
       .setDescription(`Image Generation Resolution Selected: \`${resolution}\``);
-    
+
     await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.log(error.message);
@@ -1546,7 +1546,7 @@ async function handleSpeechSelectModel(interaction, model) {
       .setColor(0x00FF00)
       .setTitle('Model Selected')
       .setDescription(`Speech Generation Model Selected: \`${model}\``);
-    
+
     await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch(error) {
     console.log(error.message);
@@ -1565,7 +1565,7 @@ async function togglePromptEnhancer(interaction) {
       .setColor(0x00FF00)
       .setTitle('Prompt Enhancer Status')
       .setDescription(`Prompt Enhancer is now \`${newState}\`.`);
-    
+
     await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.error(`Error toggling Prompt Enhancer: ${error.message}`);
@@ -2145,7 +2145,7 @@ async function removeCustomPersonality(interaction) {
       .setColor(0x00FF00)
       .setTitle('Removed')
       .setDescription('Custom personality instructions removed!');
-    
+
     await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.log(error.message);
@@ -2420,7 +2420,7 @@ async function toggleServerPreference(interaction) {
       .setColor(0x00FF00)
       .setTitle('Server Response Style Updated')
       .setDescription(`Server response style updated to: ${serverSettings[guildId].responseStyle}`);
-    
+
     await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     console.log(error.message);
@@ -2698,9 +2698,11 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
   const userPreference = originalMessage.guild && serverSettings[originalMessage.guild.id]?.serverResponsePreference ? serverSettings[originalMessage.guild.id].responseStyle : getUserPreference(userId);
   const maxCharacterLimit = userPreference === 'embedded' ? 3900 : 1900;
   let attempts = 3;
+  const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
 
   let updateTimeout;
   let tempResponse = '';
+  let functionCallsString = '';
 
   const row = new ActionRowBuilder()
     .addComponents(
@@ -2732,7 +2734,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
             .setColor(0xFFA500)
             .setTitle('Response Stopped')
             .setDescription('Response generation stopped by the user.');
-          
+
           await interaction.reply({ embeds: [embed], ephemeral: true });
         } catch (error) {
           console.error('Error sending reply:', error);
@@ -2744,7 +2746,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
             .setColor(0xFF0000)
             .setTitle('Access Denied')
             .setDescription("It's not for you.");
-          
+
           await interaction.reply({ embeds: [embed], ephemeral: true });
         } catch (error) {
           console.error('Error sending unauthorized reply:', error);
@@ -2762,7 +2764,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
     if (tempResponse.trim() === "") {
       await botMessage.edit({ content: '...' });
     } else if (userPreference === 'embedded') {
-      await updateEmbed(botMessage, tempResponse, originalMessage);
+      await updateEmbed(botMessage, tempResponse, originalMessage, functionCallsString);
     } else {
       await botMessage.edit({ content: tempResponse, embeds: [] });
     }
@@ -2772,31 +2774,57 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
 
   while (attempts > 0 && !stopGeneration) {
     try {
-      const messageResult = await chat.sendMessageStream(parts);
       let finalResponse = '';
       let isLargeResponse = false;
+      const newHistory = [];
+      newHistory.push({ role: 'user', content: parts });
+      async function getResponse(parts) {
+        const messageResult = await chat.sendMessageStream(parts);
+        for await (const chunk of messageResult.stream) {
+          if (stopGeneration) break;
 
-      for await (const chunk of messageResult.stream) {
-        if (stopGeneration) break;
+          const chunkText = await chunk.text();
+          finalResponse += chunkText;
+          tempResponse += chunkText;
 
-        const chunkText = await chunk.text();
-        finalResponse += chunkText;
-        tempResponse += chunkText;
-
-        if (finalResponse.length > maxCharacterLimit) {
-          if (!isLargeResponse) {
-            isLargeResponse = true;
-            const embed = new EmbedBuilder()
-              .setColor(0xFFFF00)
-              .setTitle('Response Overflow')
-              .setDescription('The response got too large, will be sent as a text file once it is completed.');
-            
-            await botMessage.edit({ embeds: [embed] });
+          const toolCalls = chunk.functionCalls();
+          if (toolCalls) {
+            function convertArrayFormat(inputArray) {
+              return inputArray.map(item => ({
+                functionCall: {
+                  name: item.name,
+                  args: item.args
+                }
+              }));
+            }
+            const modelParts = convertArrayFormat(toolCalls);
+            newHistory.push({ role: 'model', content: modelParts });
+            const toolCallsResults = [];
+            for (const toolCall of toolCalls) {
+              const result = await manageToolCall(toolCall);
+              toolCallsResults.push(result);
+            }
+            newHistory.push({ role: 'user', content: toolCallsResults });
+            functionCallsString = functionCallsString.trim() + '\n' + `- ${processFunctionCallsNames(toolCalls)}`;
+            return await getResponse(toolCallsResults);
           }
-        } else if (!updateTimeout) {
-          updateTimeout = setTimeout(updateMessage, 500);
+
+          if (finalResponse.length > maxCharacterLimit) {
+            if (!isLargeResponse) {
+              isLargeResponse = true;
+              const embed = new EmbedBuilder()
+                .setColor(0xFFFF00)
+                .setTitle('Response Overflow')
+                .setDescription('The response got too large, will be sent as a text file once it is completed.');
+
+              await botMessage.edit({ embeds: [embed] });
+            }
+          } else if (!updateTimeout) {
+            updateTimeout = setTimeout(updateMessage, 500);
+          }
         }
       }
+      await getResponse(parts);
 
       if (updateTimeout) {
         await updateMessage();
@@ -2813,8 +2841,8 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
           await botMessage.edit({components: [] });
         }
       }
-      const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
-      updateChatHistory(isServerChatHistoryEnabled ? originalMessage.guild.id : userId, parts, finalResponse);
+      newHistory.push({ role: 'model', content: [ { text: finalResponse } ] });
+      updateChatHistory(isServerChatHistoryEnabled ? originalMessage.guild.id : userId, newHistory );
       break;
     } catch (error) {
       if (activeRequests.has(userId)) {
@@ -2822,7 +2850,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       }
       console.error(error);
       attempts--;
-    
+
       if (attempts === 0 || stopGeneration) {
         if (!stopGeneration) {
           if (SEND_RETRY_ERRORS_TO_DISCORD) {
@@ -2862,7 +2890,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
   }
 }
 
-async function updateEmbed(botMessage, finalResponse, message) {
+async function updateEmbed(botMessage, finalResponse, message, functionCallsString) {
   try {
     const isGuild = message.guild !== null;
     const embed = new EmbedBuilder()
@@ -2870,12 +2898,17 @@ async function updateEmbed(botMessage, finalResponse, message) {
       .setDescription(finalResponse)
       .setAuthor({ name: `To ${message.author.displayName}`, iconURL: message.author.displayAvatarURL() })
       .setTimestamp();
+
     if (isGuild) {
       embed.setFooter({ text: message.guild.name, iconURL: message.guild.iconURL() || 'https://ai.google.dev/static/site-assets/images/share.png' });
     }
 
+    if (functionCallsString.trim().length > 0) {
+      embed.addFields({ name: 'Function Calls:', value: functionCallsString });
+    }
+
     await botMessage.edit({ content: ' ', embeds: [embed] });
-  } catch(error) {
+  } catch (error) {
     console.error("An error occurred while updating the embed:", error.message);
   }
 }
@@ -2905,20 +2938,12 @@ function getHistory(id) {
   });
 }
 
-function updateChatHistory(id, userMessage, modelResponse) {
+function updateChatHistory(id, newHistory) {
   if (!chatHistories[id]) {
     chatHistories[id] = [];
   }
 
-  chatHistories[id].push({
-    role: 'user',
-    content: userMessage,
-  });
-
-  chatHistories[id].push({
-    role: 'assistant',
-    content: [{ text: modelResponse }],
-  });
+  chatHistories[id] = [...chatHistories[id], ...newHistory];
 }
 
 // <==========>
