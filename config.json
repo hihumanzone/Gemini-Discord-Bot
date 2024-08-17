@@ -1,7 +1,6 @@
 {
   "defaultResponseFormat": "embedded",
   "hexColour": "#505050",
-  "defaultPromptEnhancerPreference": true,
   "defaultImgModel": "SD-XL",
   "defaultUrlReading": "ON",
   "workInDMs": true,
