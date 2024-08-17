@@ -208,7 +208,11 @@ function processFunctionCallsNames(functionCalls) {
         .join(' ');
 
       const formattedArgs = tc.args ? Object.entries(tc.args)
-        .map(([key, value]) => `${key}: ${value}`)
+        .map(([key, value]) => {
+          const stringValue = String(value);
+          const truncatedValue = stringValue.length > 500 ? stringValue.slice(0, 500) + '...' : stringValue;
+          return `${key}: ${truncatedValue}`;
+        })
         .join(', ') : '';
 
       return formattedArgs ? `${formattedName} (${formattedArgs})` : formattedName;
