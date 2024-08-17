@@ -8,13 +8,10 @@
     "dotenv": "*",
     "eventsource": "*",
     "fs": "*",
-    "node-fetch": "*",
+    "sharp": "*",
     "pdf-parse": "*",
     "youtube-transcript": "*",
     "node-os-utils": "*",
     "ws": "*"
-  },
-  "scripts": {
-    "start": "node index.js"
   }
 }
