@@ -810,7 +810,7 @@ async function handleSpeechCommand(interaction) {
         .setColor(0xFF0000)
         .setTitle('Error')
         .setDescription(`Sorry, something went wrong and the output is not available.\n> **Text:**\n\`\`\`\n${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\n\`\`\``
-          ``);
+          );
       const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
       await addSettingsButton(messageReference);
     } catch (error) {}
