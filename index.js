@@ -145,24 +145,44 @@ function loadStateFromFile() {
   }
 }
 
-function resetChatHistories() {
-  chatHistories = {};
-  console.log('Chat histories have been reset.');
+function removeFileData(chatHistories) {
+  try {
+    Object.values(chatHistories).forEach(conversations => {
+      conversations.forEach(message => {
+        if (message.content) {
+          message.content = message.content.filter(contentItem => {
+            if (contentItem.fileData) {
+              delete contentItem.fileData;
+            }
+            return Object.keys(contentItem).length > 0;
+          });
+        }
+      });
+    });
+    console.log('fileData elements have been removed from chat histories.');
+  } catch (error) {
+    console.error('An error occurred while removing fileData elements:', error);
+  }
 }
 
 function scheduleDailyReset() {
-  const now = new Date();
-  const nextReset = new Date();
-  nextReset.setHours(0, 0, 0, 0);
-  if (nextReset <= now) {
-    nextReset.setDate(now.getDate() + 1);
-  }
-  const timeUntilNextReset = nextReset - now;
+  try {
+    const now = new Date();
+    const nextReset = new Date();
+    nextReset.setHours(0, 0, 0, 0);
+    if (nextReset <= now) {
+      nextReset.setDate(now.getDate() + 1);
+    }
+    const timeUntilNextReset = nextReset - now;
 
-  setTimeout(() => {
-    resetChatHistories();
-    scheduleDailyReset();
-  }, timeUntilNextReset);
+    setTimeout(() => {
+      removeFileData(chatHistories);
+      scheduleDailyReset();
+    }, timeUntilNextReset);
+
+  } catch (error) {
+    console.error('An error occurred while scheduling the daily reset:', error);
+  }
 }
 
 scheduleDailyReset();
