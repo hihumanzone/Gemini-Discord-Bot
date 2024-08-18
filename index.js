@@ -809,8 +809,7 @@ async function handleSpeechCommand(interaction) {
       const embed = new EmbedBuilder()
         .setColor(0xFF0000)
         .setTitle('Error')
-        .setDescription(`Sorry, something went wrong and the output is not available.\n> **Text:**\n\`\`\`\n${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\n\`\`\``
-          );
+        .setDescription(`Sorry, something went wrong and the output is not available.\n> **Text:**\n\`\`\`\n${text.length > 3900 ? text.substring(0, 3900) + '...' : text}\n\`\`\``);
       const messageReference = await interaction.channel.send({ content: `${interaction.user}`, embeds: [embed] });
       await addSettingsButton(messageReference);
     } catch (error) {}
@@ -2489,7 +2488,6 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
   let updateTimeout;
   let tempResponse = '';
   let functionCallsString = '';
-  let stopGeneration = false;
   const stopGeneratingButton = new ActionRowBuilder()
     .addComponents(
       new ButtonBuilder()
@@ -2497,65 +2495,70 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       .setLabel('Stop Generating')
       .setStyle(ButtonStyle.Danger)
     );
+  let botMessage;
+  if (!initialBotMessage) {
+    clearInterval(typingInterval);
+    try {
+      botMessage = await originalMessage.reply({ content: 'Let me think..', components: [stopGeneratingButton] });
+    } catch (error) {}
+  } else {
+    botMessage = initialBotMessage;
+    try {
+      botMessage.edit({ components: [stopGeneratingButton] });
+    } catch (error) {}
+  }
+
+  let stopGeneration = false;
+  const filter = (interaction) => interaction.customId === 'stopGenerating';
+  try {
+    const collector = await botMessage.createMessageComponentCollector({ filter, time: 120000 });
+    collector.on('collect', (interaction) => {
+      if (interaction.user.id === originalMessage.author.id) {
+        try {
+          const embed = new EmbedBuilder()
+            .setColor(0xFFA500)
+            .setTitle('Response Stopped')
+            .setDescription('Response generation stopped by the user.');
+
+          interaction.reply({ embeds: [embed], ephemeral: true });
+        } catch (error) {
+          console.error('Error sending reply:', error);
+        }
+        stopGeneration = true;
+      } else {
+        try {
+          const embed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('Access Denied')
+            .setDescription("It's not for you.");
+
+          interaction.reply({ embeds: [embed], ephemeral: true });
+        } catch (error) {
+          console.error('Error sending unauthorized reply:', error);
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error creating or handling collector:', error);
+  }
+
+  const updateMessage = () => {
+    if (stopGeneration) {
+      return;
+    }
+    if (tempResponse.trim() === "") {
+      botMessage.edit({ content: '...' });
+    } else if (userResponsePreference === 'embedded') {
+      updateEmbed(botMessage, tempResponse, originalMessage, functionCallsString);
+    } else {
+      botMessage.edit({ content: tempResponse, embeds: [] });
+    }
+    clearTimeout(updateTimeout);
+    updateTimeout = null;
+  };
+
   while (attempts > 0 && !stopGeneration) {
     try {
-      let botMessage;
-      if (!initialBotMessage) {
-        clearInterval(typingInterval);
-        botMessage = await originalMessage.reply({ content: 'Let me think..', components: [stopGeneratingButton] });
-      } else {
-        botMessage = initialBotMessage;
-        botMessage.edit({ components: [stopGeneratingButton] });
-      }
-
-      const filter = (interaction) => interaction.customId === 'stopGenerating';
-      try {
-        const collector = await botMessage.createMessageComponentCollector({ filter, time: 120000 });
-        collector.on('collect', (interaction) => {
-          if (interaction.user.id === originalMessage.author.id) {
-            try {
-              const embed = new EmbedBuilder()
-                .setColor(0xFFA500)
-                .setTitle('Response Stopped')
-                .setDescription('Response generation stopped by the user.');
-
-              interaction.reply({ embeds: [embed], ephemeral: true });
-            } catch (error) {
-              console.error('Error sending reply:', error);
-            }
-            stopGeneration = true;
-          } else {
-            try {
-              const embed = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle('Access Denied')
-                .setDescription("It's not for you.");
-
-              interaction.reply({ embeds: [embed], ephemeral: true });
-            } catch (error) {
-              console.error('Error sending unauthorized reply:', error);
-            }
-          }
-        });
-      } catch (error) {
-        console.error('Error creating or handling collector:', error);
-      }
-
-      const updateMessage = () => {
-        if (stopGeneration) {
-          return;
-        }
-        if (tempResponse.trim() === "") {
-          botMessage.edit({ content: '...' });
-        } else if (userResponsePreference === 'embedded') {
-          updateEmbed(botMessage, tempResponse, originalMessage, functionCallsString);
-        } else {
-          botMessage.edit({ content: tempResponse, embeds: [] });
-        }
-        clearTimeout(updateTimeout);
-        updateTimeout = null;
-      };
-
       let finalResponse = '';
       let isLargeResponse = false;
       const newHistory = [];
