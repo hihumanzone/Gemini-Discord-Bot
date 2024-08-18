@@ -173,7 +173,7 @@ async function performSearch(query) {
   });
 
   const note = {
-    "Note": "These are only the search results overview. Please use the Scrape Webpage tool to search further into the links."
+    "Note": "Search results provide only an overview and do not offer sufficiently detailed information. Please continue by using the Search Website tool and search websites to find relevant information about the topic."
   };
 
   return JSON.stringify(resultObject.reduce((acc, curr) => Object.assign(acc, curr), note), null, 2);
