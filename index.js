@@ -64,6 +64,7 @@ let userPreferredImagePromptEnhancement = {};
 let userPreferredSpeechModel = {};
 let userResponsePreference = {};
 let alwaysRespondChannels = {};
+let channelWideChatHistory = {};
 let blacklistedUsers = {};
 
 const __filename = fileURLToPath(import.meta.url);
@@ -82,6 +83,7 @@ const FILE_PATHS = {
   userPreferredSpeechModel: path.join(CONFIG_DIR, 'user_preferred_speech_model.json'),
   userResponsePreference: path.join(CONFIG_DIR, 'user_response_preference.json'),
   alwaysRespondChannels: path.join(CONFIG_DIR, 'always_respond_channels.json'),
+  channelWideChatHistory: path.join(CONFIG_DIR, 'channel_wide_chatistory.json'),
   blacklistedUsers: path.join(CONFIG_DIR, 'blacklisted_users.json')
 };
 
@@ -243,9 +245,16 @@ import {
   generateWithDalle3,
   imgModels,
   imageModelFunctions
-} from './generators.js';
+} from './tools/generators.js';
 
-import { function_declarations, manageToolCall, processFunctionCallsNames } from './function_calling.js';
+import { function_declarations, manageToolCall, processFunctionCallsNames } from './tools/function_calling.js';
+
+import {
+  delay,
+  retryOperation,
+  filterPrompt,
+  enhancePrompt
+} from './tools/others.js';
 
 // <==========>
 
@@ -369,6 +378,7 @@ async function handleCommandInteraction(interaction) {
 
   const commandHandlers = {
     respond_to_all: handleRespondToAllCommand,
+    toggle_channel_chat_history: toggleChannelChatHistory,
     whitelist: handleWhitelistCommand,
     blacklist: handleBlacklistCommand,
     imagine: handleImagineCommand,
@@ -527,6 +537,7 @@ async function handleTextMessage(message) {
   const botId = client.user.id;
   const userId = message.author.id;
   const guildId = message.guild?.id;
+  const channelId = message.channel.id;
   let messageContent = message.content.replace(new RegExp(`<@!?${botId}>`), '').trim();
 
   if (messageContent === '' && !(message.attachments.size > 0 && hasSupportedAttachments(message))) {
@@ -547,52 +558,62 @@ async function handleTextMessage(message) {
   }, 120000);
   let botMessage = false;
   let parts;
-  if (SEND_RETRY_ERRORS_TO_DISCORD) {
-    clearInterval(typingInterval);
-    const updateEmbedDescription = (textAttachmentStatus, imageAttachmentStatus, finalText) => {
-      return `Let me think...\n\n- ${textAttachmentStatus}: Text Attachment Check\n- ${imageAttachmentStatus}: Media Attachment Check\n${finalText || ''}`;
-    };
-
-    const embed = new EmbedBuilder()
-      .setColor(0x00FFFF)
-      .setTitle('Processing')
-      .setDescription(updateEmbedDescription('[🔁]', '[🔁]'));
-    botMessage = await message.reply({ embeds: [embed] });
-
-    messageContent = await extractFileText(message, messageContent);
-    embed.setDescription(updateEmbedDescription('[☑️]', '[🔁]'));
-    await botMessage.edit({ embeds: [embed] });
-
-    parts = await processPromptAndMediaAttachments(messageContent, message);
-    embed.setDescription(updateEmbedDescription('[☑️]', '[☑️]', '### All checks done. Waiting for the response...'));
-    await botMessage.edit({ embeds: [embed] });
-  } else {
-    messageContent = await extractFileText(message, messageContent);
-    parts = await processPromptAndMediaAttachments(messageContent, message);
+  try {
+    if (SEND_RETRY_ERRORS_TO_DISCORD) {
+      clearInterval(typingInterval);
+      const updateEmbedDescription = (textAttachmentStatus, imageAttachmentStatus, finalText) => {
+        return `Let me think...\n\n- ${textAttachmentStatus}: Text Attachment Check\n- ${imageAttachmentStatus}: Media Attachment Check\n${finalText || ''}`;
+      };
+  
+      const embed = new EmbedBuilder()
+        .setColor(0x00FFFF)
+        .setTitle('Processing')
+        .setDescription(updateEmbedDescription('[🔁]', '[🔁]'));
+      botMessage = await message.reply({ embeds: [embed] });
+  
+      messageContent = await extractFileText(message, messageContent);
+      embed.setDescription(updateEmbedDescription('[☑️]', '[🔁]'));
+      await botMessage.edit({ embeds: [embed] });
+  
+      parts = await processPromptAndMediaAttachments(messageContent, message);
+      embed.setDescription(updateEmbedDescription('[☑️]', '[☑️]', '### All checks done. Waiting for the response...'));
+      await botMessage.edit({ embeds: [embed] });
+    } else {
+      messageContent = await extractFileText(message, messageContent);
+      parts = await processPromptAndMediaAttachments(messageContent, message);
+    }
+  } catch (error) {
+    return console.error('Error initialising message', error);
   }
 
-  const instructions = guildId ?
-    serverSettings[guildId]?.customServerPersonality && customInstructions[guildId] ?
-    customInstructions[guildId] :
-    customInstructions[userId] :
-    customInstructions[userId];
+  let instructions;
+  if (guildId) {
+    if (channelWideChatHistory[channelId]) {
+      instructions = customInstructions[channelId];
+    } else if (serverSettings[guildId]?.customServerPersonality && customInstructions[guildId]) {
+      instructions = customInstructions[guildId];
+    } else {
+      instructions = customInstructions[userId];
+    }
+  } else {
+    instructions = customInstructions[userId];
+  }
 
   activeRequests.add(userId);
 
   let infoStr = '';
-  if (message.guild) {
-    const member = await message.guild.members.fetch(userId);
+  if (guildId) {
     const userInfo = {
       username: message.author.username,
-      displayName: message.author.displayName,
-      serverNickname: message.author.nickname || 'Not set',
-      status: member.presence ? member.presence.status : 'offline'
+      displayName: message.author.displayName
     };
-    infoStr = `\nYou are currently engaging with users in the ${message.guild.name} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\`\nServer Nickname: \`${userInfo.serverNickname}\`\nStatus: \`${userInfo.status}\``;
+    infoStr = `\nYou are currently engaging with users in the ${message.guild.name} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\``;
   }
 
   const isServerChatHistoryEnabled = guildId ? serverSettings[guildId]?.serverChatHistory : false;
+  const isChannelChatHistoryEnabled = guildId ? channelWideChatHistory[channelId] : false;
   const finalInstructions = isServerChatHistoryEnabled ? instructions + infoStr : instructions;
+  const historyId = isChannelChatHistoryEnabled ? (isServerChatHistoryEnabled ? guildId : channelId) : userId;
 
   const model = await genAI.getGenerativeModel({
     model: MODEL,
@@ -602,11 +623,11 @@ async function handleTextMessage(message) {
   });
 
   const chat = model.startChat({
-    history: isServerChatHistoryEnabled ? getHistory(guildId) : getHistory(userId),
+    history: getHistory(historyId),
     safetySettings,
   });
 
-  await handleModelResponse(botMessage, chat, parts, message, typingInterval);
+  await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId);
 }
 
 function hasSupportedAttachments(message) {
@@ -1398,117 +1419,6 @@ async function togglePromptEnhancer(interaction) {
   }
 }
 
-import { diffusionMaster } from './diffusionMasterPrompt.js';
-
-async function enhancePrompt1(prompt) {
-  const retryLimit = 3;
-  let currentAttempt = 0;
-  let error;
-
-  while (currentAttempt < retryLimit) {
-    try {
-      currentAttempt += 1;
-      console.log(`Attempt ${currentAttempt}`);
-
-      let response = await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Request timed out'));
-        }, 15000);
-
-        const payload = {
-          model: "llama3-70b-8192",
-          stream: false,
-          messages: [
-            {
-              role: "system",
-              content: diffusionMaster
-            },
-            {
-              role: "user",
-              content: prompt
-            }
-          ]
-        };
-
-        const headers = {
-          "Content-Type": "application/json"
-        };
-        if (process.env.OPENAI_API_KEY) {
-          headers['Authorization'] = `Bearer ${process.env.OPENAI_API_KEY}`;
-        }
-
-
-        const baseURL = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
-        axios.post(`${baseURL}/chat/completions`, payload, { headers: headers })
-          .then(response => {
-            clearTimeout(timeout);
-            resolve(response);
-          })
-          .catch(err => {
-            clearTimeout(timeout);
-            reject(err);
-          });
-      });
-
-      if (response.data && response.data.choices && response.data.choices.length > 0) {
-        let content = response.data.choices[0].message.content;
-        const codeBlockPattern = /```([^`]+)```/s;
-        const match = content.match(codeBlockPattern);
-        if (match) {
-          content = match[1].trim();
-        } else {
-          throw new Error(`Enhanced prompt not found`);
-        }
-        console.log(content);
-        return content;
-      } else {
-        console.log('Error processing response data');
-        error = new Error('Error processing response data');
-      }
-    } catch (err) {
-      console.error(err.message);
-      error = err;
-    }
-  }
-  if (error) {
-    console.error('Retries exhausted or an error occurred:', error.message);
-  }
-  return prompt;
-}
-
-async function enhancePrompt(prompt, attempts = 3) {
-  const generate = async () => {
-    const model = await genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest", systemInstruction: { role: "system", parts: [{ text: diffusionMaster }] } });
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  };
-
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    try {
-      const textResponse = await Promise.race([
-        generate(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
-      ]);
-
-      let content = textResponse;
-      const codeBlockPattern = /```([^`]+)```/s;
-      const match = content.match(codeBlockPattern);
-      if (match) {
-        content = match[1].trim();
-      } else {
-        throw new Error(`Enhanced prompt not found`);
-      }
-      return content;
-    } catch (error) {
-      console.error(`Attempt ${attempt} failed:`, error);
-      if (attempt === attempts) {
-        console.log('All attempts failed, returning the original prompt.');
-        return prompt;
-      }
-    }
-  }
-}
-
 async function generateImageWithPrompt(prompt, userId) {
   try {
     const selectedModel = userPreferredImageModel[userId] || defaultImgModel;
@@ -1660,6 +1570,53 @@ async function handleRespondToAllCommand(interaction) {
     }
   } catch (error) {
     console.log(error.message);
+  }
+}
+
+async function toggleChannelChatHistory(interaction) {
+  try {
+    if (interaction.channel.type === ChannelType.DM) {
+      const dmEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Command Not Available')
+        .setDescription('This command cannot be used in DMs.');
+      return interaction.reply({ embeds: [dmEmbed], ephemeral: true });
+    }
+
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      const adminEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('Admin Required')
+        .setDescription('You need to be an admin to use this command.');
+      return interaction.reply({ embeds: [adminEmbed], ephemeral: true });
+    }
+
+    const channelId = interaction.channelId;
+    const enabled = interaction.options.getBoolean('enabled');
+    const instructions = interaction.options.getString('instructions') || defaultPersonality;
+
+    if (enabled) {
+      channelWideChatHistory[channelId] = true;
+      customInstructions[channelId] = instructions;
+
+      const enabledEmbed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('Channel History Enabled')
+        .setDescription(`Channel-wide chat history has been enabled.`);
+      await interaction.reply({ embeds: [enabledEmbed], ephemeral: false });
+    } else {
+      delete channelWideChatHistory[channelId];
+      delete customInstructions[channelId];
+      delete chatHistories[channelId];
+
+      const disabledEmbed = new EmbedBuilder()
+        .setColor(0xFFA500)
+        .setTitle('Channel History Disabled')
+        .setDescription('Channel-wide chat history has been disabled.');
+      await interaction.reply({ embeds: [disabledEmbed], ephemeral: false });
+    }
+  } catch (error) {
+    console.error('Error in toggleChannelChatHistory:', error);
   }
 }
 
@@ -2488,22 +2445,17 @@ function getUserResponsePreference(userId) {
   return userResponsePreference[userId] || defaultResponseFormat;
 }
 
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 // <==========>
 
 
 
 // <=====[Model Response Handling]=====>
 
-async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval) {
+async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId) {
   const userId = originalMessage.author.id;
   const userResponsePreference = originalMessage.guild && serverSettings[originalMessage.guild.id]?.serverResponsePreference ? serverSettings[originalMessage.guild.id].responseStyle : getUserResponsePreference(userId);
   const maxCharacterLimit = userResponsePreference === 'embedded' ? 3900 : 1900;
   let attempts = 3;
-  const isServerChatHistoryEnabled = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.serverChatHistory : false;
 
   let updateTimeout;
   let tempResponse = '';
@@ -2643,7 +2595,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         }
       }
       newHistory.push({ role: 'model', content: [{ text: finalResponse }] });
-      updateChatHistory(isServerChatHistoryEnabled ? originalMessage.guild.id : userId, newHistory);
+      updateChatHistory(historyId, newHistory);
       break;
     } catch (error) {
       if (activeRequests.has(userId)) {
@@ -2746,42 +2698,6 @@ function updateChatHistory(id, newHistory) {
   }
 
   chatHistories[id] = [...chatHistories[id], ...newHistory];
-}
-
-// <==========>
-
-
-
-// <=====[Gen Function Handling]=====>
-
-async function retryOperation(fn, maxRetries, delayMs = 1000) {
-  let error;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      console.log(`Attempt ${attempt} failed: ${err.message}`);
-      error = err;
-      if (attempt < maxRetries) {
-        console.log(`Waiting ${delayMs}ms before next attempt...`);
-        await delay(delayMs);
-      } else {
-        console.log(`All ${maxRetries} attempts failed.`);
-      }
-    }
-  }
-
-  throw new Error(`Operation failed after ${maxRetries} attempts: ${error.message}`);
-}
-
-const nsfwWordsArray = JSON.parse(fs.readFileSync('nsfwWords.json', 'utf-8'));
-
-function filterPrompt(text) {
-  nsfwWordsArray.forEach(word => {
-    const regexPattern = new RegExp(word.split('').join('\\W*'), 'gi');
-    text = text.replace(regexPattern, '');
-  });
-  return text;
 }
 
 // <==========>
