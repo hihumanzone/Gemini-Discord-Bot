@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { YoutubeTranscript } from 'youtube-transcript';
+import { evaluate } from 'mathjs'
 
 const function_declarations = [
   {
@@ -43,6 +44,20 @@ const function_declarations = [
         }
       },
       required: ["url"]
+    }
+  },
+  {
+    name: "calculate",
+    parameters: {
+      type: "object",
+      description: "Calculates a given mathematical equation and returns the result. Use this for calculations when writing responses. Exampled: '12 / (2.3 + 0.7)' -> '4', '12.7 cm to inch' -> '5 inch', 'sin(45 deg) ^ 2' -> '0.5', '9 / 3 + 2i' -> '3 + 2i', 'det([-1, 2; 3, 1])' -> '-7'",
+      properties: {
+        equation: {
+          type: "string",
+          description: "The equation to be calculated."
+        }
+      },
+      required: ["equation"]
     }
   }
 ];
@@ -213,11 +228,46 @@ async function getYoutubeTranscript(args, name) {
   }
 }
 
+function calculate(args, name) {
+  const equation = args.equation;
+  try {
+    const result = evaluate(equation).toString();
+    const function_call_result_message = [
+      {
+        functionResponse: {
+          name: name,
+          response: {
+            equation: equation,
+            content: result
+          }
+        }
+      }
+    ];
+    return result;
+  } catch (error) {
+    const errorMessage = `Error calculating the equation: ${error}`;
+    console.error(errorMessage);
+    const function_call_result_message = [
+      {
+        functionResponse: {
+          name: name,
+          response: {
+            equation: equation,
+            content: errorMessage
+          }
+        }
+      }
+    ];
+    return function_call_result_message;
+  }
+}
+
 async function manageToolCall(toolCall) {
   const tool_calls_to_function = {
     "web_search": webSearch,
     "search_webpage": searchWebpage,
-    "get_youtube_transcript": getYoutubeTranscript
+    "get_youtube_transcript": getYoutubeTranscript,
+    "calculate": calculate
   }
   const functionName = toolCall.name;
   const func = tool_calls_to_function[functionName];
