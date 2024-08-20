@@ -243,7 +243,7 @@ function calculate(args, name) {
         }
       }
     ];
-    return result;
+    return function_call_result_message;
   } catch (error) {
     const errorMessage = `Error calculating the equation: ${error}`;
     console.error(errorMessage);
