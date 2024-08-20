@@ -12,6 +12,7 @@
     "pdf-parse": "*",
     "youtube-transcript": "*",
     "node-os-utils": "*",
-    "ws": "*"
+    "ws": "*",
+    "mathjs": "*"
   }
 }
