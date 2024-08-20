@@ -1,4 +1,4 @@
-import { imgModels } from './generators.js';
+import { imgModels } from './tools/generators.js';
 
 const modelChoices = imgModels.map(model => ({
   name: model,
@@ -117,6 +117,24 @@ const commands = [
   {
     "name": "status",
     "description": "Displays bot CPU and RAM usage in detail."
+  },
+  {
+    "name": "toggle_channel_chat_history",
+    "description": "Toggle the chat wide history for everyone in that channel.",
+    "options": [
+      {
+        "name": "enabled",
+        "description": "Set to true to enable chat wide history, or false to disable it.",
+        "type": 5,
+        "required": true
+      },
+      {
+        "name": "instructions",
+        "description": "Bot instructions for that channel.",
+        "type": 3,
+        "required": false
+      }
+    ]
   }
 ];
 
