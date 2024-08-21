@@ -30,7 +30,7 @@ import { writeFile, unlink } from 'fs/promises';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import pdf from 'pdf-parse';
+import { getTextExtractor } from 'office-text-extractor'
 import * as cheerio from 'cheerio';
 import osu from 'node-os-utils';
 const { mem } = osu;
@@ -676,7 +676,7 @@ async function handleTextMessage(message) {
 
 function hasSupportedAttachments(message) {
   const supportedFileExtensions = [
-    'html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf'
+    'html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf', 'docx'
   ];
 
   return message.attachments.some((attachment) => {
@@ -785,7 +785,7 @@ async function extractFileText(message, messageContent) {
     let attachments = Array.from(message.attachments.values());
     for (const attachment of attachments) {
       const fileType = attachment.name.split('.').pop().toLowerCase();
-      const fileTypes = ['html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf'];
+      const fileTypes = ['html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf', 'docx'];
 
       if (fileTypes.includes(fileType)) {
         try {
@@ -806,8 +806,10 @@ async function downloadAndReadFile(url, fileType) {
 
   switch (fileType) {
     case 'pdf':
+    case 'docx':
       let buffer = await response.arrayBuffer();
-      return (await pdf(buffer)).text;
+      const extractor = getTextExtractor();
+      return (await extractor.extractText({ input: buffer, type: 'buffer' }));
     default:
       return await response.text();
   }
