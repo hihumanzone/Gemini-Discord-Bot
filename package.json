@@ -9,10 +9,13 @@
     "eventsource": "*",
     "fs": "*",
     "sharp": "*",
-    "pdf-parse": "*",
+    "office-text-extractor": "*",
     "youtube-transcript": "*",
     "node-os-utils": "*",
     "ws": "*",
     "mathjs": "*"
+  },
+  "scripts": {
+    "start": "node index.js"
   }
 }
