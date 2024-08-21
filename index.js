@@ -1871,18 +1871,17 @@ async function downloadMessage(interaction) {
 
     const attachment = new AttachmentBuilder(filePath, { name: 'message_content.txt' });
 
+    const initialEmbed = new EmbedBuilder()
+      .setColor(0xFFFFFF)
+      .setTitle('Message Content Downloaded')
+      .setDescription(`Here is the content of the message.`);
+
+    let response;
     if (interaction.channel.type === ChannelType.DM) {
-      const dmContentEmbed = new EmbedBuilder()
-        .setColor(0xFFFFFF)
-        .setTitle('Message Content Downloaded')
-        .setDescription('Here is the content of the message.');
-      await interaction.reply({ embeds: [dmContentEmbed], files: [attachment] });
+      response = await interaction.reply({ embeds: [initialEmbed], files: [attachment], fetchReply: true });
     } else {
       try {
-        await interaction.user.send({
-          content: 'Here is the content of the message:',
-          files: [attachment]
-        });
+        response = await interaction.user.send({ embeds: [initialEmbed], files: [attachment] });
         const dmSentEmbed = new EmbedBuilder()
           .setColor(0x00FF00)
           .setTitle('Content Sent')
@@ -1894,15 +1893,42 @@ async function downloadMessage(interaction) {
           .setColor(0xFF0000)
           .setTitle('Delivery Failed')
           .setDescription('Failed to send the content to your DMs.');
-        await interaction.reply({ embeds: [failDMEmbed], files: [attachment], ephemeral: true });
+        response = await interaction.reply({ embeds: [failDMEmbed], files: [attachment], ephemeral: true, fetchReply: true });
       }
     }
 
-    fs.unlinkSync(filePath); // Clean up the temp file.
+    fs.unlinkSync(filePath);
+
+    const msgUrl = await uploadText(textContent);
+    const updatedEmbed = EmbedBuilder.from(response.embeds[0])
+      .setDescription(`Here is the content of the message.\n${msgUrl}`);
+
+    if (interaction.channel.type === ChannelType.DM) {
+      await interaction.editReply({ embeds: [updatedEmbed] });
+    } else {
+      await response.edit({ embeds: [updatedEmbed] });
+    }
+
   } catch (error) {
-    console.log(`Failed to process download: ${error.message}`);
+    console.log('Failed to process download: ', error);
   }
 }
+
+const uploadText = async (text) => {
+  const siteUrl = 'http://bin.shortbin.eu:8080';
+  try {
+    const response = await axios.post(`${siteUrl}/documents`, text, {
+      headers: { 'Content-Type': 'text/plain' },
+      timeout: 3000
+    });
+
+    const key = response.data.key;
+    return `\nURL: ${siteUrl}/${key}`;
+  } catch (error) {
+    console.log(error);
+    return '\nURL Error :(';
+  }
+};
 
 async function downloadConversation(interaction) {
   try {
