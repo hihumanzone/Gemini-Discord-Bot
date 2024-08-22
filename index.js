@@ -680,9 +680,15 @@ function hasSupportedAttachments(message) {
   ];
 
   return message.attachments.some((attachment) => {
-    const contentType = attachment.contentType.toLowerCase();
-    const fileExtension = attachment.name.split('.').pop().toLowerCase();
-    return contentType.startsWith('image/') || contentType.startsWith('audio/') || contentType.startsWith('video/') || supportedFileExtensions.includes(fileExtension);
+    const contentType = (attachment.contentType || "").toLowerCase();
+    const nameParts = (attachment.name || "").split('.');
+    const fileExtension = nameParts.length > 1 ? nameParts.pop().toLowerCase() : '';
+    return (
+      (contentType.startsWith('image/') && contentType !== 'image/gif') ||
+      contentType.startsWith('audio/') ||
+      contentType.startsWith('video/') ||
+      supportedFileExtensions.includes(fileExtension)
+    );
   });
 }
 
@@ -716,7 +722,9 @@ async function processPromptAndMediaAttachments(prompt, message) {
     const validAttachments = attachments.filter(
       (attachment) => {
         const contentType = attachment.contentType.toLowerCase();
-        return contentType.startsWith('image/') || contentType.startsWith('audio/') || contentType.startsWith('video/');
+        return (contentType.startsWith('image/') && contentType !== 'image/gif') ||
+          contentType.startsWith('audio/') ||
+          contentType.startsWith('video/');
       }
     );
 
