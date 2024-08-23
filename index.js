@@ -150,8 +150,8 @@ function loadStateFromFile() {
 
 function removeFileData(chatHistories) {
   try {
-    Object.values(chatHistories).forEach(conversations => {
-      conversations.forEach(message => {
+    Object.values(chatHistories).forEach(subIdEntries => {
+      subIdEntries.forEach(message => {
         if (message.content) {
           message.content = message.content.filter(contentItem => {
             if (contentItem.fileData) {
