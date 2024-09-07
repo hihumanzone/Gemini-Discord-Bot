@@ -675,14 +675,11 @@ async function handleTextMessage(message) {
 }
 
 function hasSupportedAttachments(message) {
-  const supportedFileExtensions = [
-    'html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf', 'docx'
-  ];
+  const supportedFileExtensions = [ '.html', '.js', '.css', '.json', '.xml', '.csv', '.py', '.java', '.sql', '.log', '.md', '.txt', '.pdf', '.docx' ];
 
   return message.attachments.some((attachment) => {
     const contentType = (attachment.contentType || "").toLowerCase();
-    const nameParts = (attachment.name || "").split('.');
-    const fileExtension = nameParts.length > 1 ? nameParts.pop().toLowerCase() : '';
+    const fileExtension = path.extname(attachment.name) || '';
     return (
       (contentType.startsWith('image/') && contentType !== 'image/gif') ||
       contentType.startsWith('audio/') ||
@@ -792,8 +789,8 @@ async function extractFileText(message, messageContent) {
   if (message.attachments.size > 0) {
     let attachments = Array.from(message.attachments.values());
     for (const attachment of attachments) {
-      const fileType = attachment.name.split('.').pop().toLowerCase();
-      const fileTypes = ['html', 'js', 'css', 'json', 'xml', 'csv', 'py', 'java', 'sql', 'log', 'md', 'txt', 'pdf', 'docx'];
+      const fileType = path.extname(attachment.name) || '';
+      const fileTypes = [ '.html', '.js', '.css', '.json', '.xml', '.csv', '.py', '.java', '.sql', '.log', '.md', '.txt', '.pdf', '.docx' ];
 
       if (fileTypes.includes(fileType)) {
         try {
