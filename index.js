@@ -2642,6 +2642,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       const newHistory = [];
       newHistory.push({ role: 'user', content: parts });
       async function getResponse(parts) {
+        let newResponse = '';
         const messageResult = await chat.sendMessageStream(parts);
         for await (const chunk of messageResult.stream) {
           if (stopGeneration) break;
@@ -2649,9 +2650,12 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
           const chunkText = chunk.text();
           finalResponse += chunkText;
           tempResponse += chunkText;
+          newResponse += chunkText;
 
           const toolCalls = chunk.functionCalls();
           if (toolCalls) {
+            newHistory.push({ role: 'assistant', content: [{ text: newResponse }] });
+            newResponse = '';
             function convertArrayFormat(inputArray) {
               return inputArray.map(item => ({
                 functionCall: {
@@ -2686,6 +2690,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
             updateTimeout = setTimeout(updateMessage, 500);
           }
         }
+        newHistory.push({ role: 'assistant', content: [{ text: newResponse }] });
       }
       await getResponse(parts);
 
@@ -2702,7 +2707,6 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
           botMessage.edit({ components: [] });
         }
       }
-      newHistory.push({ role: 'assistant', content: [{ text: finalResponse }] });
       updateChatHistory(historyId, newHistory, botMessage.id);
       break;
     } catch (error) {
