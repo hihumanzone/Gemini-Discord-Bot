@@ -132,7 +132,6 @@ async function searchWebpage(args, name) {
 
 async function searchWebpageContent(url) {
   const TIMEOUT = 5000; // 5 seconds
-  const MIN_CONTENT_LENGTH = 500; // Minimum length for valid content
 
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(() => reject(new Error('Request timed out after 5 seconds')), TIMEOUT)
@@ -155,11 +154,6 @@ async function searchWebpageContent(url) {
     bodyText = bodyText.replace(/(\r?\n){6,}/g, '\n\n'); // replace sequences of 6 or more line breaks with 2 line breaks
 
     const trimmedBodyText = bodyText.trim();
-    /*
-    if (trimmedBodyText.length < MIN_CONTENT_LENGTH) {
-      throw new Error('Content is too short; less than 500 characters');
-    }
-    */
 
     return trimmedBodyText;
   } catch (error) {
@@ -168,25 +162,30 @@ async function searchWebpageContent(url) {
 }
 
 async function performSearch(query) {
-  const url = `https://search.neuranet-ai.com/search?query=${encodeURIComponent(query)}&limit=5`;
-
-  const response = await axios.get(url)
+  const url = 'https://websearch.plugsugar.com/api/plugins/websearch';
+  const response = await axios.post(url, { query: query })
     .catch(error => {
-      throw new Error(`Failed to perform the search request: ${error.message}`);
+      throw new Error(`Failed to perform the initial search request: ${error.message}`);
     });
+  const rawText = response.data.result;
+  const entries = rawText.trim().split('\n\n').slice(0, 3);
 
-  const entries = response.data;
+  const resultObject = await Promise.all(entries.map(async (entry, index) => {
+    const lines = entry.split('\n');
+    const title = lines.find(line => line.startsWith('Title:')).replace('Title: ', '');
+    let result = lines.find(line => line.startsWith('Result:')).replace('Result: ', '');
+    const url = lines.find(line => line.startsWith('URL:')).replace('URL: ', '');
 
-  const resultObject = entries.slice(0, 5).map((entry, index) => {
-    const title = entry.title;
-    const result = entry.snippet;
-    const url = entry.link;
+    try {
+      const searchedContent = await searchWebpageContent(url);
+      result = searchedContent;
+    } catch (error) {
+      console.error(`Failed to search content from ${url}:`, error);
+    }
 
-    return {
-      [`result_${index + 1}`]: { title, result, url }
-    };
-  });
-
+    return { [`result_${index + 1}`]: { title, result, url } };
+  }));
+  
   const note = {
     "Note": "Search results provide only an overview and do not offer sufficiently detailed information. Please continue by using the Search Website tool and search websites to find relevant information about the topic."
   };
