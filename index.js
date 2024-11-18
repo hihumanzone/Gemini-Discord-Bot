@@ -305,6 +305,7 @@ client.once('ready', async () => {
 client.on('messageCreate', async (message) => {
   try {
     if (message.author.bot) return;
+    if (message.content.startsWith('!')) return;
 
     const isDM = message.channel.type === ChannelType.DM;
     const mentionPattern = new RegExp(`^<@!?${client.user.id}>(?:\\s+)?(generate|imagine)`, 'i');
