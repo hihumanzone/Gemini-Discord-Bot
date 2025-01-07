@@ -1,5 +1,5 @@
 import axios from 'axios';
-import EventSource from 'eventsource';
+import { EventSource } from 'eventsource';
 import WebSocket from 'ws';
 import fs from 'fs';
 
