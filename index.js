@@ -193,7 +193,7 @@ loadStateFromFile();
 
 // <=====[Configuration]=====>
 
-const MODEL = "gemini-1.5-flash-latest";
+const MODEL = "gemini-2.0-flash;
 
 /*
 `BLOCK_NONE`  -  Always show regardless of probability of unsafe content
