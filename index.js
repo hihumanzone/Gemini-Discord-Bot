@@ -31,10 +31,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getTextExtractor } from 'office-text-extractor'
-import * as cheerio from 'cheerio';
 import osu from 'node-os-utils';
-const { mem } = osu;
-const { cpu } = osu;
+const { mem, cpu } = osu;
 import axios from 'axios';
 
 const config = JSON.parse(fs.readFileSync('config.json', 'utf-8'));
@@ -193,7 +191,7 @@ loadStateFromFile();
 
 // <=====[Configuration]=====>
 
-const MODEL = "gemini-2.0-flash;
+const MODEL = "gemini-2.0-flash";
 
 /*
 `BLOCK_NONE`  -  Always show regardless of probability of unsafe content
