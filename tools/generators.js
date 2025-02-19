@@ -1,9 +1,8 @@
 import axios from 'axios';
 import { EventSource } from 'eventsource';
 import WebSocket from 'ws';
-import fs from 'fs';
 
-const config = JSON.parse(fs.readFileSync('config.json', 'utf-8'));
+const config = require('../config.js');
 const { bannerMusicGen, nevPrompt } = config;
 
 

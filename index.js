@@ -35,7 +35,7 @@ import osu from 'node-os-utils';
 const { mem, cpu } = osu;
 import axios from 'axios';
 
-const config = JSON.parse(fs.readFileSync('config.json', 'utf-8'));
+import config from './config.js';
 
 const client = new Client({
   intents: [
