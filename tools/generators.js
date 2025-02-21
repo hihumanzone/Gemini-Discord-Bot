@@ -2,7 +2,7 @@ import axios from 'axios';
 import { EventSource } from 'eventsource';
 import WebSocket from 'ws';
 
-const config = require('../config.js');
+import config from '../config.js';
 const { bannerMusicGen, nevPrompt } = config;
 
 
