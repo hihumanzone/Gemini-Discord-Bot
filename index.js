@@ -1100,17 +1100,9 @@ async function toggleChannelChatHistory(interaction) {
 
 async function handleStatusCommand(interaction) {
   try {
-    const initialEmbed = new EmbedBuilder()
-      .setColor(0x0099FF)
-      .setTitle('System Information')
-      .setDescription('Fetching system information...')
-      .setTimestamp();
+    await interaction.deferReply();
 
-    const message = await interaction.reply({
-      embeds: [initialEmbed],
-      withResponse: true
-    });
-    await addSettingsButton(message);
+    let interval;
 
     const updateMessage = async () => {
       try {
@@ -1154,25 +1146,21 @@ async function handleStatusCommand(interaction) {
           })
           .setTimestamp();
 
-        await message.edit({
+        await interaction.editReply({
           embeds: [embed]
         });
       } catch (error) {
         console.error('Error updating message:', error);
-        clearInterval(interval);
+        if (interval) clearInterval(interval);
       }
     };
 
     await updateMessage();
 
-    const interval = setInterval(async () => {
-      try {
-        await updateMessage();
-      } catch (error) {
-        clearInterval(interval);
-        console.error('Stopping updates due to error:', error);
-      }
-    }, 2000);
+    const message = await interaction.fetchReply();
+    await addSettingsButton(message);
+
+    interval = setInterval(updateMessage, 2000);
 
     setTimeout(() => {
       clearInterval(interval);
@@ -1180,6 +1168,18 @@ async function handleStatusCommand(interaction) {
 
   } catch (error) {
     console.error('Error in handleStatusCommand function:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({
+        content: 'An error occurred while fetching system status.',
+        embeds: [],
+        components: []
+      });
+    } else {
+      await interaction.reply({
+        content: 'An error occurred while fetching system status.',
+        ephemeral: true
+      });
+    }
   }
 }
 
