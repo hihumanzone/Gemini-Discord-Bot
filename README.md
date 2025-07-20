@@ -93,4 +93,4 @@ A Discord bot leveraging Google Gemini for advanced conversation, content unders
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE.md)
