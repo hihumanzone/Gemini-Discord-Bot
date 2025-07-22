@@ -1,9 +1,4 @@
-import dotenv from 'dotenv';
-dotenv.config();
 import {
-  Client,
-  GatewayIntentBits,
-  Partials,
   MessageFlags,
   ActionRowBuilder,
   ButtonBuilder,
@@ -21,12 +16,10 @@ import {
   Routes,
 } from 'discord.js';
 import {
-  GoogleGenerativeAI,
   HarmBlockThreshold,
   HarmCategory
 } from '@google/generative-ai';
 import {
-  GoogleAIFileManager,
   FileState
 } from '@google/generative-ai/server';
 import fs from 'fs/promises';
@@ -34,9 +27,6 @@ import {
   createWriteStream
 } from 'fs';
 import path from 'path';
-import {
-  fileURLToPath
-} from 'url';
 import {
   getTextExtractor
 } from 'office-text-extractor'
@@ -48,211 +38,23 @@ const {
 import axios from 'axios';
 
 import config from './config.js';
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages,
-  ],
-  partials: [Partials.Channel],
-});
-
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const fileManager = new GoogleAIFileManager(process.env.GOOGLE_API_KEY);
-const token = process.env.DISCORD_BOT_TOKEN;
-const activeRequests = new Set();
-
-// Define objects
-let chatHistories = {};
-let activeUsersInChannels = {};
-let customInstructions = {};
-let serverSettings = {};
-let userResponsePreference = {};
-let userToolPreference = {};
-let alwaysRespondChannels = {};
-let channelWideChatHistory = {};
-let blacklistedUsers = {};
-
-const stateAccess = {
-  get activeUsersInChannels() {
-    return activeUsersInChannels;
-  },
-  set activeUsersInChannels(v) {
-    activeUsersInChannels = v;
-  },
-  get customInstructions() {
-    return customInstructions;
-  },
-  set customInstructions(v) {
-    customInstructions = v;
-  },
-  get serverSettings() {
-    return serverSettings;
-  },
-  set serverSettings(v) {
-    serverSettings = v;
-  },
-  get userResponsePreference() {
-    return userResponsePreference;
-  },
-  set userResponsePreference(v) {
-    userResponsePreference = v;
-  },
-  get userToolPreference() {
-    return userToolPreference;
-  },
-  set userToolPreference(v) {
-    userToolPreference = v;
-  },
-  get alwaysRespondChannels() {
-    return alwaysRespondChannels;
-  },
-  set alwaysRespondChannels(v) {
-    alwaysRespondChannels = v;
-  },
-  get channelWideChatHistory() {
-    return channelWideChatHistory;
-  },
-  set channelWideChatHistory(v) {
-    channelWideChatHistory = v;
-  },
-  get blacklistedUsers() {
-    return blacklistedUsers;
-  },
-  set blacklistedUsers(v) {
-    blacklistedUsers = v;
-  },
-};
-
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const CONFIG_DIR = path.join(__dirname, 'config');
-const CHAT_HISTORIES_DIR = path.join(CONFIG_DIR, 'chat_histories_4');
-
-const FILE_PATHS = {
-  activeUsersInChannels: path.join(CONFIG_DIR, 'active_users_in_channels.json'),
-  customInstructions: path.join(CONFIG_DIR, 'custom_instructions.json'),
-  serverSettings: path.join(CONFIG_DIR, 'server_settings.json'),
-  userResponsePreference: path.join(CONFIG_DIR, 'user_response_preference.json'),
-  userToolPreference: path.join(CONFIG_DIR, 'user_tool_preference.json'),
-  alwaysRespondChannels: path.join(CONFIG_DIR, 'always_respond_channels.json'),
-  channelWideChatHistory: path.join(CONFIG_DIR, 'channel_wide_chatistory.json'),
-  blacklistedUsers: path.join(CONFIG_DIR, 'blacklisted_users.json')
-};
-
-async function saveStateToFile() {
-  try {
-    await fs.mkdir(CONFIG_DIR, {
-      recursive: true
-    });
-    await fs.mkdir(CHAT_HISTORIES_DIR, {
-      recursive: true
-    });
-
-    const chatHistoryPromises = Object.entries(chatHistories).map(([key, value]) => {
-      const filePath = path.join(CHAT_HISTORIES_DIR, `${key}.json`);
-      return fs.writeFile(filePath, JSON.stringify(value, null, 2), 'utf-8');
-    });
-
-    const filePromises = Object.entries(FILE_PATHS).map(([key, filePath]) => {
-      return fs.writeFile(filePath, JSON.stringify(stateAccess[key], null, 2), 'utf-8');
-    });
-
-    await Promise.all([...chatHistoryPromises, ...filePromises]);
-  } catch (error) {
-    console.error('Error saving state to files:', error);
-  }
-}
-
-async function loadStateFromFile() {
-  try {
-    await fs.mkdir(CONFIG_DIR, {
-      recursive: true
-    });
-    await fs.mkdir(CHAT_HISTORIES_DIR, {
-      recursive: true
-    });
-
-    const files = await fs.readdir(CHAT_HISTORIES_DIR);
-    const chatHistoryPromises = files
-      .filter(file => file.endsWith('.json'))
-      .map(async file => {
-        const user = path.basename(file, '.json');
-        const filePath = path.join(CHAT_HISTORIES_DIR, file);
-        try {
-          const data = await fs.readFile(filePath, 'utf-8');
-          chatHistories[user] = JSON.parse(data);
-        } catch (readError) {
-          console.error(`Error reading chat history for ${user}:`, readError);
-        }
-      });
-    await Promise.all(chatHistoryPromises);
-
-    const filePromises = Object.entries(FILE_PATHS).map(async ([key, filePath]) => {
-      try {
-        const data = await fs.readFile(filePath, 'utf-8');
-        stateAccess[key] = JSON.parse(data);
-      } catch (readError) {
-        if (readError.code !== 'ENOENT') {
-          console.error(`Error reading ${key} from ${filePath}:`, readError);
-        }
-      }
-    });
-    await Promise.all(filePromises);
-
-  } catch (error) {
-    console.error('Error loading state from files:', error);
-  }
-}
-
-function removeFileData(chatHistories) {
-  try {
-    Object.values(chatHistories).forEach(subIdEntries => {
-      subIdEntries.forEach(message => {
-        if (message.content) {
-          message.content = message.content.filter(contentItem => {
-            if (contentItem.fileData) {
-              delete contentItem.fileData;
-            }
-            return Object.keys(contentItem).length > 0;
-          });
-        }
-      });
-    });
-    console.log('fileData elements have been removed from chat histories.');
-  } catch (error) {
-    console.error('An error occurred while removing fileData elements:', error);
-  }
-}
-
-function scheduleDailyReset() {
-  try {
-    const now = new Date();
-    const nextReset = new Date();
-    nextReset.setHours(0, 0, 0, 0);
-    if (nextReset <= now) {
-      nextReset.setDate(now.getDate() + 1);
-    }
-    const timeUntilNextReset = nextReset - now;
-
-    setTimeout(() => {
-      removeFileData(chatHistories);
-      scheduleDailyReset();
-    }, timeUntilNextReset);
-
-  } catch (error) {
-    console.error('An error occurred while scheduling the daily reset:', error);
-  }
-}
-
-async function initialize() {
-  scheduleDailyReset();
-  await loadStateFromFile();
-}
+import {
+  client,
+  genAI,
+  fileManager,
+  token,
+  activeRequests,
+  chatHistoryLock,
+  state,
+  TEMP_DIR,
+  initialize,
+  saveStateToFile,
+  getHistory,
+  updateChatHistory,
+  getUserResponsePreference,
+  getUserToolPreference,
+  initializeBlacklistForGuild
+} from './botManager.js';
 
 initialize().catch(console.error);
 
@@ -328,9 +130,7 @@ let activityIndex = 0;
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
 
-  const rest = new REST({
-    version: '10'
-  }).setToken(token);
+  const rest = new REST().setToken(token);
   try {
     console.log('Started refreshing application (/) commands.');
 
@@ -374,15 +174,15 @@ client.on('messageCreate', async (message) => {
 
     const shouldRespond = (
       workInDMs && isDM ||
-      alwaysRespondChannels[message.channelId] ||
+      state.alwaysRespondChannels[message.channelId] ||
       (message.mentions.users.has(client.user.id) && !isDM) ||
-      activeUsersInChannels[message.channelId]?.[message.author.id]
+      state.activeUsersInChannels[message.channelId]?.[message.author.id]
     );
 
     if (shouldRespond) {
       if (message.guild) {
         initializeBlacklistForGuild(message.guild.id);
-        if (blacklistedUsers[message.guild.id].includes(message.author.id)) {
+        if (state.blacklistedUsers[message.guild.id].includes(message.author.id)) {
           const embed = new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('Blacklisted')
@@ -401,6 +201,7 @@ client.on('messageCreate', async (message) => {
           embeds: [embed]
         });
       } else {
+        activeRequests.add(message.author.id);
         await handleTextMessage(message);
       }
     }
@@ -453,7 +254,7 @@ async function handleButtonInteraction(interaction) {
 
   if (interaction.guild) {
     initializeBlacklistForGuild(interaction.guild.id);
-    if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
+    if (state.blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
       const embed = new EmbedBuilder()
         .setColor(0xFF0000)
         .setTitle('Blacklisted')
@@ -502,7 +303,7 @@ async function handleButtonInteraction(interaction) {
 
 async function handleDeleteMessageInteraction(interaction, msgId) {
   const userId = interaction.user.id;
-  const userChatHistory = chatHistories[userId];
+  const userChatHistory = state.chatHistories[userId];
   const channel = interaction.channel;
   const message = channel ? (await channel.messages.fetch(msgId).catch(() => false)) : false;
 
@@ -542,7 +343,7 @@ async function handleDeleteMessageInteraction(interaction, msgId) {
 }
 
 async function handleClearMemoryCommand(interaction) {
-  const serverChatHistoryEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverChatHistory : false;
+  const serverChatHistoryEnabled = interaction.guild ? state.serverSettings[interaction.guild.id]?.serverChatHistory : false;
   if (!serverChatHistoryEnabled) {
     await clearChatHistory(interaction);
   } else {
@@ -557,7 +358,7 @@ async function handleClearMemoryCommand(interaction) {
 }
 
 async function handleCustomPersonalityCommand(interaction) {
-  const serverCustomEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.customServerPersonality : false;
+  const serverCustomEnabled = interaction.guild ? state.serverSettings[interaction.guild.id]?.customServerPersonality : false;
   if (!serverCustomEnabled) {
     await setCustomPersonality(interaction);
   } else {
@@ -573,7 +374,7 @@ async function handleCustomPersonalityCommand(interaction) {
 }
 
 async function handleRemovePersonalityCommand(interaction) {
-  const isServerEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.customServerPersonality : false;
+  const isServerEnabled = interaction.guild ? state.serverSettings[interaction.guild.id]?.customServerPersonality : false;
   if (!isServerEnabled) {
     await removeCustomPersonality(interaction);
   } else {
@@ -589,7 +390,7 @@ async function handleRemovePersonalityCommand(interaction) {
 }
 
 async function handleToggleResponseMode(interaction) {
-  const serverResponsePreferenceEnabled = interaction.guild ? serverSettings[interaction.guild.id]?.serverResponsePreference : false;
+  const serverResponsePreferenceEnabled = interaction.guild ? state.serverSettings[interaction.guild.id]?.serverResponsePreference : false;
   if (!serverResponsePreferenceEnabled) {
     await toggleUserResponsePreference(interaction);
   } else {
@@ -622,6 +423,9 @@ async function handleTextMessage(message) {
   let messageContent = message.content.replace(new RegExp(`<@!?${botId}>`), '').trim();
 
   if (messageContent === '' && !(message.attachments.size > 0 && hasSupportedAttachments(message))) {
+    if (activeRequests.has(userId)) {
+      activeRequests.delete(userId);
+    }
     const embed = new EmbedBuilder()
       .setColor(0x00FFFF)
       .setTitle('Empty Message')
@@ -677,18 +481,16 @@ async function handleTextMessage(message) {
 
   let instructions;
   if (guildId) {
-    if (channelWideChatHistory[channelId]) {
-      instructions = customInstructions[channelId];
-    } else if (serverSettings[guildId]?.customServerPersonality && customInstructions[guildId]) {
-      instructions = customInstructions[guildId];
+    if (state.channelWideChatHistory[channelId]) {
+      instructions = state.customInstructions[channelId];
+    } else if (state.serverSettings[guildId]?.customServerPersonality && state.customInstructions[guildId]) {
+      instructions = state.customInstructions[guildId];
     } else {
-      instructions = customInstructions[userId];
+      instructions = state.customInstructions[userId];
     }
   } else {
-    instructions = customInstructions[userId];
+    instructions = state.customInstructions[userId];
   }
-
-  activeRequests.add(userId);
 
   let infoStr = '';
   if (guildId) {
@@ -699,8 +501,8 @@ async function handleTextMessage(message) {
     infoStr = `\nYou are currently engaging with users in the ${message.guild.name} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\``;
   }
 
-  const isServerChatHistoryEnabled = guildId ? serverSettings[guildId]?.serverChatHistory : false;
-  const isChannelChatHistoryEnabled = guildId ? channelWideChatHistory[channelId] : false;
+  const isServerChatHistoryEnabled = guildId ? state.serverSettings[guildId]?.serverChatHistory : false;
+  const isChannelChatHistoryEnabled = guildId ? state.channelWideChatHistory[channelId] : false;
   const finalInstructions = isServerChatHistoryEnabled ? instructions + infoStr : instructions;
   const historyId = isChannelChatHistoryEnabled ? (isServerChatHistoryEnabled ? guildId : channelId) : userId;
 
@@ -806,7 +608,8 @@ async function processPromptAndMediaAttachments(prompt, message) {
       const attachmentParts = await Promise.all(
         validAttachments.map(async (attachment) => {
           const sanitizedFileName = sanitizeFileName(attachment.name);
-          const filePath = path.join(__dirname, sanitizedFileName);
+          const uniqueTempFilename = `${message.author.id}-${attachment.id}-${sanitizedFileName}`;
+          const filePath = path.join(TEMP_DIR, uniqueTempFilename);
 
           try {
             await downloadFile(attachment.url, filePath);
@@ -905,7 +708,7 @@ async function handleModalSubmit(interaction) {
   if (interaction.customId === 'custom-personality-modal') {
     try {
       const customInstructionsInput = interaction.fields.getTextInputValue('custom-personality-input');
-      customInstructions[interaction.user.id] = customInstructionsInput.trim();
+      state.customInstructions[interaction.user.id] = customInstructionsInput.trim();
 
       const embed = new EmbedBuilder()
         .setColor(0x00FF00)
@@ -921,7 +724,7 @@ async function handleModalSubmit(interaction) {
   } else if (interaction.customId === 'custom-server-personality-modal') {
     try {
       const customInstructionsInput = interaction.fields.getTextInputValue('custom-server-personality-input');
-      customInstructions[interaction.guild.id] = customInstructionsInput.trim();
+      state.customInstructions[interaction.guild.id] = customInstructionsInput.trim();
 
       const embed = new EmbedBuilder()
         .setColor(0x00FF00)
@@ -939,7 +742,7 @@ async function handleModalSubmit(interaction) {
 
 async function clearChatHistory(interaction) {
   try {
-    chatHistories[interaction.user.id] = {};
+    state.chatHistories[interaction.user.id] = {};
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
       .setTitle('Chat History Cleared')
@@ -970,14 +773,14 @@ async function alwaysRespond(interaction) {
       return;
     }
 
-    if (!activeUsersInChannels[channelId]) {
-      activeUsersInChannels[channelId] = {};
+    if (!state.activeUsersInChannels[channelId]) {
+      state.activeUsersInChannels[channelId] = {};
     }
 
-    if (activeUsersInChannels[channelId][userId]) {
-      delete activeUsersInChannels[channelId][userId];
+    if (state.activeUsersInChannels[channelId][userId]) {
+      delete state.activeUsersInChannels[channelId][userId];
     } else {
-      activeUsersInChannels[channelId][userId] = true;
+      state.activeUsersInChannels[channelId][userId] = true;
     }
 
     await handleSubButtonInteraction(interaction, true);
@@ -1014,7 +817,7 @@ async function handleRespondToAllCommand(interaction) {
     const enabled = interaction.options.getBoolean('enabled');
 
     if (enabled) {
-      alwaysRespondChannels[channelId] = true;
+      state.alwaysRespondChannels[channelId] = true;
       const startRespondEmbed = new EmbedBuilder()
         .setColor(0x00FF00)
         .setTitle('Bot Response Enabled')
@@ -1024,7 +827,7 @@ async function handleRespondToAllCommand(interaction) {
         ephemeral: false
       });
     } else {
-      delete alwaysRespondChannels[channelId];
+      delete state.alwaysRespondChannels[channelId];
       const stopRespondEmbed = new EmbedBuilder()
         .setColor(0xFFA500)
         .setTitle('Bot Response Disabled')
@@ -1068,8 +871,8 @@ async function toggleChannelChatHistory(interaction) {
     const instructions = interaction.options.getString('instructions') || defaultPersonality;
 
     if (enabled) {
-      channelWideChatHistory[channelId] = true;
-      customInstructions[channelId] = instructions;
+      state.channelWideChatHistory[channelId] = true;
+      state.customInstructions[channelId] = instructions;
 
       const enabledEmbed = new EmbedBuilder()
         .setColor(0x00FF00)
@@ -1080,9 +883,9 @@ async function toggleChannelChatHistory(interaction) {
         ephemeral: false
       });
     } else {
-      delete channelWideChatHistory[channelId];
-      delete customInstructions[channelId];
-      delete chatHistories[channelId];
+      delete state.channelWideChatHistory[channelId];
+      delete state.customInstructions[channelId];
+      delete state.chatHistories[channelId];
 
       const disabledEmbed = new EmbedBuilder()
         .setColor(0xFFA500)
@@ -1183,17 +986,6 @@ async function handleStatusCommand(interaction) {
   }
 }
 
-function initializeBlacklistForGuild(guildId) {
-  try {
-    if (!blacklistedUsers[guildId]) {
-      blacklistedUsers[guildId] = [];
-    }
-    if (!serverSettings[guildId]) {
-      serverSettings[guildId] = defaultServerSettings;
-    }
-  } catch (error) {}
-}
-
 async function handleBlacklistCommand(interaction) {
   try {
     if (interaction.channel.type === ChannelType.DM) {
@@ -1219,13 +1011,12 @@ async function handleBlacklistCommand(interaction) {
     }
 
     const userId = interaction.options.getUser('user').id;
+    const guildId = interaction.guild.id;
 
-    if (!blacklistedUsers[interaction.guild.id]) {
-      blacklistedUsers[interaction.guild.id] = [];
-    }
+    initializeBlacklistForGuild(guildId);
 
-    if (!blacklistedUsers[interaction.guild.id].includes(userId)) {
-      blacklistedUsers[interaction.guild.id].push(userId);
+    if (!state.blacklistedUsers[guildId].includes(userId)) {
+      state.blacklistedUsers[guildId].push(userId);
       const blacklistedEmbed = new EmbedBuilder()
         .setColor(0x00FF00)
         .setTitle('User Blacklisted')
@@ -1272,14 +1063,13 @@ async function handleWhitelistCommand(interaction) {
     }
 
     const userId = interaction.options.getUser('user').id;
+    const guildId = interaction.guild.id;
 
-    if (!blacklistedUsers[interaction.guild.id]) {
-      blacklistedUsers[interaction.guild.id] = [];
-    }
+    initializeBlacklistForGuild(guildId);
 
-    const index = blacklistedUsers[interaction.guild.id].indexOf(userId);
+    const index = state.blacklistedUsers[guildId].indexOf(userId);
     if (index > -1) {
-      blacklistedUsers[interaction.guild.id].splice(index, 1);
+      state.blacklistedUsers[guildId].splice(index, 1);
       const removedEmbed = new EmbedBuilder()
         .setColor(0x00FF00)
         .setTitle('User Whitelisted')
@@ -1323,7 +1113,6 @@ async function setCustomPersonality(interaction) {
 
 async function downloadMessage(interaction) {
   try {
-    const userId = interaction.user.id;
     const message = interaction.message;
     let textContent = message.content;
     if (!textContent && message.embeds.length > 0) {
@@ -1342,7 +1131,7 @@ async function downloadMessage(interaction) {
       return;
     }
 
-    const filePath = path.resolve(__dirname, `message_content_${userId}.txt`);
+    const filePath = path.join(TEMP_DIR, `message_content_${interaction.id}.txt`);
     await fs.writeFile(filePath, textContent, 'utf8');
 
     const attachment = new AttachmentBuilder(filePath, {
@@ -1412,17 +1201,17 @@ async function downloadMessage(interaction) {
 }
 
 const uploadText = async (text) => {
-  const siteUrl = 'http://bin.shortbin.eu:8080';
+  const siteUrl = 'https://bin.mudfish.net';
   try {
-    const response = await axios.post(`${siteUrl}/documents`, text, {
-      headers: {
-        'Content-Type': 'text/plain'
-      },
+    const response = await axios.post(`${siteUrl}/api/text`, {
+      text: text,
+      ttl: 10080
+    }, {
       timeout: 3000
     });
 
-    const key = response.data.key;
-    return `\nURL: ${siteUrl}/${key}`;
+    const key = response.data.tid;
+    return `\nURL: ${siteUrl}/t/${key}`;
   } catch (error) {
     console.log(error);
     return '\nURL Error :(';
@@ -1452,7 +1241,7 @@ async function downloadConversation(interaction) {
       return `${role}:\n${content}\n\n`;
     }).join('');
 
-    const tempFileName = path.join(__dirname, `${userId}_conversation.txt`);
+    const tempFileName = path.join(TEMP_DIR, `conversation_${interaction.id}.txt`);
     await fs.writeFile(tempFileName, conversationText, 'utf8');
 
     const file = new AttachmentBuilder(tempFileName, {
@@ -1501,7 +1290,7 @@ async function downloadConversation(interaction) {
 
 async function removeCustomPersonality(interaction) {
   try {
-    delete customInstructions[interaction.user.id];
+    delete state.customInstructions[interaction.user.id];
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
       .setTitle('Removed')
@@ -1520,7 +1309,7 @@ async function toggleUserResponsePreference(interaction) {
   try {
     const userId = interaction.user.id;
     const currentPreference = getUserResponsePreference(userId);
-    userResponsePreference[userId] = currentPreference === 'Normal' ? 'Embedded' : 'Normal';
+    state.userResponsePreference[userId] = currentPreference === 'Normal' ? 'Embedded' : 'Normal';
     await handleSubButtonInteraction(interaction, true);
   } catch (error) {
     console.log(error.message);
@@ -1535,7 +1324,7 @@ async function toggleToolPreference(interaction) {
     const options = ['Google Search with URL Context', 'Code Execution', 'Function Calling'];
     const currentIndex = options.indexOf(currentPreference);
     const nextIndex = (currentIndex + 1) % options.length;
-    userToolPreference[userId] = options[nextIndex];
+    state.userToolPreference[userId] = options[nextIndex];
 
     await handleSubButtonInteraction(interaction, true);
   } catch (error) {
@@ -1560,16 +1349,16 @@ async function toggleServerWideChatHistory(interaction) {
     const serverId = interaction.guild.id;
     initializeBlacklistForGuild(serverId);
 
-    serverSettings[serverId].serverChatHistory = !serverSettings[serverId].serverChatHistory;
-    const statusMessage = `Server-wide Chat History is now \`${serverSettings[serverId].serverChatHistory ? "enabled" : "disabled"}\``;
+    state.serverSettings[serverId].serverChatHistory = !state.serverSettings[serverId].serverChatHistory;
+    const statusMessage = `Server-wide Chat History is now \`${state.serverSettings[serverId].serverChatHistory ? "enabled" : "disabled"}\``;
 
     let warningMessage = "";
-    if (serverSettings[serverId].serverChatHistory && !serverSettings[serverId].customServerPersonality) {
+    if (state.serverSettings[serverId].serverChatHistory && !state.serverSettings[serverId].customServerPersonality) {
       warningMessage = "\n\n⚠️ **Warning:** Enabling server-side chat history without enhancing server-wide personality management is not recommended. The bot may get confused between its personalities and conversations with different users.";
     }
 
     const embed = new EmbedBuilder()
-      .setColor(serverSettings[serverId].serverChatHistory ? 0x00FF00 : 0xFF0000)
+      .setColor(state.serverSettings[serverId].serverChatHistory ? 0x00FF00 : 0xFF0000)
       .setTitle('Chat History Toggled')
       .setDescription(statusMessage + warningMessage);
 
@@ -1599,11 +1388,11 @@ async function toggleServerPersonality(interaction) {
     const serverId = interaction.guild.id;
     initializeBlacklistForGuild(serverId);
 
-    serverSettings[serverId].customServerPersonality = !serverSettings[serverId].customServerPersonality;
-    const statusMessage = `Server-wide Personality is now \`${serverSettings[serverId].customServerPersonality ? "enabled" : "disabled"}\``;
+    state.serverSettings[serverId].customServerPersonality = !state.serverSettings[serverId].customServerPersonality;
+    const statusMessage = `Server-wide Personality is now \`${state.serverSettings[serverId].customServerPersonality ? "enabled" : "disabled"}\``;
 
     const embed = new EmbedBuilder()
-      .setColor(serverSettings[serverId].customServerPersonality ? 0x00FF00 : 0xFF0000)
+      .setColor(state.serverSettings[serverId].customServerPersonality ? 0x00FF00 : 0xFF0000)
       .setTitle('Server Personality Toggled')
       .setDescription(statusMessage);
 
@@ -1633,11 +1422,11 @@ async function toggleServerResponsePreference(interaction) {
     const serverId = interaction.guild.id;
     initializeBlacklistForGuild(serverId);
 
-    serverSettings[serverId].serverResponsePreference = !serverSettings[serverId].serverResponsePreference;
-    const statusMessage = `Server-wide Response Following is now \`${serverSettings[serverId].serverResponsePreference ? "enabled" : "disabled"}\``;
+    state.serverSettings[serverId].serverResponsePreference = !state.serverSettings[serverId].serverResponsePreference;
+    const statusMessage = `Server-wide Response Following is now \`${state.serverSettings[serverId].serverResponsePreference ? "enabled" : "disabled"}\``;
 
     const embed = new EmbedBuilder()
-      .setColor(serverSettings[serverId].serverResponsePreference ? 0x00FF00 : 0xFF0000)
+      .setColor(state.serverSettings[serverId].serverResponsePreference ? 0x00FF00 : 0xFF0000)
       .setTitle('Server Response Preference Toggled')
       .setDescription(statusMessage);
 
@@ -1667,11 +1456,11 @@ async function toggleSettingSaveButton(interaction) {
     const serverId = interaction.guild.id;
     initializeBlacklistForGuild(serverId);
 
-    serverSettings[serverId].settingsSaveButton = !serverSettings[serverId].settingsSaveButton;
-    const statusMessage = `Server-wide "Settings and Save Button" is now \`${serverSettings[serverId].settingsSaveButton ? "enabled" : "disabled"}\``;
+    state.serverSettings[serverId].settingsSaveButton = !state.serverSettings[serverId].settingsSaveButton;
+    const statusMessage = `Server-wide "Settings and Save Button" is now \`${state.serverSettings[serverId].settingsSaveButton ? "enabled" : "disabled"}\``;
 
     const embed = new EmbedBuilder()
-      .setColor(serverSettings[serverId].settingsSaveButton ? 0x00FF00 : 0xFF0000)
+      .setColor(state.serverSettings[serverId].settingsSaveButton ? 0x00FF00 : 0xFF0000)
       .setTitle('Settings Save Button Toggled')
       .setDescription(statusMessage);
 
@@ -1721,8 +1510,8 @@ async function clearServerChatHistory(interaction) {
     const serverId = interaction.guild.id;
     initializeBlacklistForGuild(serverId);
 
-    if (serverSettings[serverId].serverChatHistory) {
-      chatHistories[serverId] = {};
+    if (state.serverSettings[serverId].serverChatHistory) {
+      state.chatHistories[serverId] = {};
       const clearedEmbed = new EmbedBuilder()
         .setColor(0x00FF00)
         .setTitle('Chat History Cleared')
@@ -1769,7 +1558,7 @@ async function downloadServerConversation(interaction) {
       return `${role}:\n${content}\n\n`;
     }).join('');
 
-    const tempFileName = path.join(__dirname, `${guildId}_server_conversation.txt`);
+    const tempFileName = path.join(TEMP_DIR, `server_conversation_${interaction.id}.txt`);
     await fs.writeFile(tempFileName, conversationText, 'utf8');
 
     const file = new AttachmentBuilder(tempFileName, {
@@ -1819,15 +1608,15 @@ async function downloadServerConversation(interaction) {
 async function toggleServerPreference(interaction) {
   try {
     const guildId = interaction.guild.id;
-    if (serverSettings[guildId].responseStyle === "Embedded") {
-      serverSettings[guildId].responseStyle = "Normal";
+    if (state.serverSettings[guildId].responseStyle === "Embedded") {
+      state.serverSettings[guildId].responseStyle = "Normal";
     } else {
-      serverSettings[guildId].responseStyle = "Embedded";
+      state.serverSettings[guildId].responseStyle = "Embedded";
     }
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
       .setTitle('Server Response Style Updated')
-      .setDescription(`Server response style updated to: ${serverSettings[guildId].responseStyle}`);
+      .setDescription(`Server response style updated to: ${state.serverSettings[guildId].responseStyle}`);
 
     await interaction.reply({
       embeds: [embed],
@@ -1842,7 +1631,7 @@ async function showSettings(interaction, edit = false) {
   try {
     if (interaction.guild) {
       initializeBlacklistForGuild(interaction.guild.id);
-      if (blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
+      if (state.blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
         const embed = new EmbedBuilder()
           .setColor(0xFF0000)
           .setTitle('Blacklisted')
@@ -1903,15 +1692,15 @@ async function showSettings(interaction, edit = false) {
 async function handleSubButtonInteraction(interaction, update = false) {
   const channelId = interaction.channel.id;
   const userId = interaction.user.id;
-  if (!activeUsersInChannels[channelId]) {
-    activeUsersInChannels[channelId] = {};
+  if (!state.activeUsersInChannels[channelId]) {
+    state.activeUsersInChannels[channelId] = {};
   }
   const responseMode = getUserResponsePreference(userId);
   const toolMode = getUserToolPreference(userId);
   const subButtonConfigs = {
     'general-settings': [{
         customId: 'always-respond',
-        label: `Always Respond: ${activeUsersInChannels[channelId][userId] ? 'ON' : 'OFF'}`,
+        label: `Always Respond: ${state.activeUsersInChannels[channelId][userId] ? 'ON' : 'OFF'}`,
         emoji: '↩️',
         style: ButtonStyle.Secondary
       },
@@ -2155,14 +1944,6 @@ async function addSettingsButton(botMessage) {
   }
 }
 
-function getUserResponsePreference(userId) {
-  return userResponsePreference[userId] || defaultResponseFormat;
-}
-
-function getUserToolPreference(userId) {
-  return userToolPreference[userId] || defaultTool;
-}
-
 // <==========>
 
 
@@ -2171,7 +1952,7 @@ function getUserToolPreference(userId) {
 
 async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId) {
   const userId = originalMessage.author.id;
-  const userResponsePreference = originalMessage.guild && serverSettings[originalMessage.guild.id]?.serverResponsePreference ? serverSettings[originalMessage.guild.id].responseStyle : getUserResponsePreference(userId);
+  const userResponsePreference = originalMessage.guild && state.serverSettings[originalMessage.guild.id]?.serverResponsePreference ? state.serverSettings[originalMessage.guild.id].responseStyle : getUserResponsePreference(userId);
   const maxCharacterLimit = userResponsePreference === 'Embedded' ? 3900 : 1900;
   let attempts = 3;
 
@@ -2352,7 +2133,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         sendAsTextFile(finalResponse, originalMessage, botMessage.id);
         botMessage = await addDeleteButton(botMessage, botMessage.id);
       } else {
-        const shouldAddDownloadButton = originalMessage.guild ? serverSettings[originalMessage.guild.id]?.settingsSaveButton : true;
+        const shouldAddDownloadButton = originalMessage.guild ? state.serverSettings[originalMessage.guild.id]?.settingsSaveButton : true;
         if (shouldAddDownloadButton) {
           botMessage = await addDownloadButton(botMessage);
           botMessage = await addDeleteButton(botMessage, botMessage.id);
@@ -2362,7 +2143,11 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
           });
         }
       }
-      updateChatHistory(historyId, newHistory, botMessage.id);
+
+      await chatHistoryLock.runExclusive(async () => {
+        updateChatHistory(historyId, newHistory, botMessage.id);
+        await saveStateToFile();
+      });
       break;
     } catch (error) {
       if (activeRequests.has(userId)) {
@@ -2412,7 +2197,6 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       }
     }
   }
-  saveStateToFile();
   if (activeRequests.has(userId)) {
     activeRequests.delete(userId);
   }
@@ -2456,49 +2240,20 @@ function updateEmbed(botMessage, finalResponse, message, functionCallsString) {
 async function sendAsTextFile(text, message, orgId) {
   try {
     const filename = `response-${Date.now()}.txt`;
-    await fs.writeFile(filename, text);
+    const tempFilePath = path.join(TEMP_DIR, filename);
+    await fs.writeFile(tempFilePath, text);
 
     const botMessage = await message.channel.send({
       content: `<@${message.author.id}>, Here is the response:`,
-      files: [filename]
+      files: [tempFilePath]
     });
     await addSettingsButton(botMessage);
     await addDeleteButton(botMessage, orgId);
 
-    await fs.unlink(filename);
+    await fs.unlink(tempFilePath);
   } catch (error) {
     console.error('An error occurred:', error);
   }
-}
-
-function getHistory(id) {
-  const historyObject = chatHistories[id] || {};
-  let combinedHistory = [];
-
-  for (const messagesId in historyObject) {
-    if (historyObject.hasOwnProperty(messagesId)) {
-      combinedHistory = [...combinedHistory, ...historyObject[messagesId]];
-    }
-  }
-
-  return combinedHistory.map(entry => {
-    return {
-      role: entry.role === 'assistant' ? 'model' : entry.role,
-      parts: entry.content
-    };
-  });
-}
-
-function updateChatHistory(id, newHistory, messagesId) {
-  if (!chatHistories[id]) {
-    chatHistories[id] = {};
-  }
-
-  if (!chatHistories[id][messagesId]) {
-    chatHistories[id][messagesId] = [];
-  }
-
-  chatHistories[id][messagesId] = [...chatHistories[id][messagesId], ...newHistory];
 }
 
 // <==========>
