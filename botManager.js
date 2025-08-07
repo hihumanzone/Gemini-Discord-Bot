@@ -6,12 +6,10 @@ import {
   Partials
 } from 'discord.js';
 import {
-  GoogleGenerativeAI
-} from '@google/generative-ai';
-import {
+  GoogleGenerativeAI,
   GoogleAIFileManager,
   FileState
-} from '@google/generative-ai/server';
+} from '@google/genai';
 import fs from 'fs/promises';
 import path from 'path';
 import {

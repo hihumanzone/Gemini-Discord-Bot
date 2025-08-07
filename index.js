@@ -18,10 +18,10 @@ import {
 import {
   HarmBlockThreshold,
   HarmCategory
-} from '@google/generative-ai';
+} from '@google/genai';
 import {
   FileState
-} from '@google/generative-ai/server';
+} from '@google/genai';
 import fs from 'fs/promises';
 import {
   createWriteStream
@@ -618,17 +618,20 @@ async function processPromptAndMediaAttachments(prompt, message) {
               displayName: sanitizedFileName,
             });
 
-            const name = uploadResult.file.name;
-            if (name === null) {
+            // New API might return file information directly
+            const fileUri = uploadResult.uri || uploadResult.file?.uri;
+            const fileName = uploadResult.name || uploadResult.file?.name;
+            
+            if (!fileName) {
               throw new Error(`Unable to extract file name from upload result.`);
             }
 
             if (attachment.contentType.startsWith('video/')) {
-              let file = await fileManager.getFile(name);
+              let file = await fileManager.getFile(fileName);
               while (file.state === FileState.PROCESSING) {
                 process.stdout.write(".");
                 await new Promise((resolve) => setTimeout(resolve, 10_000));
-                file = await fileManager.getFile(name);
+                file = await fileManager.getFile(fileName);
               }
               if (file.state === FileState.FAILED) {
                 throw new Error(`Video processing failed for ${sanitizedFileName}.`);
@@ -638,7 +641,7 @@ async function processPromptAndMediaAttachments(prompt, message) {
             return {
               fileData: {
                 mimeType: attachment.contentType,
-                fileUri: uploadResult.file.uri,
+                fileUri: fileUri,
               },
             };
           } catch (error) {
