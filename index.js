@@ -530,7 +530,7 @@ async function handleTextMessage(message) {
       break;
   }
 
-  const model = await genAI.getGenerativeModel({
+  const model = genAI.getGenerativeModel({
     model: MODEL,
     systemInstruction: {
       role: "system",
