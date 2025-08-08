@@ -642,7 +642,7 @@ async function processPromptAndMediaAttachments(prompt, message) {
 
             return {
               fileData: {
-                mimeType: attachment.contentType,
+                mimeType: uploadResult.mimeType,
                 fileUri: uploadResult.uri,
               },
             };
