@@ -18,10 +18,10 @@ import {
 import {
   HarmBlockThreshold,
   HarmCategory
-} from '@google/generative-ai';
+} from '@google/genai';
 import {
   FileState
-} from '@google/generative-ai/server';
+} from '@google/genai';
 import fs from 'fs/promises';
 import {
   createWriteStream
@@ -53,7 +53,9 @@ import {
   updateChatHistory,
   getUserResponsePreference,
   getUserToolPreference,
-  initializeBlacklistForGuild
+  initializeBlacklistForGuild,
+  createUserContent,
+  createPartFromUri
 } from './botManager.js';
 
 initialize().catch(console.error);
@@ -613,24 +615,27 @@ async function processPromptAndMediaAttachments(prompt, message) {
 
           try {
             await downloadFile(attachment.url, filePath);
-            const uploadResult = await fileManager.uploadFile(filePath, {
-              mimeType: attachment.contentType,
-              displayName: sanitizedFileName,
+            const uploadResult = await fileManager.upload({
+              file: filePath,
+              config: {
+                mimeType: attachment.contentType,
+                displayName: sanitizedFileName,
+              },
             });
 
-            const name = uploadResult.file.name;
-            if (name === null) {
+            const name = uploadResult.name;
+            if (!name) {
               throw new Error(`Unable to extract file name from upload result.`);
             }
 
             if (attachment.contentType.startsWith('video/')) {
-              let file = await fileManager.getFile(name);
-              while (file.state === FileState.PROCESSING) {
+              let file = await fileManager.get({ name: name });
+              while (file.state === 'PROCESSING') {
                 process.stdout.write(".");
                 await new Promise((resolve) => setTimeout(resolve, 10_000));
-                file = await fileManager.getFile(name);
+                file = await fileManager.get({ name: name });
               }
-              if (file.state === FileState.FAILED) {
+              if (file.state === 'FAILED') {
                 throw new Error(`Video processing failed for ${sanitizedFileName}.`);
               }
             }
@@ -638,7 +643,7 @@ async function processPromptAndMediaAttachments(prompt, message) {
             return {
               fileData: {
                 mimeType: attachment.contentType,
-                fileUri: uploadResult.file.uri,
+                fileUri: uploadResult.uri,
               },
             };
           } catch (error) {

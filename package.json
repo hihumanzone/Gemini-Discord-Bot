@@ -1,7 +1,7 @@
 {
   "type": "module",
   "dependencies": {
-    "@google/generative-ai": "*",
+    "@google/genai": "*",
     "axios": "*",
     "discord.js": "*",
     "dotenv": "*",

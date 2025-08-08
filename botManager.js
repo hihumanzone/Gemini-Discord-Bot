@@ -6,12 +6,10 @@ import {
   Partials
 } from 'discord.js';
 import {
-  GoogleGenerativeAI
-} from '@google/generative-ai';
-import {
-  GoogleAIFileManager,
-  FileState
-} from '@google/generative-ai/server';
+  GoogleGenAI,
+  createUserContent,
+  createPartFromUri
+} from '@google/genai';
 import fs from 'fs/promises';
 import path from 'path';
 import {
@@ -32,8 +30,9 @@ export const client = new Client({
   partials: [Partials.Channel],
 });
 
-export const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-export const fileManager = new GoogleAIFileManager(process.env.GOOGLE_API_KEY);
+export const genAI = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
+export const fileManager = genAI.files;
+export { createUserContent, createPartFromUri };
 export const token = process.env.DISCORD_BOT_TOKEN;
 
 // --- Concurrency and Request Management ---
