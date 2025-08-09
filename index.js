@@ -15,99 +15,47 @@ import {
   REST,
   Routes,
 } from 'discord.js';
-import {
-  HarmBlockThreshold,
-  HarmCategory
-} from '@google/genai';
 import fs from 'fs/promises';
-import {
-  createWriteStream
-} from 'fs';
 import path from 'path';
-import {
-  getTextExtractor
-} from 'office-text-extractor'
-import osu from 'node-os-utils';
-const {
-  mem,
-  cpu
-} = osu;
 import axios from 'axios';
 
 import config from './config.js';
 import {
   client,
-  genAI,
-  createPartFromUri,
   token,
   activeRequests,
-  chatHistoryLock,
   state,
   TEMP_DIR,
   initialize,
-  saveStateToFile,
-  getHistory,
-  updateChatHistory,
   getUserResponsePreference,
   getUserToolPreference,
-  initializeBlacklistForGuild
+  initializeBlacklistForGuild,
+  getHistory
 } from './botManager.js';
+
+// Import refactored handlers
+import {
+  handleRespondToAllCommand,
+  toggleChannelChatHistory,
+  handleBlacklistCommand,
+  handleWhitelistCommand,
+  handleClearMemoryCommand
+} from './handlers/commandHandlers.js';
+import { handleStatusCommand } from './handlers/statusHandler.js';
+import { handleTextMessage, shouldRespondToMessage, isUserBlacklisted } from './handlers/messageHandler.js';
+import { addSettingsButton, addDownloadButton, addDeleteButton } from './utils/buttonUtils.js';
+import { createErrorEmbed, createSuccessEmbed, createWarningEmbed } from './utils/embedUtils.js';
 
 initialize().catch(console.error);
 
-
 // <=====[Configuration]=====>
 
-const MODEL = "gemini-2.5-flash";
-
-/*
-`BLOCK_NONE`  -  Always show regardless of probability of unsafe content
-`BLOCK_ONLY_HIGH`  -  Block when high probability of unsafe content
-`BLOCK_MEDIUM_AND_ABOVE`  -  Block when medium or high probability of unsafe content
-`BLOCK_LOW_AND_ABOVE`  -  Block when low, medium or high probability of unsafe content
-`HARM_BLOCK_THRESHOLD_UNSPECIFIED`  -  Threshold is unspecified, block using default threshold
-*/
-const safetySettings = [{
-    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-  {
-    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-  {
-    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-  {
-    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-];
-
-const generationConfig = {
-  temperature: 1.0,
-  topP: 0.95,
-  // maxOutputTokens: 1000,
-  thinkingConfig: {
-    thinkingBudget: -1
-  }
-};
-
-const defaultResponseFormat = config.defaultResponseFormat;
-const defaultTool = config.defaultTool;
 const hexColour = config.hexColour;
 const activities = config.activities.map(activity => ({
   name: activity.name,
   type: ActivityType[activity.type]
 }));
-const defaultPersonality = config.defaultPersonality;
-const defaultServerSettings = config.defaultServerSettings;
-const workInDMs = config.workInDMs;
 const shouldDisplayPersonalityButtons = config.shouldDisplayPersonalityButtons;
-const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
-
-
 
 import {
   delay,
@@ -115,8 +63,6 @@ import {
 } from './tools/others.js';
 
 // <==========>
-
-
 
 // <=====[Register Commands And Activities]=====>
 
@@ -159,8 +105,6 @@ client.once('ready', async () => {
 
 // <==========>
 
-
-
 // <=====[Messages And Interaction]=====>
 
 client.on('messageCreate', async (message) => {
@@ -168,33 +112,16 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     if (message.content.startsWith('!')) return;
 
-    const isDM = message.channel.type === ChannelType.DM;
-
-    const shouldRespond = (
-      workInDMs && isDM ||
-      state.alwaysRespondChannels[message.channelId] ||
-      (message.mentions.users.has(client.user.id) && !isDM) ||
-      state.activeUsersInChannels[message.channelId]?.[message.author.id]
-    );
-
-    if (shouldRespond) {
-      if (message.guild) {
-        initializeBlacklistForGuild(message.guild.id);
-        if (state.blacklistedUsers[message.guild.id].includes(message.author.id)) {
-          const embed = new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('Blacklisted')
-            .setDescription('You are blacklisted and cannot use this bot.');
-          return message.reply({
-            embeds: [embed]
-          });
-        }
+    if (shouldRespondToMessage(message)) {
+      if (isUserBlacklisted(message)) {
+        const embed = createErrorEmbed('Blacklisted', 'You are blacklisted and cannot use this bot.');
+        return message.reply({
+          embeds: [embed]
+        });
       }
+      
       if (activeRequests.has(message.author.id)) {
-        const embed = new EmbedBuilder()
-          .setColor(0xFFFF00)
-          .setTitle('Request In Progress')
-          .setDescription('Please wait until your previous action is complete.');
+        const embed = createWarningEmbed('Request In Progress', 'Please wait until your previous action is complete.');
         await message.reply({
           embeds: [embed]
         });
@@ -253,10 +180,7 @@ async function handleButtonInteraction(interaction) {
   if (interaction.guild) {
     initializeBlacklistForGuild(interaction.guild.id);
     if (state.blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
-      const embed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Blacklisted')
-        .setDescription('You are blacklisted and cannot use this interaction.');
+      const embed = createErrorEmbed('Blacklisted', 'You are blacklisted and cannot use this interaction.');
       return interaction.reply({
         embeds: [embed],
         flags: MessageFlags.Ephemeral
@@ -315,10 +239,7 @@ async function handleDeleteMessageInteraction(interaction, msgId) {
         if (userId === replyingTo) {
           await deleteMsg();
         } else {
-          const embed = new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('Not For You')
-            .setDescription('This button is not meant for you.');
+          const embed = createErrorEmbed('Not For You', 'This button is not meant for you.');
           return interaction.reply({
             embeds: [embed],
             flags: MessageFlags.Ephemeral
@@ -340,30 +261,12 @@ async function handleDeleteMessageInteraction(interaction, msgId) {
   }
 }
 
-async function handleClearMemoryCommand(interaction) {
-  const serverChatHistoryEnabled = interaction.guild ? state.serverSettings[interaction.guild.id]?.serverChatHistory : false;
-  if (!serverChatHistoryEnabled) {
-    await clearChatHistory(interaction);
-  } else {
-    const embed = new EmbedBuilder()
-      .setColor(0xFF5555)
-      .setTitle('Feature Disabled')
-      .setDescription('Clearing chat history is not enabled for this server, Server-Wide chat history is active.');
-    await interaction.reply({
-      embeds: [embed]
-    });
-  }
-}
-
 async function handleCustomPersonalityCommand(interaction) {
   const serverCustomEnabled = interaction.guild ? state.serverSettings[interaction.guild.id]?.customServerPersonality : false;
   if (!serverCustomEnabled) {
     await setCustomPersonality(interaction);
   } else {
-    const embed = new EmbedBuilder()
-      .setColor(0xFF5555)
-      .setTitle('Feature Disabled')
-      .setDescription('Custom personality is not enabled for this server, Server-Wide personality is active.');
+    const embed = createWarningEmbed('Feature Disabled', 'Custom personality is not enabled for this server, Server-Wide personality is active.');
     await interaction.reply({
       embeds: [embed],
       flags: MessageFlags.Ephemeral
@@ -376,10 +279,7 @@ async function handleRemovePersonalityCommand(interaction) {
   if (!isServerEnabled) {
     await removeCustomPersonality(interaction);
   } else {
-    const embed = new EmbedBuilder()
-      .setColor(0xFF5555)
-      .setTitle('Feature Disabled')
-      .setDescription('Custom personality is not enabled for this server, Server-Wide personality is active.');
+    const embed = createWarningEmbed('Feature Disabled', 'Custom personality is not enabled for this server, Server-Wide personality is active.');
     await interaction.reply({
       embeds: [embed],
       flags: MessageFlags.Ephemeral
@@ -392,10 +292,7 @@ async function handleToggleResponseMode(interaction) {
   if (!serverResponsePreferenceEnabled) {
     await toggleUserResponsePreference(interaction);
   } else {
-    const embed = new EmbedBuilder()
-      .setColor(0xFF5555)
-      .setTitle('Feature Disabled')
-      .setDescription('Toggling Response Mode is not enabled for this server, Server-Wide Response Mode is active.');
+    const embed = createWarningEmbed('Feature Disabled', 'Toggling Response Mode is not enabled for this server, Server-Wide Response Mode is active.');
     await interaction.reply({
       embeds: [embed],
       flags: MessageFlags.Ephemeral
@@ -409,293 +306,6 @@ async function editShowSettings(interaction) {
 
 // <==========>
 
-
-
-// <=====[Messages Handling]=====>
-
-async function handleTextMessage(message) {
-  const botId = client.user.id;
-  const userId = message.author.id;
-  const guildId = message.guild?.id;
-  const channelId = message.channel.id;
-  let messageContent = message.content.replace(new RegExp(`<@!?${botId}>`), '').trim();
-
-  if (messageContent === '' && !(message.attachments.size > 0 && hasSupportedAttachments(message))) {
-    if (activeRequests.has(userId)) {
-      activeRequests.delete(userId);
-    }
-    const embed = new EmbedBuilder()
-      .setColor(0x00FFFF)
-      .setTitle('Empty Message')
-      .setDescription("It looks like you didn't say anything. What would you like to talk about?");
-    const botMessage = await message.reply({
-      embeds: [embed]
-    });
-    await addSettingsButton(botMessage);
-    return;
-  }
-  message.channel.sendTyping();
-  const typingInterval = setInterval(() => {
-    message.channel.sendTyping();
-  }, 4000);
-  setTimeout(() => {
-    clearInterval(typingInterval);
-  }, 120000);
-  let botMessage = false;
-  let parts;
-  try {
-    if (SEND_RETRY_ERRORS_TO_DISCORD) {
-      clearInterval(typingInterval);
-      const updateEmbedDescription = (textAttachmentStatus, imageAttachmentStatus, finalText) => {
-        return `Let me think...\n\n- ${textAttachmentStatus}: Text Attachment Check\n- ${imageAttachmentStatus}: Media Attachment Check\n${finalText || ''}`;
-      };
-
-      const embed = new EmbedBuilder()
-        .setColor(0x00FFFF)
-        .setTitle('Processing')
-        .setDescription(updateEmbedDescription('[🔁]', '[🔁]'));
-      botMessage = await message.reply({
-        embeds: [embed]
-      });
-
-      messageContent = await extractFileText(message, messageContent);
-      embed.setDescription(updateEmbedDescription('[☑️]', '[🔁]'));
-      await botMessage.edit({
-        embeds: [embed]
-      });
-
-      parts = await processPromptAndMediaAttachments(messageContent, message);
-      embed.setDescription(updateEmbedDescription('[☑️]', '[☑️]', '### All checks done. Waiting for the response...'));
-      await botMessage.edit({
-        embeds: [embed]
-      });
-    } else {
-      messageContent = await extractFileText(message, messageContent);
-      parts = await processPromptAndMediaAttachments(messageContent, message);
-    }
-  } catch (error) {
-    return console.error('Error initialising message', error);
-  }
-
-  let instructions;
-  if (guildId) {
-    if (state.channelWideChatHistory[channelId]) {
-      instructions = state.customInstructions[channelId];
-    } else if (state.serverSettings[guildId]?.customServerPersonality && state.customInstructions[guildId]) {
-      instructions = state.customInstructions[guildId];
-    } else {
-      instructions = state.customInstructions[userId];
-    }
-  } else {
-    instructions = state.customInstructions[userId];
-  }
-
-  let infoStr = '';
-  if (guildId) {
-    const userInfo = {
-      username: message.author.username,
-      displayName: message.author.displayName
-    };
-    infoStr = `\nYou are currently engaging with users in the ${message.guild.name} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\``;
-  }
-
-  const isServerChatHistoryEnabled = guildId ? state.serverSettings[guildId]?.serverChatHistory : false;
-  const isChannelChatHistoryEnabled = guildId ? state.channelWideChatHistory[channelId] : false;
-  const finalInstructions = isServerChatHistoryEnabled ? instructions + infoStr : instructions;
-  const historyId = isChannelChatHistoryEnabled ? (isServerChatHistoryEnabled ? guildId : channelId) : userId;
-
-  // Configure tools based on user preference - only Google Search and Code Execution supported
-  const userToolMode = getUserToolPreference(userId);
-  let tools;
-
-  switch (userToolMode) {
-    case 'Code Execution':
-      tools = [{
-        codeExecution: {}
-      }];
-      break;
-    case 'Google Search with URL Context':
-    default:
-      tools = [{
-        googleSearch: {}
-      }, {
-        urlContext: {}
-      }];
-      break;
-  }
-
-  // Create chat with new Google GenAI API format
-  const chat = genAI.chats.create({
-    model: MODEL,
-    config: {
-      systemInstruction: {
-        role: "system",
-        parts: [{
-          text: finalInstructions || defaultPersonality
-        }]
-      },
-      ...generationConfig,
-      safetySettings,
-      tools: tools
-    },
-    history: getHistory(historyId)
-  });
-
-  await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId);
-}
-
-function hasSupportedAttachments(message) {
-  const supportedFileExtensions = ['.html', '.js', '.css', '.json', '.xml', '.csv', '.py', '.java', '.sql', '.log', '.md', '.txt', '.docx', '.pptx'];
-
-  return message.attachments.some((attachment) => {
-    const contentType = (attachment.contentType || "").toLowerCase();
-    const fileExtension = path.extname(attachment.name) || '';
-    return (
-      (contentType.startsWith('image/') && contentType !== 'image/gif') ||
-      contentType.startsWith('audio/') ||
-      contentType.startsWith('video/') ||
-      contentType.startsWith('application/pdf') ||
-      contentType.startsWith('application/x-pdf') ||
-      supportedFileExtensions.includes(fileExtension)
-    );
-  });
-}
-
-async function downloadFile(url, filePath) {
-  const writer = createWriteStream(filePath);
-  const response = await axios({
-    url,
-    method: 'GET',
-    responseType: 'stream',
-  });
-  response.data.pipe(writer);
-  return new Promise((resolve, reject) => {
-    writer.on('finish', resolve);
-    writer.on('error', reject);
-  });
-}
-
-function sanitizeFileName(fileName) {
-  return fileName
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-async function processPromptAndMediaAttachments(prompt, message) {
-  const attachments = JSON.parse(JSON.stringify(Array.from(message.attachments.values())));
-  let parts = [{
-    text: prompt
-  }];
-
-  if (attachments.length > 0) {
-    const validAttachments = attachments.filter(attachment => {
-      const contentType = (attachment.contentType || "").toLowerCase();
-      return (contentType.startsWith('image/') && contentType !== 'image/gif') ||
-        contentType.startsWith('audio/') ||
-        contentType.startsWith('video/') ||
-        contentType.startsWith('application/pdf') ||
-        contentType.startsWith('application/x-pdf');
-    });
-
-    if (validAttachments.length > 0) {
-      const attachmentParts = await Promise.all(
-        validAttachments.map(async (attachment) => {
-          const sanitizedFileName = sanitizeFileName(attachment.name);
-          const uniqueTempFilename = `${message.author.id}-${attachment.id}-${sanitizedFileName}`;
-          const filePath = path.join(TEMP_DIR, uniqueTempFilename);
-
-          try {
-            await downloadFile(attachment.url, filePath);
-            // Upload file using new Google GenAI API format
-            const uploadResult = await genAI.files.upload({
-              file: filePath,
-              config: {
-                mimeType: attachment.contentType,
-                displayName: sanitizedFileName,
-              }
-            });
-
-            const name = uploadResult.name;
-            if (name === null) {
-              throw new Error(`Unable to extract file name from upload result.`);
-            }
-
-            if (attachment.contentType.startsWith('video/')) {
-              // Wait for video processing to complete using new API
-              let file = await genAI.files.get({ name: name });
-              while (file.state === 'PROCESSING') {
-                process.stdout.write(".");
-                await new Promise((resolve) => setTimeout(resolve, 10_000));
-                file = await genAI.files.get({ name: name });
-              }
-              if (file.state === 'FAILED') {
-                throw new Error(`Video processing failed for ${sanitizedFileName}.`);
-              }
-            }
-
-            return createPartFromUri(uploadResult.uri, uploadResult.mimeType);
-          } catch (error) {
-            console.error(`Error processing attachment ${sanitizedFileName}:`, error);
-            return null;
-          } finally {
-            try {
-              await fs.unlink(filePath);
-            } catch (unlinkError) {
-              if (unlinkError.code !== 'ENOENT') {
-                console.error(`Error deleting temporary file ${filePath}:`, unlinkError);
-              }
-            }
-          }
-        })
-      );
-      parts = [...parts, ...attachmentParts.filter(part => part !== null)];
-    }
-  }
-  return parts;
-}
-
-
-async function extractFileText(message, messageContent) {
-  if (message.attachments.size > 0) {
-    let attachments = Array.from(message.attachments.values());
-    for (const attachment of attachments) {
-      const fileType = path.extname(attachment.name) || '';
-      const fileTypes = ['.html', '.js', '.css', '.json', '.xml', '.csv', '.py', '.java', '.sql', '.log', '.md', '.txt', '.docx', '.pptx'];
-
-      if (fileTypes.includes(fileType)) {
-        try {
-          let fileContent = await downloadAndReadFile(attachment.url, fileType);
-          messageContent += `\n\n[\`${attachment.name}\` File Content]:\n\`\`\`\n${fileContent}\n\`\`\``;
-        } catch (error) {
-          console.error(`Error reading file ${attachment.name}: ${error.message}`);
-        }
-      }
-    }
-  }
-  return messageContent;
-}
-
-async function downloadAndReadFile(url, fileType) {
-  switch (fileType) {
-    case 'pptx':
-    case 'docx':
-      const extractor = getTextExtractor();
-      return (await extractor.extractText({
-        input: url,
-        type: 'url'
-      }));
-    default:
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`Failed to download ${response.statusText}`);
-      return await response.text();
-  }
-}
-
-// <==========>
-
-
-
 // <=====[Interaction Reply]=====>
 
 async function handleModalSubmit(interaction) {
@@ -704,10 +314,7 @@ async function handleModalSubmit(interaction) {
       const customInstructionsInput = interaction.fields.getTextInputValue('custom-personality-input');
       state.customInstructions[interaction.user.id] = customInstructionsInput.trim();
 
-      const embed = new EmbedBuilder()
-        .setColor(0x00FF00)
-        .setTitle('Success')
-        .setDescription('Custom Personality Instructions Saved!');
+      const embed = createSuccessEmbed('Success', 'Custom Personality Instructions Saved!');
       await interaction.reply({
         embeds: [embed],
         flags: MessageFlags.Ephemeral
@@ -720,10 +327,7 @@ async function handleModalSubmit(interaction) {
       const customInstructionsInput = interaction.fields.getTextInputValue('custom-server-personality-input');
       state.customInstructions[interaction.guild.id] = customInstructionsInput.trim();
 
-      const embed = new EmbedBuilder()
-        .setColor(0x00FF00)
-        .setTitle('Success')
-        .setDescription('Custom Server Personality Instructions Saved!');
+      const embed = createSuccessEmbed('Success', 'Custom Server Personality Instructions Saved!');
       await interaction.reply({
         embeds: [embed],
         flags: MessageFlags.Ephemeral
@@ -734,32 +338,13 @@ async function handleModalSubmit(interaction) {
   }
 }
 
-async function clearChatHistory(interaction) {
-  try {
-    state.chatHistories[interaction.user.id] = {};
-    const embed = new EmbedBuilder()
-      .setColor(0x00FF00)
-      .setTitle('Chat History Cleared')
-      .setDescription('Chat history cleared!');
-    await interaction.reply({
-      embeds: [embed],
-      flags: MessageFlags.Ephemeral
-    });
-  } catch (error) {
-    console.log(error.message);
-  }
-}
-
 async function alwaysRespond(interaction) {
   try {
     const userId = interaction.user.id;
     const channelId = interaction.channelId;
 
     if (interaction.channel.type === ChannelType.DM) {
-      const dmDisabledEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Feature Disabled in DMs')
-        .setDescription('This feature is disabled in direct messages.');
+      const dmDisabledEmbed = createErrorEmbed('Feature Disabled in DMs', 'This feature is disabled in direct messages.');
       await interaction.reply({
         embeds: [dmDisabledEmbed],
         flags: MessageFlags.Ephemeral
@@ -778,308 +363,6 @@ async function alwaysRespond(interaction) {
     }
 
     await handleSubButtonInteraction(interaction, true);
-  } catch (error) {
-    console.log(error.message);
-  }
-}
-
-async function handleRespondToAllCommand(interaction) {
-  try {
-    if (interaction.channel.type === ChannelType.DM) {
-      const dmEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Command Not Available')
-        .setDescription('This command cannot be used in DMs.');
-      return interaction.reply({
-        embeds: [dmEmbed],
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      const adminEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Admin Required')
-        .setDescription('You need to be an admin to use this command.');
-      return interaction.reply({
-        embeds: [adminEmbed],
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
-    const channelId = interaction.channelId;
-    const enabled = interaction.options.getBoolean('enabled');
-
-    if (enabled) {
-      state.alwaysRespondChannels[channelId] = true;
-      const startRespondEmbed = new EmbedBuilder()
-        .setColor(0x00FF00)
-        .setTitle('Bot Response Enabled')
-        .setDescription('The bot will now respond to all messages in this channel.');
-      await interaction.reply({
-        embeds: [startRespondEmbed],
-        ephemeral: false
-      });
-    } else {
-      delete state.alwaysRespondChannels[channelId];
-      const stopRespondEmbed = new EmbedBuilder()
-        .setColor(0xFFA500)
-        .setTitle('Bot Response Disabled')
-        .setDescription('The bot will now stop responding to all messages in this channel.');
-      await interaction.reply({
-        embeds: [stopRespondEmbed],
-        ephemeral: false
-      });
-    }
-  } catch (error) {
-    console.log(error.message);
-  }
-}
-
-async function toggleChannelChatHistory(interaction) {
-  try {
-    if (interaction.channel.type === ChannelType.DM) {
-      const dmEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Command Not Available')
-        .setDescription('This command cannot be used in DMs.');
-      return interaction.reply({
-        embeds: [dmEmbed],
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      const adminEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Admin Required')
-        .setDescription('You need to be an admin to use this command.');
-      return interaction.reply({
-        embeds: [adminEmbed],
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
-    const channelId = interaction.channelId;
-    const enabled = interaction.options.getBoolean('enabled');
-    const instructions = interaction.options.getString('instructions') || defaultPersonality;
-
-    if (enabled) {
-      state.channelWideChatHistory[channelId] = true;
-      state.customInstructions[channelId] = instructions;
-
-      const enabledEmbed = new EmbedBuilder()
-        .setColor(0x00FF00)
-        .setTitle('Channel History Enabled')
-        .setDescription(`Channel-wide chat history has been enabled.`);
-      await interaction.reply({
-        embeds: [enabledEmbed],
-        ephemeral: false
-      });
-    } else {
-      delete state.channelWideChatHistory[channelId];
-      delete state.customInstructions[channelId];
-      delete state.chatHistories[channelId];
-
-      const disabledEmbed = new EmbedBuilder()
-        .setColor(0xFFA500)
-        .setTitle('Channel History Disabled')
-        .setDescription('Channel-wide chat history has been disabled.');
-      await interaction.reply({
-        embeds: [disabledEmbed],
-        ephemeral: false
-      });
-    }
-  } catch (error) {
-    console.error('Error in toggleChannelChatHistory:', error);
-  }
-}
-
-async function handleStatusCommand(interaction) {
-  try {
-    await interaction.deferReply();
-
-    let interval;
-
-    const updateMessage = async () => {
-      try {
-        const [{
-          totalMemMb,
-          usedMemMb,
-          freeMemMb,
-          freeMemPercentage
-        }, cpuPercentage] = await Promise.all([
-          mem.info(),
-          cpu.usage()
-        ]);
-
-        const now = new Date();
-        const nextReset = new Date();
-        nextReset.setHours(0, 0, 0, 0);
-        if (nextReset <= now) {
-          nextReset.setDate(now.getDate() + 1);
-        }
-        const timeLeftMillis = nextReset - now;
-        const hours = Math.floor(timeLeftMillis / 3600000);
-        const minutes = Math.floor((timeLeftMillis % 3600000) / 60000);
-        const seconds = Math.floor((timeLeftMillis % 60000) / 1000);
-        const timeLeft = `${hours}h ${minutes}m ${seconds}s`;
-
-        const embed = new EmbedBuilder()
-          .setColor(hexColour)
-          .setTitle('System Information')
-          .addFields({
-            name: 'Memory (RAM)',
-            value: `Total Memory: \`${totalMemMb}\` MB\nUsed Memory: \`${usedMemMb}\` MB\nFree Memory: \`${freeMemMb}\` MB\nPercentage Of Free Memory: \`${freeMemPercentage}\`%`,
-            inline: true
-          }, {
-            name: 'CPU',
-            value: `Percentage of CPU Usage: \`${cpuPercentage}\`%`,
-            inline: true
-          }, {
-            name: 'Time Until Next Reset',
-            value: timeLeft,
-            inline: true
-          })
-          .setTimestamp();
-
-        await interaction.editReply({
-          embeds: [embed]
-        });
-      } catch (error) {
-        console.error('Error updating message:', error);
-        if (interval) clearInterval(interval);
-      }
-    };
-
-    await updateMessage();
-
-    const message = await interaction.fetchReply();
-    await addSettingsButton(message);
-
-    interval = setInterval(updateMessage, 2000);
-
-    setTimeout(() => {
-      clearInterval(interval);
-    }, 30000);
-
-  } catch (error) {
-    console.error('Error in handleStatusCommand function:', error);
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({
-        content: 'An error occurred while fetching system status.',
-        embeds: [],
-        components: []
-      });
-    } else {
-      await interaction.reply({
-        content: 'An error occurred while fetching system status.',
-        ephemeral: true
-      });
-    }
-  }
-}
-
-async function handleBlacklistCommand(interaction) {
-  try {
-    if (interaction.channel.type === ChannelType.DM) {
-      const dmEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Command Not Available')
-        .setDescription('This command cannot be used in DMs.');
-      return interaction.reply({
-        embeds: [dmEmbed],
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      const adminEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Admin Required')
-        .setDescription('You need to be an admin to use this command.');
-      return interaction.reply({
-        embeds: [adminEmbed],
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
-    const userId = interaction.options.getUser('user').id;
-    const guildId = interaction.guild.id;
-
-    initializeBlacklistForGuild(guildId);
-
-    if (!state.blacklistedUsers[guildId].includes(userId)) {
-      state.blacklistedUsers[guildId].push(userId);
-      const blacklistedEmbed = new EmbedBuilder()
-        .setColor(0x00FF00)
-        .setTitle('User Blacklisted')
-        .setDescription(`<@${userId}> has been blacklisted.`);
-      await interaction.reply({
-        embeds: [blacklistedEmbed]
-      });
-    } else {
-      const alreadyBlacklistedEmbed = new EmbedBuilder()
-        .setColor(0xFFA500)
-        .setTitle('User Already Blacklisted')
-        .setDescription(`<@${userId}> is already blacklisted.`);
-      await interaction.reply({
-        embeds: [alreadyBlacklistedEmbed]
-      });
-    }
-  } catch (error) {
-    console.log(error.message);
-  }
-}
-
-async function handleWhitelistCommand(interaction) {
-  try {
-    if (interaction.channel.type === ChannelType.DM) {
-      const dmEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Command Not Available')
-        .setDescription('This command cannot be used in DMs.');
-      return interaction.reply({
-        embeds: [dmEmbed],
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      const adminEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Admin Required')
-        .setDescription('You need to be an admin to use this command.');
-      return interaction.reply({
-        embeds: [adminEmbed],
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
-    const userId = interaction.options.getUser('user').id;
-    const guildId = interaction.guild.id;
-
-    initializeBlacklistForGuild(guildId);
-
-    const index = state.blacklistedUsers[guildId].indexOf(userId);
-    if (index > -1) {
-      state.blacklistedUsers[guildId].splice(index, 1);
-      const removedEmbed = new EmbedBuilder()
-        .setColor(0x00FF00)
-        .setTitle('User Whitelisted')
-        .setDescription(`<@${userId}> has been removed from the blacklist.`);
-      await interaction.reply({
-        embeds: [removedEmbed]
-      });
-    } else {
-      const notFoundEmbed = new EmbedBuilder()
-        .setColor(0xFFA500)
-        .setTitle('User Not Found')
-        .setDescription(`<@${userId}> is not in the blacklist.`);
-      await interaction.reply({
-        embeds: [notFoundEmbed]
-      });
-    }
   } catch (error) {
     console.log(error.message);
   }
@@ -1114,10 +397,7 @@ async function downloadMessage(interaction) {
     }
 
     if (!textContent) {
-      const emptyEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Empty Message')
-        .setDescription('The message is empty..?');
+      const emptyEmbed = createErrorEmbed('Empty Message', 'The message is empty..?');
       await interaction.reply({
         embeds: [emptyEmbed],
         flags: MessageFlags.Ephemeral
@@ -1150,20 +430,14 @@ async function downloadMessage(interaction) {
           embeds: [initialEmbed],
           files: [attachment]
         });
-        const dmSentEmbed = new EmbedBuilder()
-          .setColor(0x00FF00)
-          .setTitle('Content Sent')
-          .setDescription('The message content has been sent to your DMs.');
+        const dmSentEmbed = createSuccessEmbed('Content Sent', 'The message content has been sent to your DMs.');
         await interaction.reply({
           embeds: [dmSentEmbed],
           flags: MessageFlags.Ephemeral
         });
       } catch (error) {
         console.error(`Failed to send DM: ${error}`);
-        const failDMEmbed = new EmbedBuilder()
-          .setColor(0xFF0000)
-          .setTitle('Delivery Failed')
-          .setDescription('Failed to send the content to your DMs.');
+        const failDMEmbed = createErrorEmbed('Delivery Failed', 'Failed to send the content to your DMs.');
         response = await interaction.reply({
           embeds: [failDMEmbed],
           files: [attachment],
@@ -1218,10 +492,7 @@ async function downloadConversation(interaction) {
     const conversationHistory = getHistory(userId);
 
     if (!conversationHistory || conversationHistory.length === 0) {
-      const noHistoryEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('No History Found')
-        .setDescription('No conversation history found.');
+      const noHistoryEmbed = createErrorEmbed('No History Found', 'No conversation history found.');
       await interaction.reply({
         embeds: [noHistoryEmbed],
         flags: MessageFlags.Ephemeral
@@ -1253,10 +524,7 @@ async function downloadConversation(interaction) {
           content: "> `Here's your conversation history:`",
           files: [file]
         });
-        const dmSentEmbed = new EmbedBuilder()
-          .setColor(0x00FF00)
-          .setTitle('History Sent')
-          .setDescription('Your conversation history has been sent to your DMs.');
+        const dmSentEmbed = createSuccessEmbed('History Sent', 'Your conversation history has been sent to your DMs.');
         await interaction.reply({
           embeds: [dmSentEmbed],
           flags: MessageFlags.Ephemeral
@@ -1264,10 +532,7 @@ async function downloadConversation(interaction) {
       }
     } catch (error) {
       console.error(`Failed to send DM: ${error}`);
-      const failDMEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Delivery Failed')
-        .setDescription('Failed to send the conversation history to your DMs.');
+      const failDMEmbed = createErrorEmbed('Delivery Failed', 'Failed to send the conversation history to your DMs.');
       await interaction.reply({
         embeds: [failDMEmbed],
         files: [file],
@@ -1281,14 +546,10 @@ async function downloadConversation(interaction) {
   }
 }
 
-
 async function removeCustomPersonality(interaction) {
   try {
     delete state.customInstructions[interaction.user.id];
-    const embed = new EmbedBuilder()
-      .setColor(0x00FF00)
-      .setTitle('Removed')
-      .setDescription('Custom personality instructions removed!');
+    const embed = createSuccessEmbed('Removed', 'Custom personality instructions removed!');
 
     await interaction.reply({
       embeds: [embed],
@@ -1329,10 +590,7 @@ async function toggleToolPreference(interaction) {
 async function toggleServerWideChatHistory(interaction) {
   try {
     if (!interaction.guild) {
-      const embed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Server Command Only')
-        .setDescription('This command can only be used in a server.');
+      const embed = createErrorEmbed('Server Command Only', 'This command can only be used in a server.');
       await interaction.reply({
         embeds: [embed],
         flags: MessageFlags.Ephemeral
@@ -1368,10 +626,7 @@ async function toggleServerWideChatHistory(interaction) {
 async function toggleServerPersonality(interaction) {
   try {
     if (!interaction.guild) {
-      const embed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Server Command Only')
-        .setDescription('This command can only be used in a server.');
+      const embed = createErrorEmbed('Server Command Only', 'This command can only be used in a server.');
       await interaction.reply({
         embeds: [embed],
         flags: MessageFlags.Ephemeral
@@ -1402,10 +657,7 @@ async function toggleServerPersonality(interaction) {
 async function toggleServerResponsePreference(interaction) {
   try {
     if (!interaction.guild) {
-      const embed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Server Command Only')
-        .setDescription('This command can only be used in a server.');
+      const embed = createErrorEmbed('Server Command Only', 'This command can only be used in a server.');
       await interaction.reply({
         embeds: [embed],
         flags: MessageFlags.Ephemeral
@@ -1436,10 +688,7 @@ async function toggleServerResponsePreference(interaction) {
 async function toggleSettingSaveButton(interaction) {
   try {
     if (!interaction.guild) {
-      const embed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Server Command Only')
-        .setDescription('This command can only be used in a server.');
+      const embed = createErrorEmbed('Server Command Only', 'This command can only be used in a server.');
       await interaction.reply({
         embeds: [embed],
         flags: MessageFlags.Ephemeral
@@ -1490,10 +739,7 @@ async function serverPersonality(interaction) {
 async function clearServerChatHistory(interaction) {
   try {
     if (!interaction.guild) {
-      const embed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Server Command Only')
-        .setDescription('This command can only be used in a server.');
+      const embed = createErrorEmbed('Server Command Only', 'This command can only be used in a server.');
       await interaction.reply({
         embeds: [embed],
         flags: MessageFlags.Ephemeral
@@ -1506,19 +752,13 @@ async function clearServerChatHistory(interaction) {
 
     if (state.serverSettings[serverId].serverChatHistory) {
       state.chatHistories[serverId] = {};
-      const clearedEmbed = new EmbedBuilder()
-        .setColor(0x00FF00)
-        .setTitle('Chat History Cleared')
-        .setDescription('Server-wide chat history cleared!');
+      const clearedEmbed = createSuccessEmbed('Chat History Cleared', 'Server-wide chat history cleared!');
       await interaction.reply({
         embeds: [clearedEmbed],
         flags: MessageFlags.Ephemeral
       });
     } else {
-      const disabledEmbed = new EmbedBuilder()
-        .setColor(0xFFA500)
-        .setTitle('Feature Disabled')
-        .setDescription('Server-wide chat history is disabled for this server.');
+      const disabledEmbed = createWarningEmbed('Feature Disabled', 'Server-wide chat history is disabled for this server.');
       await interaction.reply({
         embeds: [disabledEmbed],
         flags: MessageFlags.Ephemeral
@@ -1535,10 +775,7 @@ async function downloadServerConversation(interaction) {
     const conversationHistory = getHistory(guildId);
 
     if (!conversationHistory || conversationHistory.length === 0) {
-      const noHistoryEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('No History Found')
-        .setDescription('No server-wide conversation history found.');
+      const noHistoryEmbed = createErrorEmbed('No History Found', 'No server-wide conversation history found.');
       await interaction.reply({
         embeds: [noHistoryEmbed],
         flags: MessageFlags.Ephemeral
@@ -1570,10 +807,7 @@ async function downloadServerConversation(interaction) {
           content: "> `Here's the server-wide conversation history:`",
           files: [file]
         });
-        const dmSentEmbed = new EmbedBuilder()
-          .setColor(0x00FF00)
-          .setTitle('History Sent')
-          .setDescription('Server-wide conversation history has been sent to your DMs.');
+        const dmSentEmbed = createSuccessEmbed('History Sent', 'Server-wide conversation history has been sent to your DMs.');
         await interaction.reply({
           embeds: [dmSentEmbed],
           flags: MessageFlags.Ephemeral
@@ -1581,10 +815,7 @@ async function downloadServerConversation(interaction) {
       }
     } catch (error) {
       console.error(`Failed to send DM: ${error}`);
-      const failDMEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('Delivery Failed')
-        .setDescription('Failed to send the server-wide conversation history to your DMs.');
+      const failDMEmbed = createErrorEmbed('Delivery Failed', 'Failed to send the server-wide conversation history to your DMs.');
       await interaction.reply({
         embeds: [failDMEmbed],
         files: [file],
@@ -1598,7 +829,6 @@ async function downloadServerConversation(interaction) {
   }
 }
 
-
 async function toggleServerPreference(interaction) {
   try {
     const guildId = interaction.guild.id;
@@ -1607,10 +837,7 @@ async function toggleServerPreference(interaction) {
     } else {
       state.serverSettings[guildId].responseStyle = "Embedded";
     }
-    const embed = new EmbedBuilder()
-      .setColor(0x00FF00)
-      .setTitle('Server Response Style Updated')
-      .setDescription(`Server response style updated to: ${state.serverSettings[guildId].responseStyle}`);
+    const embed = createSuccessEmbed('Server Response Style Updated', `Server response style updated to: ${state.serverSettings[guildId].responseStyle}`);
 
     await interaction.reply({
       embeds: [embed],
@@ -1626,10 +853,7 @@ async function showSettings(interaction, edit = false) {
     if (interaction.guild) {
       initializeBlacklistForGuild(interaction.guild.id);
       if (state.blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
-        const embed = new EmbedBuilder()
-          .setColor(0xFF0000)
-          .setTitle('Blacklisted')
-          .setDescription('You are blacklisted and cannot use this interaction.');
+        const embed = createErrorEmbed('Blacklisted', 'You are blacklisted and cannot use this interaction.');
         return interaction.reply({
           embeds: [embed],
           flags: MessageFlags.Ephemeral
@@ -1767,20 +991,14 @@ async function handleSubButtonInteraction(interaction, update = false) {
 
 async function showDashboard(interaction) {
   if (interaction.channel.type === ChannelType.DM) {
-    const embed = new EmbedBuilder()
-      .setColor(0xFF0000)
-      .setTitle('Command Restricted')
-      .setDescription('This command cannot be used in DMs.');
+    const embed = createErrorEmbed('Command Restricted', 'This command cannot be used in DMs.');
     return interaction.reply({
       embeds: [embed],
       flags: MessageFlags.Ephemeral
     });
   }
   if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-    const embed = new EmbedBuilder()
-      .setColor(0xFF0000)
-      .setTitle('Administrator Required')
-      .setDescription('You need to be an admin to use this command.');
+    const embed = createErrorEmbed('Administrator Required', 'You need to be an admin to use this command.');
     return interaction.reply({
       embeds: [embed],
       flags: MessageFlags.Ephemeral
@@ -1865,441 +1083,4 @@ async function showDashboard(interaction) {
 
 // <==========>
 
-
-
-// <=====[Others]=====>
-
-async function addDownloadButton(botMessage) {
-  try {
-    const messageComponents = botMessage.components || [];
-    const downloadButton = new ButtonBuilder()
-      .setCustomId('download_message')
-      .setLabel('Save')
-      .setEmoji('⬇️')
-      .setStyle(ButtonStyle.Secondary);
-
-    let actionRow;
-    if (messageComponents.length > 0 && messageComponents[0].type === ComponentType.ActionRow) {
-      actionRow = ActionRowBuilder.from(messageComponents[0]);
-    } else {
-      actionRow = new ActionRowBuilder();
-    }
-
-    actionRow.addComponents(downloadButton);
-    return await botMessage.edit({
-      components: [actionRow]
-    });
-  } catch (error) {
-    console.error('Error adding download button:', error.message);
-    return botMessage;
-  }
-}
-
-async function addDeleteButton(botMessage, msgId) {
-  try {
-    const messageComponents = botMessage.components || [];
-    const downloadButton = new ButtonBuilder()
-      .setCustomId(`delete_message-${msgId}`)
-      .setLabel('Delete')
-      .setEmoji('🗑️')
-      .setStyle(ButtonStyle.Secondary);
-
-    let actionRow;
-    if (messageComponents.length > 0 && messageComponents[0].type === ComponentType.ActionRow) {
-      actionRow = ActionRowBuilder.from(messageComponents[0]);
-    } else {
-      actionRow = new ActionRowBuilder();
-    }
-
-    actionRow.addComponents(downloadButton);
-    return await botMessage.edit({
-      components: [actionRow]
-    });
-  } catch (error) {
-    console.error('Error adding delete button:', error.message);
-    return botMessage;
-  }
-}
-
-async function addSettingsButton(botMessage) {
-  try {
-    const settingsButton = new ButtonBuilder()
-      .setCustomId('settings')
-      .setEmoji('⚙️')
-      .setStyle(ButtonStyle.Secondary);
-
-    const actionRow = new ActionRowBuilder().addComponents(settingsButton);
-    return await botMessage.edit({
-      components: [actionRow]
-    });
-  } catch (error) {
-    console.log('Error adding settings button:', error.message);
-    return botMessage;
-  }
-}
-
-// <==========>
-
-
-
-// <=====[Model Response Handling]=====>
-
-async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId) {
-  const userId = originalMessage.author.id;
-  const userResponsePreference = originalMessage.guild && state.serverSettings[originalMessage.guild.id]?.serverResponsePreference ? state.serverSettings[originalMessage.guild.id].responseStyle : getUserResponsePreference(userId);
-  const maxCharacterLimit = userResponsePreference === 'Embedded' ? 3900 : 1900;
-  let attempts = 3;
-
-  let updateTimeout;
-  let tempResponse = '';
-  // Metadata from Google Search with URL Context tool
-  let groundingMetadata = null;
-  let urlContextMetadata = null;
-
-  const stopGeneratingButton = new ActionRowBuilder()
-    .addComponents(
-      new ButtonBuilder()
-      .setCustomId('stopGenerating')
-      .setLabel('Stop Generating')
-      .setStyle(ButtonStyle.Danger)
-    );
-  let botMessage;
-  if (!initialBotMessage) {
-    clearInterval(typingInterval);
-    try {
-      botMessage = await originalMessage.reply({
-        content: 'Let me think..',
-        components: [stopGeneratingButton]
-      });
-    } catch (error) {}
-  } else {
-    botMessage = initialBotMessage;
-    try {
-      botMessage.edit({
-        components: [stopGeneratingButton]
-      });
-    } catch (error) {}
-  }
-
-  let stopGeneration = false;
-  const filter = (interaction) => interaction.customId === 'stopGenerating';
-  try {
-    const collector = await botMessage.createMessageComponentCollector({
-      filter,
-      time: 120000
-    });
-    collector.on('collect', (interaction) => {
-      if (interaction.user.id === originalMessage.author.id) {
-        try {
-          const embed = new EmbedBuilder()
-            .setColor(0xFFA500)
-            .setTitle('Response Stopped')
-            .setDescription('Response generation stopped by the user.');
-
-          interaction.reply({
-            embeds: [embed],
-            flags: MessageFlags.Ephemeral
-          });
-        } catch (error) {
-          console.error('Error sending reply:', error);
-        }
-        stopGeneration = true;
-      } else {
-        try {
-          const embed = new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('Access Denied')
-            .setDescription("It's not for you.");
-
-          interaction.reply({
-            embeds: [embed],
-            flags: MessageFlags.Ephemeral
-          });
-        } catch (error) {
-          console.error('Error sending unauthorized reply:', error);
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Error creating or handling collector:', error);
-  }
-
-  const updateMessage = () => {
-    if (stopGeneration) {
-      return;
-    }
-    if (tempResponse.trim() === "") {
-      botMessage.edit({
-        content: '...'
-      });
-    } else if (userResponsePreference === 'Embedded') {
-      updateEmbed(botMessage, tempResponse, originalMessage, groundingMetadata, urlContextMetadata);
-    } else {
-      botMessage.edit({
-        content: tempResponse,
-        embeds: []
-      });
-    }
-    clearTimeout(updateTimeout);
-    updateTimeout = null;
-  };
-
-  while (attempts > 0 && !stopGeneration) {
-    try {
-      let finalResponse = '';
-      let isLargeResponse = false;
-      const newHistory = [];
-      newHistory.push({
-        role: 'user',
-        content: parts
-      });
-      async function getResponse(parts) {
-        let newResponse = '';
-        const messageResult = await chat.sendMessageStream({
-          message: parts
-        });
-        for await (const chunk of messageResult) {
-          if (stopGeneration) break;
-
-          const chunkText = chunk.text;
-          if (chunkText && chunkText !== '') {
-            finalResponse += chunkText;
-            tempResponse += chunkText;
-            newResponse += chunkText;
-          }
-
-          // Capture grounding metadata from Google Search with URL Context tool
-          if (chunk.candidates && chunk.candidates[0]?.groundingMetadata) {
-            groundingMetadata = chunk.candidates[0].groundingMetadata;
-          }
-
-          // Capture URL context metadata from Google Search with URL Context tool
-          if (chunk.candidates && chunk.candidates[0]?.url_context_metadata) {
-            urlContextMetadata = chunk.candidates[0].url_context_metadata;
-          }
-
-          if (finalResponse.length > maxCharacterLimit) {
-            if (!isLargeResponse) {
-              isLargeResponse = true;
-              const embed = new EmbedBuilder()
-                .setColor(0xFFFF00)
-                .setTitle('Response Overflow')
-                .setDescription('The response got too large, will be sent as a text file once it is completed.');
-
-              botMessage.edit({
-                embeds: [embed]
-              });
-            }
-          } else if (!updateTimeout) {
-            updateTimeout = setTimeout(updateMessage, 500);
-          }
-        }
-        newHistory.push({
-          role: 'assistant',
-          content: [{
-            text: newResponse
-          }]
-        });
-      }
-      await getResponse(parts);
-
-      // Final update to ensure grounding and URL context metadata is displayed in embedded responses
-      if (!isLargeResponse && userResponsePreference === 'Embedded') {
-        updateEmbed(botMessage, finalResponse, originalMessage, groundingMetadata, urlContextMetadata);
-      }
-
-      botMessage = await addSettingsButton(botMessage);
-      if (isLargeResponse) {
-        sendAsTextFile(finalResponse, originalMessage, botMessage.id);
-        botMessage = await addDeleteButton(botMessage, botMessage.id);
-      } else {
-        const shouldAddDownloadButton = originalMessage.guild ? state.serverSettings[originalMessage.guild.id]?.settingsSaveButton : true;
-        if (shouldAddDownloadButton) {
-          botMessage = await addDownloadButton(botMessage);
-          botMessage = await addDeleteButton(botMessage, botMessage.id);
-        } else {
-          botMessage.edit({
-            components: []
-          });
-        }
-      }
-
-      await chatHistoryLock.runExclusive(async () => {
-        updateChatHistory(historyId, newHistory, botMessage.id);
-        await saveStateToFile();
-      });
-      break;
-    } catch (error) {
-      if (activeRequests.has(userId)) {
-        activeRequests.delete(userId);
-      }
-      console.error('Generation Attempt Failed: ', error);
-      attempts--;
-
-      if (attempts === 0 || stopGeneration) {
-        if (!stopGeneration) {
-          if (SEND_RETRY_ERRORS_TO_DISCORD) {
-            const embed = new EmbedBuilder()
-              .setColor(0xFF0000)
-              .setTitle('Generation Failure')
-              .setDescription(`All Generation Attempts Failed :(\n\`\`\`${error.message}\`\`\``);
-            const errorMsg = await originalMessage.channel.send({
-              content: `<@${originalMessage.author.id}>`,
-              embeds: [embed]
-            });
-            await addSettingsButton(errorMsg);
-            await addSettingsButton(botMessage);
-          } else {
-            const simpleErrorEmbed = new EmbedBuilder()
-              .setColor(0xFF0000)
-              .setTitle('Bot Overloaded')
-              .setDescription('Something seems off, the bot might be overloaded! :(');
-            const errorMsg = await originalMessage.channel.send({
-              content: `<@${originalMessage.author.id}>`,
-              embeds: [simpleErrorEmbed]
-            });
-            await addSettingsButton(errorMsg);
-            await addSettingsButton(botMessage);
-          }
-        }
-        break;
-      } else if (SEND_RETRY_ERRORS_TO_DISCORD) {
-        const errorMsg = await originalMessage.channel.send({
-          content: `<@${originalMessage.author.id}>`,
-          embeds: [new EmbedBuilder()
-            .setColor(0xFFFF00)
-            .setTitle('Retry in Progress')
-            .setDescription(`Generation Attempt(s) Failed, Retrying..\n\`\`\`${error.message}\`\`\``)
-          ]
-        });
-        setTimeout(() => errorMsg.delete().catch(console.error), 5000);
-        await delay(500);
-      }
-    }
-  }
-  if (activeRequests.has(userId)) {
-    activeRequests.delete(userId);
-  }
-}
-
-function updateEmbed(botMessage, finalResponse, message, groundingMetadata = null, urlContextMetadata = null) {
-  try {
-    const isGuild = message.guild !== null;
-    const embed = new EmbedBuilder()
-      .setColor(hexColour)
-      .setDescription(finalResponse)
-      .setAuthor({
-        name: `To ${message.author.displayName}`,
-        iconURL: message.author.displayAvatarURL()
-      })
-      .setTimestamp();
-
-    // Add grounding metadata if user has Google Search tool enabled and Embedded responses selected
-    if (groundingMetadata && shouldShowGroundingMetadata(message)) {
-      addGroundingMetadataToEmbed(embed, groundingMetadata);
-    }
-
-    // Add URL context metadata if user has Google Search tool enabled and Embedded responses selected
-    if (urlContextMetadata && shouldShowGroundingMetadata(message)) {
-      addUrlContextMetadataToEmbed(embed, urlContextMetadata);
-    }
-
-    if (isGuild) {
-      embed.setFooter({
-        text: message.guild.name,
-        iconURL: message.guild.iconURL() || 'https://ai.google.dev/static/site-assets/images/share.png'
-      });
-    }
-
-    botMessage.edit({
-      content: ' ',
-      embeds: [embed]
-    });
-  } catch (error) {
-    console.error("An error occurred while updating the embed:", error.message);
-  }
-}
-
-function addGroundingMetadataToEmbed(embed, groundingMetadata) {
-  // Add search queries used by the model
-  if (groundingMetadata.webSearchQueries && groundingMetadata.webSearchQueries.length > 0) {
-    embed.addFields({
-      name: '🔍 Search Queries',
-      value: groundingMetadata.webSearchQueries.map(query => `• ${query}`).join('\n'),
-      inline: false
-    });
-  }
-
-  // Add grounding sources with clickable links
-  if (groundingMetadata.groundingChunks && groundingMetadata.groundingChunks.length > 0) {
-    const chunks = groundingMetadata.groundingChunks
-      .slice(0, 5) // Limit to first 5 chunks to avoid embed limits
-      .map((chunk, index) => {
-        if (chunk.web) {
-          return `• [${chunk.web.title || 'Source'}](${chunk.web.uri})`;
-        }
-        return `• Source ${index + 1}`;
-      })
-      .join('\n');
-    
-    embed.addFields({
-      name: '📚 Sources',
-      value: chunks,
-      inline: false
-    });
-  }
-}
-
-function addUrlContextMetadataToEmbed(embed, urlContextMetadata) {
-  // Add URL retrieval status with success/failure indicators
-  if (urlContextMetadata.url_metadata && urlContextMetadata.url_metadata.length > 0) {
-    const urlList = urlContextMetadata.url_metadata
-      .map(urlData => {
-        const emoji = urlData.url_retrieval_status === 'URL_RETRIEVAL_STATUS_SUCCESS' ? '✔️' : '❌';
-        return `${emoji} ${urlData.retrieved_url}`;
-      })
-      .join('\n');
-    
-    embed.addFields({
-      name: '🔗 URL Context',
-      value: urlList,
-      inline: false
-    });
-  }
-}
-
-function shouldShowGroundingMetadata(message) {
-  // Only show grounding metadata when:
-  // 1. User has "Google Search with URL Context" tool enabled
-  // 2. User has "Embedded" response preference selected
-  const userId = message.author.id;
-  const userToolMode = getUserToolPreference(userId);
-  const userResponsePreference = message.guild && state.serverSettings[message.guild.id]?.serverResponsePreference 
-    ? state.serverSettings[message.guild.id].responseStyle 
-    : getUserResponsePreference(userId);
-  
-  return userToolMode === 'Google Search with URL Context' && userResponsePreference === 'Embedded';
-}
-
-async function sendAsTextFile(text, message, orgId) {
-  try {
-    const filename = `response-${Date.now()}.txt`;
-    const tempFilePath = path.join(TEMP_DIR, filename);
-    await fs.writeFile(tempFilePath, text);
-
-    const botMessage = await message.channel.send({
-      content: `<@${message.author.id}>, Here is the response:`,
-      files: [tempFilePath]
-    });
-    await addSettingsButton(botMessage);
-    await addDeleteButton(botMessage, orgId);
-
-    await fs.unlink(tempFilePath);
-  } catch (error) {
-    console.error('An error occurred:', error);
-  }
-}
-
-// <==========>
-
-client.login(token);  
+client.login(token);
