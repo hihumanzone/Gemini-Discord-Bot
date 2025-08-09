@@ -8,9 +8,7 @@
     "fs": "*",
     "sharp": "*",
     "office-text-extractor": "*",
-    "youtube-transcript": "*",
-    "node-os-utils": "*",
-    "mathjs": "*"
+    "node-os-utils": "*"
   },
   "scripts": {
     "start": "node index.js"

@@ -504,6 +504,7 @@ async function handleTextMessage(message) {
   const finalInstructions = isServerChatHistoryEnabled ? instructions + infoStr : instructions;
   const historyId = isChannelChatHistoryEnabled ? (isServerChatHistoryEnabled ? guildId : channelId) : userId;
 
+  // Configure tools based on user preference - only Google Search and Code Execution supported
   const userToolMode = getUserToolPreference(userId);
   let tools;
 
@@ -523,6 +524,7 @@ async function handleTextMessage(message) {
       break;
   }
 
+  // Create chat with new Google GenAI API format
   const chat = genAI.chats.create({
     model: MODEL,
     config: {
@@ -605,6 +607,7 @@ async function processPromptAndMediaAttachments(prompt, message) {
 
           try {
             await downloadFile(attachment.url, filePath);
+            // Upload file using new Google GenAI API format
             const uploadResult = await genAI.files.upload({
               file: filePath,
               config: {
@@ -619,6 +622,7 @@ async function processPromptAndMediaAttachments(prompt, message) {
             }
 
             if (attachment.contentType.startsWith('video/')) {
+              // Wait for video processing to complete using new API
               let file = await genAI.files.get({ name: name });
               while (file.state === 'PROCESSING') {
                 process.stdout.write(".");
@@ -1948,6 +1952,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
 
   let updateTimeout;
   let tempResponse = '';
+  // Metadata from Google Search with URL Context tool
   let groundingMetadata = null;
   let urlContextMetadata = null;
 
@@ -2063,12 +2068,12 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
             newResponse += chunkText;
           }
 
-          // Capture grounding metadata if available
+          // Capture grounding metadata from Google Search with URL Context tool
           if (chunk.candidates && chunk.candidates[0]?.groundingMetadata) {
             groundingMetadata = chunk.candidates[0].groundingMetadata;
           }
 
-          // Capture URL context metadata if available
+          // Capture URL context metadata from Google Search with URL Context tool
           if (chunk.candidates && chunk.candidates[0]?.url_context_metadata) {
             urlContextMetadata = chunk.candidates[0].url_context_metadata;
           }
@@ -2098,7 +2103,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       }
       await getResponse(parts);
 
-      // Final update to ensure grounding metadata is displayed in embedded responses
+      // Final update to ensure grounding and URL context metadata is displayed in embedded responses
       if (!isLargeResponse && userResponsePreference === 'Embedded') {
         updateEmbed(botMessage, finalResponse, originalMessage, groundingMetadata, urlContextMetadata);
       }
@@ -2189,51 +2194,14 @@ function updateEmbed(botMessage, finalResponse, message, groundingMetadata = nul
       })
       .setTimestamp();
 
-    // Add grounding metadata if available and conditions are met
+    // Add grounding metadata if user has Google Search tool enabled and Embedded responses selected
     if (groundingMetadata && shouldShowGroundingMetadata(message)) {
-      if (groundingMetadata.webSearchQueries && groundingMetadata.webSearchQueries.length > 0) {
-        embed.addFields({
-          name: '🔍 Search Queries',
-          value: groundingMetadata.webSearchQueries.map(query => `• ${query}`).join('\n'),
-          inline: false
-        });
-      }
-
-      if (groundingMetadata.groundingChunks && groundingMetadata.groundingChunks.length > 0) {
-        const chunks = groundingMetadata.groundingChunks
-          .slice(0, 5) // Limit to first 5 chunks to avoid embed limits
-          .map((chunk, index) => {
-            if (chunk.web) {
-              return `• [${chunk.web.title || 'Source'}](${chunk.web.uri})`;
-            }
-            return `• Source ${index + 1}`;
-          })
-          .join('\n');
-        
-        embed.addFields({
-          name: '📚 Sources',
-          value: chunks,
-          inline: false
-        });
-      }
+      addGroundingMetadataToEmbed(embed, groundingMetadata);
     }
 
-    // Add URL context metadata if available and conditions are met
+    // Add URL context metadata if user has Google Search tool enabled and Embedded responses selected
     if (urlContextMetadata && shouldShowGroundingMetadata(message)) {
-      if (urlContextMetadata.url_metadata && urlContextMetadata.url_metadata.length > 0) {
-        const urlList = urlContextMetadata.url_metadata
-          .map(urlData => {
-            const emoji = urlData.url_retrieval_status === 'URL_RETRIEVAL_STATUS_SUCCESS' ? '✔️' : '❌';
-            return `${emoji} ${urlData.retrieved_url}`;
-          })
-          .join('\n');
-        
-        embed.addFields({
-          name: '🔗 URL Context',
-          value: urlList,
-          inline: false
-        });
-      }
+      addUrlContextMetadataToEmbed(embed, urlContextMetadata);
     }
 
     if (isGuild) {
@@ -2252,7 +2220,58 @@ function updateEmbed(botMessage, finalResponse, message, groundingMetadata = nul
   }
 }
 
+function addGroundingMetadataToEmbed(embed, groundingMetadata) {
+  // Add search queries used by the model
+  if (groundingMetadata.webSearchQueries && groundingMetadata.webSearchQueries.length > 0) {
+    embed.addFields({
+      name: '🔍 Search Queries',
+      value: groundingMetadata.webSearchQueries.map(query => `• ${query}`).join('\n'),
+      inline: false
+    });
+  }
+
+  // Add grounding sources with clickable links
+  if (groundingMetadata.groundingChunks && groundingMetadata.groundingChunks.length > 0) {
+    const chunks = groundingMetadata.groundingChunks
+      .slice(0, 5) // Limit to first 5 chunks to avoid embed limits
+      .map((chunk, index) => {
+        if (chunk.web) {
+          return `• [${chunk.web.title || 'Source'}](${chunk.web.uri})`;
+        }
+        return `• Source ${index + 1}`;
+      })
+      .join('\n');
+    
+    embed.addFields({
+      name: '📚 Sources',
+      value: chunks,
+      inline: false
+    });
+  }
+}
+
+function addUrlContextMetadataToEmbed(embed, urlContextMetadata) {
+  // Add URL retrieval status with success/failure indicators
+  if (urlContextMetadata.url_metadata && urlContextMetadata.url_metadata.length > 0) {
+    const urlList = urlContextMetadata.url_metadata
+      .map(urlData => {
+        const emoji = urlData.url_retrieval_status === 'URL_RETRIEVAL_STATUS_SUCCESS' ? '✔️' : '❌';
+        return `${emoji} ${urlData.retrieved_url}`;
+      })
+      .join('\n');
+    
+    embed.addFields({
+      name: '🔗 URL Context',
+      value: urlList,
+      inline: false
+    });
+  }
+}
+
 function shouldShowGroundingMetadata(message) {
+  // Only show grounding metadata when:
+  // 1. User has "Google Search with URL Context" tool enabled
+  // 2. User has "Embedded" response preference selected
   const userId = message.author.id;
   const userToolMode = getUserToolPreference(userId);
   const userResponsePreference = message.guild && state.serverSettings[message.guild.id]?.serverResponsePreference 

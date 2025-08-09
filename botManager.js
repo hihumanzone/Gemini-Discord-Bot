@@ -19,6 +19,7 @@ import {
 import config from './config.js';
 
 // --- Core Client and API Initialization ---
+// Using new Google GenAI library instead of deprecated @google/generative-ai
 
 export const client = new Client({
   intents: [
@@ -30,6 +31,7 @@ export const client = new Client({
   partials: [Partials.Channel],
 });
 
+// Initialize with new API format that requires apiKey object
 export const genAI = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
 export { createUserContent, createPartFromUri };
 export const token = process.env.DISCORD_BOT_TOKEN;
@@ -309,12 +311,14 @@ export function getHistory(id) {
   const historyObject = chatHistories[id] || {};
   let combinedHistory = [];
 
+  // Combine all message histories for this ID
   for (const messagesId in historyObject) {
     if (historyObject.hasOwnProperty(messagesId)) {
       combinedHistory = [...combinedHistory, ...historyObject[messagesId]];
     }
   }
 
+  // Transform to format expected by new Google GenAI API
   return combinedHistory.map(entry => {
     return {
       role: entry.role === 'assistant' ? 'model' : entry.role,
