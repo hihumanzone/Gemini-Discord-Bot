@@ -18,10 +18,7 @@ import {
 import {
   HarmBlockThreshold,
   HarmCategory
-} from '@google/generative-ai';
-import {
-  FileState
-} from '@google/generative-ai/server';
+} from '@google/genai';
 import fs from 'fs/promises';
 import {
   createWriteStream
@@ -41,7 +38,8 @@ import config from './config.js';
 import {
   client,
   genAI,
-  fileManager,
+  createUserContent,
+  createPartFromUri,
   token,
   activeRequests,
   chatHistoryLock,
@@ -530,21 +528,15 @@ async function handleTextMessage(message) {
       break;
   }
 
-  const model = await genAI.getGenerativeModel({
+  const chat = genAI.chats.create({
     model: MODEL,
-    systemInstruction: {
-      role: "system",
-      parts: [{
-        text: finalInstructions || defaultPersonality
-      }]
+    config: {
+      systemInstruction: finalInstructions || defaultPersonality,
+      ...generationConfig
     },
-    generationConfig,
-    tools: tools
-  });
-
-  const chat = model.startChat({
     history: getHistory(historyId),
     safetySettings,
+    tools: tools
   });
 
   await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId);
@@ -590,9 +582,7 @@ function sanitizeFileName(fileName) {
 
 async function processPromptAndMediaAttachments(prompt, message) {
   const attachments = JSON.parse(JSON.stringify(Array.from(message.attachments.values())));
-  let parts = [{
-    text: prompt
-  }];
+  let parts = [prompt];
 
   if (attachments.length > 0) {
     const validAttachments = attachments.filter(attachment => {
@@ -613,34 +603,32 @@ async function processPromptAndMediaAttachments(prompt, message) {
 
           try {
             await downloadFile(attachment.url, filePath);
-            const uploadResult = await fileManager.uploadFile(filePath, {
-              mimeType: attachment.contentType,
-              displayName: sanitizedFileName,
+            const uploadResult = await genAI.files.upload({
+              file: filePath,
+              config: {
+                mimeType: attachment.contentType,
+                displayName: sanitizedFileName,
+              }
             });
 
-            const name = uploadResult.file.name;
+            const name = uploadResult.name;
             if (name === null) {
               throw new Error(`Unable to extract file name from upload result.`);
             }
 
             if (attachment.contentType.startsWith('video/')) {
-              let file = await fileManager.getFile(name);
-              while (file.state === FileState.PROCESSING) {
+              let file = await genAI.files.get({ name: name });
+              while (file.state === 'PROCESSING') {
                 process.stdout.write(".");
                 await new Promise((resolve) => setTimeout(resolve, 10_000));
-                file = await fileManager.getFile(name);
+                file = await genAI.files.get({ name: name });
               }
-              if (file.state === FileState.FAILED) {
+              if (file.state === 'FAILED') {
                 throw new Error(`Video processing failed for ${sanitizedFileName}.`);
               }
             }
 
-            return {
-              fileData: {
-                mimeType: attachment.contentType,
-                fileUri: uploadResult.file.uri,
-              },
-            };
+            return createPartFromUri(uploadResult.uri, uploadResult.mimeType);
           } catch (error) {
             console.error(`Error processing attachment ${sanitizedFileName}:`, error);
             return null;
@@ -655,10 +643,11 @@ async function processPromptAndMediaAttachments(prompt, message) {
           }
         })
       );
-      parts = [...parts, ...attachmentParts.filter(part => part !== null)];
+      const validParts = attachmentParts.filter(part => part !== null);
+      parts = [prompt, ...validParts];
     }
   }
-  return parts;
+  return createUserContent(parts);
 }
 
 
@@ -2058,16 +2047,18 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       });
       async function getResponse(parts) {
         let newResponse = '';
-        const messageResult = await chat.sendMessageStream(parts);
-        for await (const chunk of messageResult.stream) {
+        const messageResult = await chat.sendMessageStream({
+          message: parts
+        });
+        for await (const chunk of messageResult) {
           if (stopGeneration) break;
 
-          const chunkText = chunk.text();
+          const chunkText = chunk.text;
           finalResponse += chunkText;
           tempResponse += chunkText;
           newResponse += chunkText;
 
-          const toolCalls = chunk.functionCalls();
+          const toolCalls = chunk.functionCalls;
           if (toolCalls) {
             newHistory.push({
               role: 'assistant',
@@ -2100,7 +2091,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
               content: toolCallsResults
             });
             functionCallsString = functionCallsString.trim() + '\n' + `- ${processFunctionCallsNames(toolCalls)}`;
-            return await getResponse(toolCallsResults);
+            return await getResponse(createUserContent(toolCallsResults));
           }
 
           if (finalResponse.length > maxCharacterLimit) {
