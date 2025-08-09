@@ -38,7 +38,6 @@ import config from './config.js';
 import {
   client,
   genAI,
-  createUserContent,
   createPartFromUri,
   token,
   activeRequests,
@@ -87,7 +86,12 @@ const safetySettings = [{
 ];
 
 const generationConfig = {
-  temperature: 1.0
+  temperature: 1.0,
+  topP: 0.95,
+  // maxOutputTokens: 1000,
+  thinkingConfig: {
+    thinkingBudget: -1
+  }
 };
 
 const defaultResponseFormat = config.defaultResponseFormat;
@@ -531,12 +535,17 @@ async function handleTextMessage(message) {
   const chat = genAI.chats.create({
     model: MODEL,
     config: {
-      systemInstruction: finalInstructions || defaultPersonality,
-      ...generationConfig
+      systemInstruction: {
+        role: "system",
+        parts: [{
+          text: finalInstructions || defaultPersonality
+        }]
+      },
+      ...generationConfig,
+      safetySettings,
+      tools: tools
     },
-    history: getHistory(historyId),
-    safetySettings,
-    tools: tools
+    history: getHistory(historyId)
   });
 
   await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId);
@@ -582,7 +591,9 @@ function sanitizeFileName(fileName) {
 
 async function processPromptAndMediaAttachments(prompt, message) {
   const attachments = JSON.parse(JSON.stringify(Array.from(message.attachments.values())));
-  let parts = [prompt];
+  let parts = [{
+    text: prompt
+  }];
 
   if (attachments.length > 0) {
     const validAttachments = attachments.filter(attachment => {
@@ -643,11 +654,10 @@ async function processPromptAndMediaAttachments(prompt, message) {
           }
         })
       );
-      const validParts = attachmentParts.filter(part => part !== null);
-      parts = [prompt, ...validParts];
+      parts = [...parts, ...attachmentParts.filter(part => part !== null)];
     }
   }
-  return createUserContent(parts);
+  return parts;
 }
 
 
@@ -2054,19 +2064,23 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
           if (stopGeneration) break;
 
           const chunkText = chunk.text;
-          finalResponse += chunkText;
-          tempResponse += chunkText;
-          newResponse += chunkText;
+          if (chunkText && chunkText !== '') {
+            finalResponse += chunkText;
+            tempResponse += chunkText;
+            newResponse += chunkText;
+          }
 
           const toolCalls = chunk.functionCalls;
           if (toolCalls) {
-            newHistory.push({
-              role: 'assistant',
-              content: [{
-                text: newResponse
-              }]
-            });
-            newResponse = '';
+            if (newResponse !== '') {
+              newHistory.push({
+                role: 'assistant',
+                content: [{
+                  text: newResponse
+                }]
+              });
+              newResponse = '';
+            }
 
             function convertArrayFormat(inputArray) {
               return inputArray.map(item => ({
@@ -2076,22 +2090,22 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
                 }
               }));
             }
-            const modelParts = convertArrayFormat(toolCalls);
-            newHistory.push({
-              role: 'assistant',
-              content: modelParts
-            });
+            const modelParts = chunk.candidates[0].content.parts; // convertArrayFormat(toolCalls);
             const toolCallsResults = [];
             for (const toolCall of toolCalls) {
               const result = await manageToolCall(toolCall);
               toolCallsResults.push(result);
             }
             newHistory.push({
+              role: 'assistant',
+              content: modelParts
+            },
+            {
               role: 'user',
               content: toolCallsResults
             });
             functionCallsString = functionCallsString.trim() + '\n' + `- ${processFunctionCallsNames(toolCalls)}`;
-            return await getResponse(createUserContent(toolCallsResults));
+            return await getResponse(toolCallsResults);
           }
 
           if (finalResponse.length > maxCharacterLimit) {
@@ -2249,4 +2263,4 @@ async function sendAsTextFile(text, message, orgId) {
 
 // <==========>
 
-client.login(token);
+client.login(token);  
