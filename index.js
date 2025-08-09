@@ -2060,12 +2060,6 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
             tempResponse += chunkText;
             newResponse += chunkText;
           }
-
-          const toolCalls = chunk.functionCalls;
-          if (toolCalls) {
-            // Function calling has been disabled
-          }
-
           if (finalResponse.length > maxCharacterLimit) {
             if (!isLargeResponse) {
               isLargeResponse = true;
