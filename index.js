@@ -107,11 +107,7 @@ const workInDMs = config.workInDMs;
 const shouldDisplayPersonalityButtons = config.shouldDisplayPersonalityButtons;
 const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
 
-import {
-  function_declarations,
-  manageToolCall,
-  processFunctionCallsNames
-} from './tools/function_calling.js';
+
 
 import {
   delay,
@@ -515,11 +511,6 @@ async function handleTextMessage(message) {
     case 'Code Execution':
       tools = [{
         codeExecution: {}
-      }];
-      break;
-    case 'Function Calling':
-      tools = [{
-        functionDeclarations: function_declarations
       }];
       break;
     case 'Google Search with URL Context':
@@ -1320,7 +1311,7 @@ async function toggleToolPreference(interaction) {
     const userId = interaction.user.id;
     const currentPreference = getUserToolPreference(userId);
 
-    const options = ['Google Search with URL Context', 'Code Execution', 'Function Calling'];
+    const options = ['Google Search with URL Context', 'Code Execution'];
     const currentIndex = options.indexOf(currentPreference);
     const nextIndex = (currentIndex + 1) % options.length;
     state.userToolPreference[userId] = options[nextIndex];
@@ -1957,7 +1948,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
 
   let updateTimeout;
   let tempResponse = '';
-  let functionCallsString = '';
+
   const stopGeneratingButton = new ActionRowBuilder()
     .addComponents(
       new ButtonBuilder()
@@ -2035,7 +2026,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         content: '...'
       });
     } else if (userResponsePreference === 'Embedded') {
-      updateEmbed(botMessage, tempResponse, originalMessage, functionCallsString);
+      updateEmbed(botMessage, tempResponse, originalMessage);
     } else {
       botMessage.edit({
         content: tempResponse,
@@ -2072,40 +2063,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
 
           const toolCalls = chunk.functionCalls;
           if (toolCalls) {
-            if (newResponse !== '') {
-              newHistory.push({
-                role: 'assistant',
-                content: [{
-                  text: newResponse
-                }]
-              });
-              newResponse = '';
-            }
-
-            function convertArrayFormat(inputArray) {
-              return inputArray.map(item => ({
-                functionCall: {
-                  name: item.name,
-                  args: item.args
-                }
-              }));
-            }
-            const modelParts = chunk.candidates[0].content.parts; // convertArrayFormat(toolCalls);
-            const toolCallsResults = [];
-            for (const toolCall of toolCalls) {
-              const result = await manageToolCall(toolCall);
-              toolCallsResults.push(result);
-            }
-            newHistory.push({
-              role: 'assistant',
-              content: modelParts
-            },
-            {
-              role: 'user',
-              content: toolCallsResults
-            });
-            functionCallsString = functionCallsString.trim() + '\n' + `- ${processFunctionCallsNames(toolCalls)}`;
-            return await getResponse(toolCallsResults);
+            // Function calling has been disabled
           }
 
           if (finalResponse.length > maxCharacterLimit) {
@@ -2207,7 +2165,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
   }
 }
 
-function updateEmbed(botMessage, finalResponse, message, functionCallsString) {
+function updateEmbed(botMessage, finalResponse, message) {
   try {
     const isGuild = message.guild !== null;
     const embed = new EmbedBuilder()
@@ -2223,13 +2181,6 @@ function updateEmbed(botMessage, finalResponse, message, functionCallsString) {
       embed.setFooter({
         text: message.guild.name,
         iconURL: message.guild.iconURL() || 'https://ai.google.dev/static/site-assets/images/share.png'
-      });
-    }
-
-    if (functionCallsString.trim().length > 0) {
-      embed.addFields({
-        name: 'Function Calls:',
-        value: functionCallsString
       });
     }
 
