@@ -1,186 +1,371 @@
-### Introduction to the File API
+# Comprehensive Guide: Using the File API in JavaScript with Gemini API
 
-The File API allows you to upload and store files that can then be referenced in your calls to the Gemini API. This is a two-step process:
+The Gemini File API enables you to handle various media types including images, documents (PDFs), videos, and audio files in JavaScript applications. This guide covers all essential operations for working with multimodal content using the File API.
 
-1.  **Upload the file:** You first upload your file to the Gemini API, which returns a file reference.
-2.  **Generate content:** You then use this file reference in your `generateContent` request to the model.
+## Prerequisites
 
-Files uploaded via the File API are stored for 48 hours and can be accessed during that time using your API key. The File API is available at no cost in all regions where the Gemini API is available.
+Before getting started, ensure you have:
+- The Gemini JavaScript SDK installed: `npm install @google/genai`
+- A valid Gemini API key
+- Basic understanding of async/await in JavaScript
 
-### Handling Image Files
-
-The Gemini API can process a wide variety of image formats. The File API is particularly useful when working with large images or when you need to use the same image in multiple prompts.
-
-To upload and use an image file, you can use the following JavaScript code:
+## Basic Setup
 
 ```javascript
-import { GoogleGenAI, createUserContent, createPartFromUri } from "@google/genai";
-const ai = new GoogleGenAI({ apiKey: "YOUR_API_KEY" });
+import {
+  GoogleGenAI,
+  createUserContent,
+  createPartFromUri,
+} from "@google/genai";
 
-async function main() {
-  // Upload the image file
-  const myfile = await ai.files.upload({
-    file: "path/to/sample.jpg",
-    config: {
-      mimeType: "image/jpeg",
-    },
+const ai = new GoogleGenAI({ apiKey: "YOUR_GEMINI_API_KEY" });
+```
+
+## Core File API Operations
+
+### Uploading Files
+
+Use the File API when you want to reuse files across multiple requests:
+
+```javascript
+async function uploadFile(filePath, mimeType) {
+  const file = await ai.files.upload({
+    file: filePath,
+    config: { mimeType: mimeType },
+  });
+  
+  // Wait for processing (important for large files)
+  let getFile = await ai.files.get({ name: file.name });
+  while (getFile.state === 'PROCESSING') {
+    console.log(`File status: ${getFile.state}`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    getFile = await ai.files.get({ name: file.name });
+  }
+  
+  if (getFile.state === 'FAILED') {
+    throw new Error('File processing failed.');
+  }
+  
+  return file;
+}
+```
+
+### Getting File Metadata
+
+```javascript
+async function getFileInfo(fileName) {
+  const fileInfo = await ai.files.get({ name: fileName });
+  console.log(fileInfo);
+  return fileInfo;
+}
+```
+
+## Working with Images
+
+### Upload and Process Images
+
+```javascript
+async function processImage(imagePath, prompt = "Caption this image.") {
+  // Upload image using File API
+  const imageFile = await ai.files.upload({
+    file: imagePath,
+    config: { mimeType: "image/jpeg" },
   });
 
-  // Use the uploaded image in a generateContent request
+  // Generate content
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: createUserContent([
-      createPartFromUri(myfile.uri, myfile.mimeType),
-      "Caption this image.",
+      createPartFromUri(imageFile.uri, imageFile.mimeType),
+      prompt,
     ]),
   });
-  console.log(response.text);
-}
 
-main();
+  return response.text;
+}
 ```
 
-You can also prompt with multiple images by including multiple `createPartFromUri` objects in the `contents` array.
-
-**Supported Image Formats:**
-*   PNG - image/png
-*   JPEG - image/jpeg
-*   WEBP - image/webp
-*   HEIC - image/heic
-*   HEIF - image/heif
-
-### Handling Document Files (PDFs)
-
-The Gemini API can process PDF documents, understanding not just the text but also the images, diagrams, and tables within them. For large PDFs, the File API is the recommended approach.
-
-Here's how to upload a PDF from a local file:
+### Multiple Images Processing
 
 ```javascript
-import { createPartFromUri, GoogleGenAI } from "@google/genai";
-const ai = new GoogleGenAI({ apiKey: "YOUR_API_KEY" });
+async function processMultipleImages(image1Path, image2Path) {
+  // Upload first image
+  const image1 = await ai.files.upload({
+    file: image1Path,
+    config: { mimeType: "image/jpeg" },
+  });
 
-async function main() {
+  // Upload second image
+  const image2 = await ai.files.upload({
+    file: image2Path,
+    config: { mimeType: "image/png" },
+  });
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: createUserContent([
+      "What is different between these two images?",
+      createPartFromUri(image1.uri, image1.mimeType),
+      createPartFromUri(image2.uri, image2.mimeType),
+    ]),
+  });
+
+  return response.text;
+}
+```
+
+## Working with Documents (PDFs)
+
+### Upload and Process PDF Documents
+
+```javascript
+async function processPDF(pdfPath, prompt = "Summarize this document") {
+  const pdfFile = await ai.files.upload({
+    file: pdfPath,
+    config: { mimeType: "application/pdf" },
+  });
+
+  // Wait for processing
+  let getFile = await ai.files.get({ name: pdfFile.name });
+  while (getFile.state === 'PROCESSING') {
+    console.log(`PDF processing status: ${getFile.state}`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    getFile = await ai.files.get({ name: pdfFile.name });
+  }
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: createUserContent([
+      createPartFromUri(pdfFile.uri, pdfFile.mimeType),
+      prompt,
+    ]),
+  });
+
+  return response.text;
+}
+```
+
+### Processing PDFs from URLs
+
+```javascript
+async function processPDFFromURL(pdfUrl, prompt = "Summarize this document") {
+  const pdfBuffer = await fetch(pdfUrl)
+    .then(response => response.arrayBuffer());
+
+  const fileBlob = new Blob([pdfBuffer], { type: 'application/pdf' });
+
   const file = await ai.files.upload({
-    file: 'path-to-localfile.pdf',
+    file: fileBlob,
     config: {
-      displayName: 'My Document.pdf',
+      displayName: 'Remote_PDF.pdf',
     },
   });
 
-  // Wait for the file to be processed
+  // Wait for processing
   let getFile = await ai.files.get({ name: file.name });
   while (getFile.state === 'PROCESSING') {
+    await new Promise(resolve => setTimeout(resolve, 5000));
     getFile = await ai.files.get({ name: file.name });
-    console.log(`current file status: ${getFile.state}`);
-    console.log('File is still processing, retrying in 5 seconds');
-    await new Promise((resolve) => {
-      setTimeout(resolve, 5000);
+  }
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: createUserContent([
+      createPartFromUri(file.uri, file.mimeType),
+      prompt,
+    ]),
+  });
+
+  return response.text;
+}
+```
+
+### Processing Multiple PDFs
+
+```javascript
+async function processMultiplePDFs(pdf1Url, pdf2Url) {
+  async function uploadPDF(url, displayName) {
+    const pdfBuffer = await fetch(url)
+      .then(response => response.arrayBuffer());
+
+    const fileBlob = new Blob([pdfBuffer], { type: 'application/pdf' });
+
+    const file = await ai.files.upload({
+      file: fileBlob,
+      config: { displayName },
     });
+
+    // Wait for processing
+    let getFile = await ai.files.get({ name: file.name });
+    while (getFile.state === 'PROCESSING') {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      getFile = await ai.files.get({ name: file.name });
+    }
+
+    return file;
   }
 
-  if (file.state === 'FAILED') {
-    throw new Error('File processing failed.');
-  }
-
-  const content = [
-    'Summarize this document',
-  ];
-  if (file.uri && file.mimeType) {
-    const fileContent = createPartFromUri(file.uri, file.mimeType);
-    content.push(fileContent);
-  }
+  const [file1, file2] = await Promise.all([
+    uploadPDF(pdf1Url, "PDF 1"),
+    uploadPDF(pdf2Url, "PDF 2")
+  ]);
 
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
-    contents: content,
+    contents: createUserContent([
+      "Compare these two documents and highlight key differences",
+      createPartFromUri(file1.uri, file1.mimeType),
+      createPartFromUri(file2.uri, file2.mimeType),
+    ]),
   });
-  console.log(response.text);
-}
 
-main();
+  return response.text;
+}
 ```
 
-You can also upload a PDF from a URL. The Gemini API can also process multiple PDF documents in a single request.
+## Working with Videos
 
-### Handling Video Files
-
-The Gemini API can process videos to describe, segment, and extract information. For videos larger than 20MB or when you want to reuse a video, use the File API.
-
-Here is an example of uploading and using a video file:
+### Upload and Process Videos
 
 ```javascript
-import { GoogleGenAI, createUserContent, createPartFromUri } from "@google/genai";
-const ai = new GoogleGenAI({ apiKey: "YOUR_API_KEY" });
+async function processVideo(videoPath, prompt = "Summarize this video") {
+  const videoFile = await ai.files.upload({
+    file: videoPath,
+    config: { mimeType: "video/mp4" },
+  });
 
-async function main() {
-  const myfile = await ai.files.upload({
-    file: "path/to/sample.mp4",
-    config: {
-      mimeType: "video/mp4"
-    },
+  // Wait for processing (important for videos)
+  let getFile = await ai.files.get({ name: videoFile.name });
+  while (getFile.state === 'PROCESSING') {
+    console.log(`Video processing status: ${getFile.state}`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    getFile = await ai.files.get({ name: videoFile.name });
+  }
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: createUserContent([
+      createPartFromUri(videoFile.uri, videoFile.mimeType),
+      prompt,
+    ]),
+  });
+
+  return response.text;
+}
+```
+
+## Working with Audio Files
+
+### Upload and Process Audio
+
+```javascript
+async function processAudio(audioPath, prompt = "Describe this audio clip") {
+  const audioFile = await ai.files.upload({
+    file: audioPath,
+    config: { mimeType: "audio/mp3" },
   });
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: createUserContent([
-      createPartFromUri(myfile.uri, myfile.mimeType),
-      "Summarize this video. Then create a quiz with an answer key based on the information in this video.",
+      createPartFromUri(audioFile.uri, audioFile.mimeType),
+      prompt,
     ]),
   });
-  console.log(response.text);
-}
 
-main();
+  return response.text;
+}
 ```
 
-**Supported Video Formats:**
-*   video/mp4
-*   video/mpeg
-*   video/mov
-*   video/avi
-*   video/x-flv
-*   video/mpg
-*   video/webm
-*   video/wmv
-*   video/3gpp
-
-### Handling Audio Files
-
-The Gemini API can analyze and understand audio input for tasks like transcription and summarization. The File API should be used for audio files larger than 20MB.
-
-This is how you can upload and use an audio file:
+### Audio Transcription with Timestamps
 
 ```javascript
-import { GoogleGenAI, createUserContent, createPartFromUri } from "@google/genai";
-const ai = new GoogleGenAI({ apiKey: "YOUR_API_KEY" });
-
-async function main() {
-  const myfile = await ai.files.upload({
-    file: "path/to/sample.mp3",
-    config: {
-      mimeType: "audio/mp3"
-    },
+async function transcribeAudioWithTimestamps(audioPath, startTime = "02:30", endTime = "03:29") {
+  const audioFile = await ai.files.upload({
+    file: audioPath,
+    config: { mimeType: "audio/mp3" },
   });
+
+  const prompt = `Provide a transcript of the speech from ${startTime} to ${endTime}.`;
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: createUserContent([
-      createPartFromUri(myfile.uri, myfile.mimeType),
-      "Describe this audio clip",
+      createPartFromUri(audioFile.uri, audioFile.mimeType),
+      prompt,
     ]),
   });
-  console.log(response.text);
-}
 
-main();
+  return response.text;
+}
 ```
 
-You can also get a transcript of the audio by simply asking for it in the prompt.
+## Advanced Operations
 
-**Supported Audio Formats:**
-*   WAV - audio/wav
-*   MP3 - audio/mp3
-*   AIFF - audio/aiff
-*   AAC - audio/aac
-*   OGG Vorbis - audio/ogg
-*   FLAC - audio/flac
+### Error Handling
+
+```javascript
+async function processFileWithErrorHandling(filePath, mimeType, prompt) {
+  try {
+    const file = await ai.files.upload({
+      file: filePath,
+      config: { mimeType },
+    });
+
+    // Wait for processing with timeout
+    let getFile = await ai.files.get({ name: file.name });
+    let attempts = 0;
+    const maxAttempts = 20; // 100 seconds timeout
+
+    while (getFile.state === 'PROCESSING' && attempts < maxAttempts) {
+      console.log(`File status: ${getFile.state} (${attempts + 1}/${maxAttempts})`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      getFile = await ai.files.get({ name: file.name });
+      attempts++;
+    }
+
+    if (getFile.state === 'FAILED') {
+      throw new Error('File processing failed');
+    }
+
+    if (attempts >= maxAttempts) {
+      throw new Error('File processing timeout');
+    }
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: createUserContent([
+        createPartFromUri(file.uri, file.mimeType),
+        prompt,
+      ]),
+    });
+
+    return response.text;
+
+  } catch (error) {
+    console.error('Error processing file:', error);
+    throw error;
+  }
+}
+```
+
+## File Storage Limits and Best Practices
+
+### Storage Information
+- **Storage limit**: 20 GB per project
+- **File retention**: Files are automatically deleted after 48 hours
+- **Maximum file size**: 2 GB per file
+
+### Best Practices
+
+1. **Use File API for reusable files**: Use the File API when reusing files across multiple requests
+
+2. **Wait for processing**: Always check file processing status before using uploaded files
+
+3. **Handle different file types appropriately**:
+   - Images: Support PNG, JPEG, WEBP, HEIC, HEIF
+   - Documents: PDF format recommended for best results
+   - Videos: Support MP4, MPEG, MOV, AVI, FLV, MPG, WEBM, WMV, 3GPP
+   - Audio: Support WAV, MP3, AIFF, AAC, OGG, FLAC
+
+4. **Error handling**: Implement proper error handling and timeouts for file processing
