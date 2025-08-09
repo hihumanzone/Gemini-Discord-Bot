@@ -18,10 +18,7 @@ import {
 import {
   HarmBlockThreshold,
   HarmCategory
-} from '@google/generative-ai';
-import {
-  FileState
-} from '@google/generative-ai/server';
+} from '@google/genai';
 import fs from 'fs/promises';
 import {
   createWriteStream
@@ -41,7 +38,7 @@ import config from './config.js';
 import {
   client,
   genAI,
-  fileManager,
+  createPartFromUri,
   token,
   activeRequests,
   chatHistoryLock,
@@ -89,7 +86,12 @@ const safetySettings = [{
 ];
 
 const generationConfig = {
-  temperature: 1.0
+  temperature: 1.0,
+  topP: 0.95,
+  // maxOutputTokens: 1000,
+  thinkingConfig: {
+    thinkingBudget: -1
+  }
 };
 
 const defaultResponseFormat = config.defaultResponseFormat;
@@ -105,11 +107,7 @@ const workInDMs = config.workInDMs;
 const shouldDisplayPersonalityButtons = config.shouldDisplayPersonalityButtons;
 const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
 
-import {
-  function_declarations,
-  manageToolCall,
-  processFunctionCallsNames
-} from './tools/function_calling.js';
+
 
 import {
   delay,
@@ -506,6 +504,7 @@ async function handleTextMessage(message) {
   const finalInstructions = isServerChatHistoryEnabled ? instructions + infoStr : instructions;
   const historyId = isChannelChatHistoryEnabled ? (isServerChatHistoryEnabled ? guildId : channelId) : userId;
 
+  // Configure tools based on user preference - only Google Search and Code Execution supported
   const userToolMode = getUserToolPreference(userId);
   let tools;
 
@@ -513,11 +512,6 @@ async function handleTextMessage(message) {
     case 'Code Execution':
       tools = [{
         codeExecution: {}
-      }];
-      break;
-    case 'Function Calling':
-      tools = [{
-        functionDeclarations: function_declarations
       }];
       break;
     case 'Google Search with URL Context':
@@ -530,21 +524,21 @@ async function handleTextMessage(message) {
       break;
   }
 
-  const model = await genAI.getGenerativeModel({
+  // Create chat with new Google GenAI API format
+  const chat = genAI.chats.create({
     model: MODEL,
-    systemInstruction: {
-      role: "system",
-      parts: [{
-        text: finalInstructions || defaultPersonality
-      }]
+    config: {
+      systemInstruction: {
+        role: "system",
+        parts: [{
+          text: finalInstructions || defaultPersonality
+        }]
+      },
+      ...generationConfig,
+      safetySettings,
+      tools: tools
     },
-    generationConfig,
-    tools: tools
-  });
-
-  const chat = model.startChat({
-    history: getHistory(historyId),
-    safetySettings,
+    history: getHistory(historyId)
   });
 
   await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId);
@@ -613,34 +607,34 @@ async function processPromptAndMediaAttachments(prompt, message) {
 
           try {
             await downloadFile(attachment.url, filePath);
-            const uploadResult = await fileManager.uploadFile(filePath, {
-              mimeType: attachment.contentType,
-              displayName: sanitizedFileName,
+            // Upload file using new Google GenAI API format
+            const uploadResult = await genAI.files.upload({
+              file: filePath,
+              config: {
+                mimeType: attachment.contentType,
+                displayName: sanitizedFileName,
+              }
             });
 
-            const name = uploadResult.file.name;
+            const name = uploadResult.name;
             if (name === null) {
               throw new Error(`Unable to extract file name from upload result.`);
             }
 
             if (attachment.contentType.startsWith('video/')) {
-              let file = await fileManager.getFile(name);
-              while (file.state === FileState.PROCESSING) {
+              // Wait for video processing to complete using new API
+              let file = await genAI.files.get({ name: name });
+              while (file.state === 'PROCESSING') {
                 process.stdout.write(".");
                 await new Promise((resolve) => setTimeout(resolve, 10_000));
-                file = await fileManager.getFile(name);
+                file = await genAI.files.get({ name: name });
               }
-              if (file.state === FileState.FAILED) {
+              if (file.state === 'FAILED') {
                 throw new Error(`Video processing failed for ${sanitizedFileName}.`);
               }
             }
 
-            return {
-              fileData: {
-                mimeType: attachment.contentType,
-                fileUri: uploadResult.file.uri,
-              },
-            };
+            return createPartFromUri(uploadResult.uri, uploadResult.mimeType);
           } catch (error) {
             console.error(`Error processing attachment ${sanitizedFileName}:`, error);
             return null;
@@ -1321,7 +1315,7 @@ async function toggleToolPreference(interaction) {
     const userId = interaction.user.id;
     const currentPreference = getUserToolPreference(userId);
 
-    const options = ['Google Search with URL Context', 'Code Execution', 'Function Calling'];
+    const options = ['Google Search with URL Context', 'Code Execution'];
     const currentIndex = options.indexOf(currentPreference);
     const nextIndex = (currentIndex + 1) % options.length;
     state.userToolPreference[userId] = options[nextIndex];
@@ -1958,7 +1952,10 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
 
   let updateTimeout;
   let tempResponse = '';
-  let functionCallsString = '';
+  // Metadata from Google Search with URL Context tool
+  let groundingMetadata = null;
+  let urlContextMetadata = null;
+
   const stopGeneratingButton = new ActionRowBuilder()
     .addComponents(
       new ButtonBuilder()
@@ -2036,7 +2033,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         content: '...'
       });
     } else if (userResponsePreference === 'Embedded') {
-      updateEmbed(botMessage, tempResponse, originalMessage, functionCallsString);
+      updateEmbed(botMessage, tempResponse, originalMessage, groundingMetadata, urlContextMetadata);
     } else {
       botMessage.edit({
         content: tempResponse,
@@ -2058,49 +2055,27 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       });
       async function getResponse(parts) {
         let newResponse = '';
-        const messageResult = await chat.sendMessageStream(parts);
-        for await (const chunk of messageResult.stream) {
+        const messageResult = await chat.sendMessageStream({
+          message: parts
+        });
+        for await (const chunk of messageResult) {
           if (stopGeneration) break;
 
-          const chunkText = chunk.text();
-          finalResponse += chunkText;
-          tempResponse += chunkText;
-          newResponse += chunkText;
+          const chunkText = chunk.text;
+          if (chunkText && chunkText !== '') {
+            finalResponse += chunkText;
+            tempResponse += chunkText;
+            newResponse += chunkText;
+          }
 
-          const toolCalls = chunk.functionCalls();
-          if (toolCalls) {
-            newHistory.push({
-              role: 'assistant',
-              content: [{
-                text: newResponse
-              }]
-            });
-            newResponse = '';
+          // Capture grounding metadata from Google Search with URL Context tool
+          if (chunk.candidates && chunk.candidates[0]?.groundingMetadata) {
+            groundingMetadata = chunk.candidates[0].groundingMetadata;
+          }
 
-            function convertArrayFormat(inputArray) {
-              return inputArray.map(item => ({
-                functionCall: {
-                  name: item.name,
-                  args: item.args
-                }
-              }));
-            }
-            const modelParts = convertArrayFormat(toolCalls);
-            newHistory.push({
-              role: 'assistant',
-              content: modelParts
-            });
-            const toolCallsResults = [];
-            for (const toolCall of toolCalls) {
-              const result = await manageToolCall(toolCall);
-              toolCallsResults.push(result);
-            }
-            newHistory.push({
-              role: 'user',
-              content: toolCallsResults
-            });
-            functionCallsString = functionCallsString.trim() + '\n' + `- ${processFunctionCallsNames(toolCalls)}`;
-            return await getResponse(toolCallsResults);
+          // Capture URL context metadata from Google Search with URL Context tool
+          if (chunk.candidates && chunk.candidates[0]?.url_context_metadata) {
+            urlContextMetadata = chunk.candidates[0].url_context_metadata;
           }
 
           if (finalResponse.length > maxCharacterLimit) {
@@ -2127,6 +2102,11 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         });
       }
       await getResponse(parts);
+
+      // Final update to ensure grounding and URL context metadata is displayed in embedded responses
+      if (!isLargeResponse && userResponsePreference === 'Embedded') {
+        updateEmbed(botMessage, finalResponse, originalMessage, groundingMetadata, urlContextMetadata);
+      }
 
       botMessage = await addSettingsButton(botMessage);
       if (isLargeResponse) {
@@ -2202,7 +2182,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
   }
 }
 
-function updateEmbed(botMessage, finalResponse, message, functionCallsString) {
+function updateEmbed(botMessage, finalResponse, message, groundingMetadata = null, urlContextMetadata = null) {
   try {
     const isGuild = message.guild !== null;
     const embed = new EmbedBuilder()
@@ -2214,17 +2194,20 @@ function updateEmbed(botMessage, finalResponse, message, functionCallsString) {
       })
       .setTimestamp();
 
+    // Add grounding metadata if user has Google Search tool enabled and Embedded responses selected
+    if (groundingMetadata && shouldShowGroundingMetadata(message)) {
+      addGroundingMetadataToEmbed(embed, groundingMetadata);
+    }
+
+    // Add URL context metadata if user has Google Search tool enabled and Embedded responses selected
+    if (urlContextMetadata && shouldShowGroundingMetadata(message)) {
+      addUrlContextMetadataToEmbed(embed, urlContextMetadata);
+    }
+
     if (isGuild) {
       embed.setFooter({
         text: message.guild.name,
         iconURL: message.guild.iconURL() || 'https://ai.google.dev/static/site-assets/images/share.png'
-      });
-    }
-
-    if (functionCallsString.trim().length > 0) {
-      embed.addFields({
-        name: 'Function Calls:',
-        value: functionCallsString
       });
     }
 
@@ -2235,6 +2218,67 @@ function updateEmbed(botMessage, finalResponse, message, functionCallsString) {
   } catch (error) {
     console.error("An error occurred while updating the embed:", error.message);
   }
+}
+
+function addGroundingMetadataToEmbed(embed, groundingMetadata) {
+  // Add search queries used by the model
+  if (groundingMetadata.webSearchQueries && groundingMetadata.webSearchQueries.length > 0) {
+    embed.addFields({
+      name: '🔍 Search Queries',
+      value: groundingMetadata.webSearchQueries.map(query => `• ${query}`).join('\n'),
+      inline: false
+    });
+  }
+
+  // Add grounding sources with clickable links
+  if (groundingMetadata.groundingChunks && groundingMetadata.groundingChunks.length > 0) {
+    const chunks = groundingMetadata.groundingChunks
+      .slice(0, 5) // Limit to first 5 chunks to avoid embed limits
+      .map((chunk, index) => {
+        if (chunk.web) {
+          return `• [${chunk.web.title || 'Source'}](${chunk.web.uri})`;
+        }
+        return `• Source ${index + 1}`;
+      })
+      .join('\n');
+    
+    embed.addFields({
+      name: '📚 Sources',
+      value: chunks,
+      inline: false
+    });
+  }
+}
+
+function addUrlContextMetadataToEmbed(embed, urlContextMetadata) {
+  // Add URL retrieval status with success/failure indicators
+  if (urlContextMetadata.url_metadata && urlContextMetadata.url_metadata.length > 0) {
+    const urlList = urlContextMetadata.url_metadata
+      .map(urlData => {
+        const emoji = urlData.url_retrieval_status === 'URL_RETRIEVAL_STATUS_SUCCESS' ? '✔️' : '❌';
+        return `${emoji} ${urlData.retrieved_url}`;
+      })
+      .join('\n');
+    
+    embed.addFields({
+      name: '🔗 URL Context',
+      value: urlList,
+      inline: false
+    });
+  }
+}
+
+function shouldShowGroundingMetadata(message) {
+  // Only show grounding metadata when:
+  // 1. User has "Google Search with URL Context" tool enabled
+  // 2. User has "Embedded" response preference selected
+  const userId = message.author.id;
+  const userToolMode = getUserToolPreference(userId);
+  const userResponsePreference = message.guild && state.serverSettings[message.guild.id]?.serverResponsePreference 
+    ? state.serverSettings[message.guild.id].responseStyle 
+    : getUserResponsePreference(userId);
+  
+  return userToolMode === 'Google Search with URL Context' && userResponsePreference === 'Embedded';
 }
 
 async function sendAsTextFile(text, message, orgId) {
@@ -2258,4 +2302,4 @@ async function sendAsTextFile(text, message, orgId) {
 
 // <==========>
 
-client.login(token);
+client.login(token);  

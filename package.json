@@ -1,16 +1,14 @@
 {
   "type": "module",
   "dependencies": {
-    "@google/generative-ai": "*",
+    "@google/genai": "*",
     "axios": "*",
     "discord.js": "*",
     "dotenv": "*",
     "fs": "*",
     "sharp": "*",
     "office-text-extractor": "*",
-    "youtube-transcript": "*",
-    "node-os-utils": "*",
-    "mathjs": "*"
+    "node-os-utils": "*"
   },
   "scripts": {
     "start": "node index.js"
