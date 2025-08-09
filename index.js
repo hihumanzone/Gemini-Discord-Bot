@@ -1948,6 +1948,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
 
   let updateTimeout;
   let tempResponse = '';
+  let groundingMetadata = null;
 
   const stopGeneratingButton = new ActionRowBuilder()
     .addComponents(
@@ -2026,7 +2027,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         content: '...'
       });
     } else if (userResponsePreference === 'Embedded') {
-      updateEmbed(botMessage, tempResponse, originalMessage);
+      updateEmbed(botMessage, tempResponse, originalMessage, groundingMetadata);
     } else {
       botMessage.edit({
         content: tempResponse,
@@ -2060,6 +2061,12 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
             tempResponse += chunkText;
             newResponse += chunkText;
           }
+
+          // Capture grounding metadata if available
+          if (chunk.candidates && chunk.candidates[0]?.groundingMetadata) {
+            groundingMetadata = chunk.candidates[0].groundingMetadata;
+          }
+
           if (finalResponse.length > maxCharacterLimit) {
             if (!isLargeResponse) {
               isLargeResponse = true;
@@ -2084,6 +2091,11 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         });
       }
       await getResponse(parts);
+
+      // Final update to ensure grounding metadata is displayed in embedded responses
+      if (!isLargeResponse && userResponsePreference === 'Embedded') {
+        updateEmbed(botMessage, finalResponse, originalMessage, groundingMetadata);
+      }
 
       botMessage = await addSettingsButton(botMessage);
       if (isLargeResponse) {
@@ -2159,7 +2171,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
   }
 }
 
-function updateEmbed(botMessage, finalResponse, message) {
+function updateEmbed(botMessage, finalResponse, message, groundingMetadata = null) {
   try {
     const isGuild = message.guild !== null;
     const embed = new EmbedBuilder()
@@ -2170,6 +2182,35 @@ function updateEmbed(botMessage, finalResponse, message) {
         iconURL: message.author.displayAvatarURL()
       })
       .setTimestamp();
+
+    // Add grounding metadata if available and conditions are met
+    if (groundingMetadata && shouldShowGroundingMetadata(message)) {
+      if (groundingMetadata.webSearchQueries && groundingMetadata.webSearchQueries.length > 0) {
+        embed.addFields({
+          name: '🔍 Search Queries',
+          value: groundingMetadata.webSearchQueries.map(query => `• ${query}`).join('\n'),
+          inline: false
+        });
+      }
+
+      if (groundingMetadata.groundingChunks && groundingMetadata.groundingChunks.length > 0) {
+        const chunks = groundingMetadata.groundingChunks
+          .slice(0, 5) // Limit to first 5 chunks to avoid embed limits
+          .map((chunk, index) => {
+            if (chunk.web) {
+              return `• [${chunk.web.title || 'Source'}](${chunk.web.uri})`;
+            }
+            return `• Source ${index + 1}`;
+          })
+          .join('\n');
+        
+        embed.addFields({
+          name: '📚 Sources',
+          value: chunks,
+          inline: false
+        });
+      }
+    }
 
     if (isGuild) {
       embed.setFooter({
@@ -2185,6 +2226,16 @@ function updateEmbed(botMessage, finalResponse, message) {
   } catch (error) {
     console.error("An error occurred while updating the embed:", error.message);
   }
+}
+
+function shouldShowGroundingMetadata(message) {
+  const userId = message.author.id;
+  const userToolMode = getUserToolPreference(userId);
+  const userResponsePreference = message.guild && state.serverSettings[message.guild.id]?.serverResponsePreference 
+    ? state.serverSettings[message.guild.id].responseStyle 
+    : getUserResponsePreference(userId);
+  
+  return userToolMode === 'Google Search with URL Context' && userResponsePreference === 'Embedded';
 }
 
 async function sendAsTextFile(text, message, orgId) {
