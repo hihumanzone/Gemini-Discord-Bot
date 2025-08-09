@@ -1949,6 +1949,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
   let updateTimeout;
   let tempResponse = '';
   let groundingMetadata = null;
+  let urlContextMetadata = null;
 
   const stopGeneratingButton = new ActionRowBuilder()
     .addComponents(
@@ -2027,7 +2028,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         content: '...'
       });
     } else if (userResponsePreference === 'Embedded') {
-      updateEmbed(botMessage, tempResponse, originalMessage, groundingMetadata);
+      updateEmbed(botMessage, tempResponse, originalMessage, groundingMetadata, urlContextMetadata);
     } else {
       botMessage.edit({
         content: tempResponse,
@@ -2067,6 +2068,11 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
             groundingMetadata = chunk.candidates[0].groundingMetadata;
           }
 
+          // Capture URL context metadata if available
+          if (chunk.candidates && chunk.candidates[0]?.url_context_metadata) {
+            urlContextMetadata = chunk.candidates[0].url_context_metadata;
+          }
+
           if (finalResponse.length > maxCharacterLimit) {
             if (!isLargeResponse) {
               isLargeResponse = true;
@@ -2094,7 +2100,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
 
       // Final update to ensure grounding metadata is displayed in embedded responses
       if (!isLargeResponse && userResponsePreference === 'Embedded') {
-        updateEmbed(botMessage, finalResponse, originalMessage, groundingMetadata);
+        updateEmbed(botMessage, finalResponse, originalMessage, groundingMetadata, urlContextMetadata);
       }
 
       botMessage = await addSettingsButton(botMessage);
@@ -2171,7 +2177,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
   }
 }
 
-function updateEmbed(botMessage, finalResponse, message, groundingMetadata = null) {
+function updateEmbed(botMessage, finalResponse, message, groundingMetadata = null, urlContextMetadata = null) {
   try {
     const isGuild = message.guild !== null;
     const embed = new EmbedBuilder()
@@ -2207,6 +2213,24 @@ function updateEmbed(botMessage, finalResponse, message, groundingMetadata = nul
         embed.addFields({
           name: '📚 Sources',
           value: chunks,
+          inline: false
+        });
+      }
+    }
+
+    // Add URL context metadata if available and conditions are met
+    if (urlContextMetadata && shouldShowGroundingMetadata(message)) {
+      if (urlContextMetadata.url_metadata && urlContextMetadata.url_metadata.length > 0) {
+        const urlList = urlContextMetadata.url_metadata
+          .map(urlData => {
+            const emoji = urlData.url_retrieval_status === 'URL_RETRIEVAL_STATUS_SUCCESS' ? '✔️' : '❌';
+            return `${emoji} ${urlData.retrieved_url}`;
+          })
+          .join('\n');
+        
+        embed.addFields({
+          name: '🔗 URL Context',
+          value: urlList,
           inline: false
         });
       }
