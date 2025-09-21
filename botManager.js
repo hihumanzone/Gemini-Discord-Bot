@@ -86,7 +86,6 @@ let activeUsersInChannels = {};
 let customInstructions = {};
 let serverSettings = {};
 let userResponsePreference = {};
-let userToolPreference = {};
 let alwaysRespondChannels = {};
 let channelWideChatHistory = {};
 let blacklistedUsers = {};
@@ -122,12 +121,6 @@ export const state = {
   set userResponsePreference(v) {
     userResponsePreference = v;
   },
-  get userToolPreference() {
-    return userToolPreference;
-  },
-  set userToolPreference(v) {
-    userToolPreference = v;
-  },
   get alwaysRespondChannels() {
     return alwaysRespondChannels;
   },
@@ -160,7 +153,6 @@ const FILE_PATHS = {
   customInstructions: path.join(CONFIG_DIR, 'custom_instructions.json'),
   serverSettings: path.join(CONFIG_DIR, 'server_settings.json'),
   userResponsePreference: path.join(CONFIG_DIR, 'user_response_preference.json'),
-  userToolPreference: path.join(CONFIG_DIR, 'user_tool_preference.json'),
   alwaysRespondChannels: path.join(CONFIG_DIR, 'always_respond_channels.json'),
   channelWideChatHistory: path.join(CONFIG_DIR, 'channel_wide_chathistory.json'),
   blacklistedUsers: path.join(CONFIG_DIR, 'blacklisted_users.json')
@@ -341,10 +333,6 @@ export function updateChatHistory(id, newHistory, messagesId) {
 
 export function getUserResponsePreference(userId) {
   return state.userResponsePreference[userId] || config.defaultResponseFormat;
-}
-
-export function getUserToolPreference(userId) {
-  return state.userToolPreference[userId] || config.defaultTool;
 }
 
 export function initializeBlacklistForGuild(guildId) {

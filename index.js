@@ -49,7 +49,6 @@ import {
   getHistory,
   updateChatHistory,
   getUserResponsePreference,
-  getUserToolPreference,
   initializeBlacklistForGuild
 } from './botManager.js';
 
@@ -280,7 +279,6 @@ async function handleButtonInteraction(interaction) {
     'custom-personality': handleCustomPersonalityCommand,
     'remove-personality': handleRemovePersonalityCommand,
     'toggle-response-mode': handleToggleResponseMode,
-    'toggle-tool-preference': toggleToolPreference,
     'download-conversation': downloadConversation,
     'download_message': downloadMessage,
     'general-settings': handleSubButtonInteraction,
@@ -504,25 +502,12 @@ async function handleTextMessage(message) {
   const finalInstructions = isServerChatHistoryEnabled ? instructions + infoStr : instructions;
   const historyId = isChannelChatHistoryEnabled ? (isServerChatHistoryEnabled ? guildId : channelId) : userId;
 
-  // Configure tools based on user preference - only Google Search and Code Execution supported
-  const userToolMode = getUserToolPreference(userId);
-  let tools;
-
-  switch (userToolMode) {
-    case 'Code Execution':
-      tools = [{
-        codeExecution: {}
-      }];
-      break;
-    case 'Google Search with URL Context':
-    default:
-      tools = [{
-        googleSearch: {}
-      }, {
-        urlContext: {}
-      }];
-      break;
-  }
+  // Always enable all three tools: Google Search, URL Context, and Code Execution
+  const tools = [
+    { googleSearch: {} },
+    { urlContext: {} },
+    { codeExecution: {} }
+  ];
 
   // Create chat with new Google GenAI API format
   const chat = genAI.chats.create({
@@ -530,13 +515,11 @@ async function handleTextMessage(message) {
     config: {
       systemInstruction: {
         role: "system",
-        parts: [{
-          text: finalInstructions || defaultPersonality
-        }]
+        parts: [{ text: finalInstructions || defaultPersonality }]
       },
       ...generationConfig,
       safetySettings,
-      tools: tools
+      tools
     },
     history: getHistory(historyId)
   });
@@ -1310,22 +1293,6 @@ async function toggleUserResponsePreference(interaction) {
   }
 }
 
-async function toggleToolPreference(interaction) {
-  try {
-    const userId = interaction.user.id;
-    const currentPreference = getUserToolPreference(userId);
-
-    const options = ['Google Search with URL Context', 'Code Execution'];
-    const currentIndex = options.indexOf(currentPreference);
-    const nextIndex = (currentIndex + 1) % options.length;
-    state.userToolPreference[userId] = options[nextIndex];
-
-    await handleSubButtonInteraction(interaction, true);
-  } catch (error) {
-    console.log(error.message);
-  }
-}
-
 async function toggleServerWideChatHistory(interaction) {
   try {
     if (!interaction.guild) {
@@ -1690,7 +1657,6 @@ async function handleSubButtonInteraction(interaction, update = false) {
     state.activeUsersInChannels[channelId] = {};
   }
   const responseMode = getUserResponsePreference(userId);
-  const toolMode = getUserToolPreference(userId);
   const subButtonConfigs = {
     'general-settings': [{
         customId: 'always-respond',
@@ -1702,12 +1668,6 @@ async function handleSubButtonInteraction(interaction, update = false) {
         customId: 'toggle-response-mode',
         label: `Toggle Response Mode: ${responseMode}`,
         emoji: '📝',
-        style: ButtonStyle.Secondary
-      },
-      {
-        customId: 'toggle-tool-preference',
-        label: `Tool: ${toolMode}`,
-        emoji: '🛠️',
         style: ButtonStyle.Secondary
       },
       {
@@ -2061,7 +2021,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         for await (const chunk of messageResult) {
           if (stopGeneration) break;
 
-          const chunkText = chunk.text;
+          const chunkText = (chunk.text || (chunk.codeExecutionResult?.output ? `\n\`\`\`py\n${chunk.codeExecutionResult.output}\n\`\`\`\n` : "") || (chunk.executableCode ? `\n\`\`\`\n${chunk.executableCode}\n\`\`\`\n` : '');
           if (chunkText && chunkText !== '') {
             finalResponse += chunkText;
             tempResponse += chunkText;
@@ -2269,16 +2229,13 @@ function addUrlContextMetadataToEmbed(embed, urlContextMetadata) {
 }
 
 function shouldShowGroundingMetadata(message) {
-  // Only show grounding metadata when:
-  // 1. User has "Google Search with URL Context" tool enabled
-  // 2. User has "Embedded" response preference selected
+  // Tools are always enabled; only show when user prefers Embedded responses
   const userId = message.author.id;
-  const userToolMode = getUserToolPreference(userId);
-  const userResponsePreference = message.guild && state.serverSettings[message.guild.id]?.serverResponsePreference 
-    ? state.serverSettings[message.guild.id].responseStyle 
+  const userResponsePreference = message.guild && state.serverSettings[message.guild.id]?.serverResponsePreference
+    ? state.serverSettings[message.guild.id].responseStyle
     : getUserResponsePreference(userId);
   
-  return userToolMode === 'Google Search with URL Context' && userResponsePreference === 'Embedded';
+  return userResponsePreference === 'Embedded';
 }
 
 async function sendAsTextFile(text, message, orgId) {
@@ -2302,4 +2259,4 @@ async function sendAsTextFile(text, message, orgId) {
 
 // <==========>
 
-client.login(token);  
+client.login(token);

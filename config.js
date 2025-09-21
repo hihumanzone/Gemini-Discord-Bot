@@ -1,6 +1,5 @@
 export default {
   defaultResponseFormat: "Embedded",
-  defaultTool: "Google Search with URL Context",
   hexColour: "#505050",
   workInDMs: true,
   shouldDisplayPersonalityButtons: true,
