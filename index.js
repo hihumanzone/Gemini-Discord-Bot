@@ -27,11 +27,9 @@ import path from 'path';
 import {
   getTextExtractor
 } from 'office-text-extractor'
-import osu from 'node-os-utils';
-const {
-  mem,
-  cpu
-} = osu;
+import { 
+  OSUtils
+} from 'node-os-utils';
 import axios from 'axios';
 
 import config from './config.js';
@@ -124,7 +122,7 @@ import {
 } from './commands.js';
 
 let activityIndex = 0;
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
 
   const rest = new REST().setToken(token);
@@ -883,18 +881,26 @@ async function handleStatusCommand(interaction) {
     await interaction.deferReply();
 
     let interval;
+    const osutils = new OSUtils();
 
     const updateMessage = async () => {
       try {
-        const [{
-          totalMemMb,
-          usedMemMb,
-          freeMemMb,
-          freeMemPercentage
-        }, cpuPercentage] = await Promise.all([
-          mem.info(),
-          cpu.usage()
+        const [memResult, cpuResult] = await Promise.all([
+          osutils.memory.info(),
+          osutils.cpu.usage()
         ]);
+
+        if (!memResult.success || !cpuResult.success) {
+            console.error('Falha ao coletar dados para /status');
+            if (interval) clearInterval(interval);
+            return;
+        }
+
+        const { total, used, available, usagePercentage: freeMemPercentage } = memResult.data;
+        const totalMemMb = total.toMB().toFixed(0);
+        const usedMemMb = used.toMB().toFixed(0);
+        const freeMemMb = available.toMB().toFixed(0);
+        const cpuPercentage = cpuResult.data.toFixed(2);
 
         const now = new Date();
         const nextReset = new Date();
@@ -913,7 +919,7 @@ async function handleStatusCommand(interaction) {
           .setTitle('System Information')
           .addFields({
             name: 'Memory (RAM)',
-            value: `Total Memory: \`${totalMemMb}\` MB\nUsed Memory: \`${usedMemMb}\` MB\nFree Memory: \`${freeMemMb}\` MB\nPercentage Of Free Memory: \`${freeMemPercentage}\`%`,
+            value: `Total Memory: \`${totalMemMb}\` MB\nUsed Memory: \`${usedMemMb}\` MB\nFree Memory: \`${freeMemMb}\` MB\nPercentage Of Free Memory: \`${freeMemPercentage.toFixed(2)}\`%`,
             inline: true
           }, {
             name: 'CPU',
@@ -2041,12 +2047,17 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
           if (finalResponse.length > maxCharacterLimit) {
             if (!isLargeResponse) {
               isLargeResponse = true;
+
+              if (updateTimeout) clearTimeout(updateTimeout);
+              updateTimeout = null;
+
               const embed = new EmbedBuilder()
                 .setColor(0xFFFF00)
                 .setTitle('Response Overflow')
                 .setDescription('The response got too large, will be sent as a text file once it is completed.');
 
               botMessage.edit({
+                content: ' ',
                 embeds: [embed]
               });
             }
