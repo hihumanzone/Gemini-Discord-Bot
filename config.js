@@ -1,4 +1,5 @@
 export default {
+  model: "gemini-2.5-flash",
   defaultResponseFormat: "Embedded",
   hexColour: "#505050",
   workInDMs: true,

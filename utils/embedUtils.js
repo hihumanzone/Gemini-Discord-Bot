@@ -105,7 +105,7 @@ export async function addSettingsButton(botMessage) {
       components: [actionRow]
     });
   } catch (error) {
-    console.log('Error adding settings button:', error.message);
+    console.error('Error adding settings button:', error.message);
     return botMessage;
   }
 }

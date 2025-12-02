@@ -173,8 +173,8 @@ export async function extractFileText(message, messageContent) {
  */
 async function downloadAndReadFile(url, fileType) {
   switch (fileType) {
-    case 'pptx':
-    case 'docx':
+    case '.pptx':
+    case '.docx':
       const extractor = getTextExtractor();
       return (await extractor.extractText({
         input: url,
@@ -213,10 +213,10 @@ export async function uploadText(text) {
 /**
  * Sends response as a text file when too large
  * @param {string} text - Response text
- * @param {Message} message - Original message
- * @param {string} orgId - Original message ID
+ * @param {Message} message - Original user message
+ * @param {string} messageId - ID of the bot message to associate with delete button
  */
-export async function sendAsTextFile(text, message, orgId) {
+export async function sendAsTextFile(text, message, messageId) {
   try {
     const filename = `response-${Date.now()}.txt`;
     const tempFilePath = path.join(TEMP_DIR, filename);
@@ -227,7 +227,7 @@ export async function sendAsTextFile(text, message, orgId) {
       files: [tempFilePath]
     });
     await addSettingsButton(botMessage);
-    await addDeleteButton(botMessage, orgId);
+    await addDeleteButton(botMessage, messageId);
 
     await fs.unlink(tempFilePath);
   } catch (error) {

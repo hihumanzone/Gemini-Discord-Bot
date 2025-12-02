@@ -26,7 +26,7 @@ import {
 import { addSettingsButton } from '../utils/embedUtils.js';
 import { handleModelResponse } from './modelResponseHandler.js';
 
-const MODEL = "gemini-2.5-flash";
+const MODEL = config.model;
 const defaultPersonality = config.defaultPersonality;
 const workInDMs = config.workInDMs;
 const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;

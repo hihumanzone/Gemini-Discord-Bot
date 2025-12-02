@@ -139,7 +139,7 @@ async function handleDeleteMessageInteraction(interaction, msgId) {
 
   async function deleteMsg() {
     await interaction.message.delete()
-      .catch('Error deleting interaction message: ', console.error);
+      .catch(error => console.error('Error deleting interaction message:', error));
 
     if (channel) {
       if (message) {
