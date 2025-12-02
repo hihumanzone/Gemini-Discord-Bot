@@ -5,6 +5,7 @@ import axios from 'axios';
 import { getTextExtractor } from 'office-text-extractor';
 
 import { genAI, createPartFromUri, TEMP_DIR } from '../botManager.js';
+import { addSettingsButton, addDeleteButton } from './embedUtils.js';
 
 /**
  * Downloads a file from a URL to a local path
@@ -214,10 +215,8 @@ export async function uploadText(text) {
  * @param {string} text - Response text
  * @param {Message} message - Original message
  * @param {string} orgId - Original message ID
- * @param {Function} addSettingsButton - Function to add settings button
- * @param {Function} addDeleteButton - Function to add delete button
  */
-export async function sendAsTextFile(text, message, orgId, addSettingsButton, addDeleteButton) {
+export async function sendAsTextFile(text, message, orgId) {
   try {
     const filename = `response-${Date.now()}.txt`;
     const tempFilePath = path.join(TEMP_DIR, filename);

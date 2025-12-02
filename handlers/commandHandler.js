@@ -12,7 +12,7 @@ import {
 } from '../botManager.js';
 
 import { createErrorEmbed, createSuccessEmbed, createWarningEmbed } from '../utils/embedUtils.js';
-import { showSettings, showDashboard, handleStatusCommand } from './settingsHandler.js';
+import { showSettings, showDashboard, handleStatusCommand, handleClearMemoryCommand } from './settingsHandler.js';
 
 const defaultPersonality = config.defaultPersonality;
 
@@ -197,7 +197,7 @@ export async function handleCommandInteraction(interaction) {
     toggle_channel_chat_history: toggleChannelChatHistory,
     whitelist: handleWhitelistCommand,
     blacklist: handleBlacklistCommand,
-    clear_memory: () => import('./settingsHandler.js').then(m => m.handleClearMemoryCommand(interaction)),
+    clear_memory: handleClearMemoryCommand,
     settings: showSettings,
     server_settings: showDashboard,
     status: handleStatusCommand

@@ -10,6 +10,7 @@ import {
   chatHistoryLock,
   saveStateToFile,
   getUserResponsePreference,
+  updateChatHistory,
 } from '../botManager.js';
 
 import {
@@ -199,7 +200,7 @@ export async function handleModelResponse(initialBotMessage, chat, parts, origin
 
       botMessage = await addSettingsButton(botMessage);
       if (isLargeResponse) {
-        await sendAsTextFile(finalResponse, originalMessage, botMessage.id, addSettingsButton, addDeleteButton);
+        await sendAsTextFile(finalResponse, originalMessage, botMessage.id);
         botMessage = await addDeleteButton(botMessage, botMessage.id);
       } else {
         const shouldAddDownloadButton = originalMessage.guild ? state.serverSettings[originalMessage.guild.id]?.settingsSaveButton : true;
@@ -214,7 +215,6 @@ export async function handleModelResponse(initialBotMessage, chat, parts, origin
       }
 
       await chatHistoryLock.runExclusive(async () => {
-        const { updateChatHistory } = await import('../botManager.js');
         updateChatHistory(historyId, newHistory, botMessage.id);
         await saveStateToFile();
       });
