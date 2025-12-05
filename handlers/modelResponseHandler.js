@@ -19,12 +19,21 @@ import {
   addDownloadButton,
   addDeleteButton,
   updateEmbed,
+  createErrorEmbed,
+  createWarningEmbed,
 } from '../utils/embedUtils.js';
 
 import { sendAsTextFile } from '../utils/fileUtils.js';
 import { delay } from '../tools/others.js';
 
+// Configuration constants
 const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
+const MAX_EMBEDDED_CHARS = config.maxEmbeddedChars;
+const MAX_NORMAL_CHARS = config.maxNormalChars;
+const MAX_RETRY_ATTEMPTS = config.maxRetryAttempts;
+const UPDATE_DELAY = config.updateDelay;
+const COLLECTOR_TIMEOUT = config.collectorTimeout;
+const { colors } = config;
 
 /**
  * Handles the AI model response and streaming
@@ -40,8 +49,8 @@ export async function handleModelResponse(initialBotMessage, chat, parts, origin
   const userResponsePreference = originalMessage.guild && state.serverSettings[originalMessage.guild.id]?.serverResponsePreference 
     ? state.serverSettings[originalMessage.guild.id].responseStyle 
     : getUserResponsePreference(userId);
-  const maxCharacterLimit = userResponsePreference === 'Embedded' ? 3900 : 1900;
-  let attempts = 3;
+  const maxCharacterLimit = userResponsePreference === 'Embedded' ? MAX_EMBEDDED_CHARS : MAX_NORMAL_CHARS;
+  let attempts = MAX_RETRY_ATTEMPTS;
 
   let updateTimeout;
   let tempResponse = '';
@@ -75,18 +84,13 @@ export async function handleModelResponse(initialBotMessage, chat, parts, origin
   try {
     const collector = await botMessage.createMessageComponentCollector({
       filter,
-      time: 120000
+      time: COLLECTOR_TIMEOUT
     });
     collector.on('collect', (interaction) => {
       if (interaction.user.id === originalMessage.author.id) {
         try {
-          const embed = new EmbedBuilder()
-            .setColor(0xFFA500)
-            .setTitle('Response Stopped')
-            .setDescription('Response generation stopped by the user.');
-
           interaction.reply({
-            embeds: [embed],
+            embeds: [createWarningEmbed('Response Stopped', 'Response generation stopped by the user.')],
             flags: MessageFlags.Ephemeral
           });
         } catch (error) {
@@ -95,13 +99,8 @@ export async function handleModelResponse(initialBotMessage, chat, parts, origin
         stopGeneration = true;
       } else {
         try {
-          const embed = new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('Access Denied')
-            .setDescription("It's not for you.");
-
           interaction.reply({
-            embeds: [embed],
+            embeds: [createErrorEmbed('Access Denied', "It's not for you.")],
             flags: MessageFlags.Ephemeral
           });
         } catch (error) {
@@ -172,7 +171,7 @@ export async function handleModelResponse(initialBotMessage, chat, parts, origin
             if (!isLargeResponse) {
               isLargeResponse = true;
               const embed = new EmbedBuilder()
-                .setColor(0xFFFF00)
+                .setColor(colors.yellow)
                 .setTitle('Response Overflow')
                 .setDescription('The response got too large, will be sent as a text file once it is completed.');
 
@@ -181,7 +180,7 @@ export async function handleModelResponse(initialBotMessage, chat, parts, origin
               });
             }
           } else if (!updateTimeout) {
-            updateTimeout = setTimeout(updateMessage, 500);
+            updateTimeout = setTimeout(updateMessage, UPDATE_DELAY);
           }
         }
         newHistory.push({
@@ -229,24 +228,16 @@ export async function handleModelResponse(initialBotMessage, chat, parts, origin
       if (attempts === 0 || stopGeneration) {
         if (!stopGeneration) {
           if (SEND_RETRY_ERRORS_TO_DISCORD) {
-            const embed = new EmbedBuilder()
-              .setColor(0xFF0000)
-              .setTitle('Generation Failure')
-              .setDescription(`All Generation Attempts Failed :(\n\`\`\`${error.message}\`\`\``);
             const errorMsg = await originalMessage.channel.send({
               content: `<@${originalMessage.author.id}>`,
-              embeds: [embed]
+              embeds: [createErrorEmbed('Generation Failure', `All Generation Attempts Failed :(\n\`\`\`${error.message}\`\`\``)]
             });
             await addSettingsButton(errorMsg);
             await addSettingsButton(botMessage);
           } else {
-            const simpleErrorEmbed = new EmbedBuilder()
-              .setColor(0xFF0000)
-              .setTitle('Bot Overloaded')
-              .setDescription('Something seems off, the bot might be overloaded! :(');
             const errorMsg = await originalMessage.channel.send({
               content: `<@${originalMessage.author.id}>`,
-              embeds: [simpleErrorEmbed]
+              embeds: [createErrorEmbed('Bot Overloaded', 'Something seems off, the bot might be overloaded! :(')]
             });
             await addSettingsButton(errorMsg);
             await addSettingsButton(botMessage);
@@ -256,14 +247,10 @@ export async function handleModelResponse(initialBotMessage, chat, parts, origin
       } else if (SEND_RETRY_ERRORS_TO_DISCORD) {
         const errorMsg = await originalMessage.channel.send({
           content: `<@${originalMessage.author.id}>`,
-          embeds: [new EmbedBuilder()
-            .setColor(0xFFFF00)
-            .setTitle('Retry in Progress')
-            .setDescription(`Generation Attempt(s) Failed, Retrying..\n\`\`\`${error.message}\`\`\``)
-          ]
+          embeds: [createWarningEmbed('Retry in Progress', `Generation Attempt(s) Failed, Retrying..\n\`\`\`${error.message}\`\`\``)]
         });
         setTimeout(() => errorMsg.delete().catch(console.error), 5000);
-        await delay(500);
+        await delay(UPDATE_DELAY);
       }
     }
   }

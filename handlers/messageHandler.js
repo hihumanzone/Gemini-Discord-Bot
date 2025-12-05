@@ -23,41 +23,27 @@ import {
   extractFileText,
 } from '../utils/fileUtils.js';
 
-import { addSettingsButton } from '../utils/embedUtils.js';
+import { addSettingsButton, createErrorEmbed, createWarningEmbed } from '../utils/embedUtils.js';
+import { validateMessageAuthor, getHistoryId, getInstructions } from '../utils/validationUtils.js';
 import { handleModelResponse } from './modelResponseHandler.js';
 
+// Configuration from centralized config
 const MODEL = config.model;
 const defaultPersonality = config.defaultPersonality;
 const workInDMs = config.workInDMs;
 const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
 
-// Safety settings for the AI model
-const safetySettings = [{
-    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-  {
-    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-  {
-    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-  {
-    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-];
+// Safety settings for the AI model (mapped from config)
+const safetySettings = config.safetySettings.map(setting => ({
+  category: HarmCategory[setting.category],
+  threshold: HarmBlockThreshold[setting.threshold],
+}));
 
-// Generation configuration for the AI model
-const generationConfig = {
-  temperature: 1.0,
-  topP: 0.95,
-  thinkingConfig: {
-    thinkingBudget: -1
-  }
-};
+// Generation configuration from config
+const generationConfig = config.generationConfig;
+
+// AI tools from config
+const tools = config.tools;
 
 /**
  * Registers the message create event handler
@@ -78,25 +64,17 @@ export function registerMessageHandler() {
       );
 
       if (shouldRespond) {
-        if (message.guild) {
-          initializeBlacklistForGuild(message.guild.id);
-          if (state.blacklistedUsers[message.guild.id].includes(message.author.id)) {
-            const embed = new EmbedBuilder()
-              .setColor(0xFF0000)
-              .setTitle('Blacklisted')
-              .setDescription('You are blacklisted and cannot use this bot.');
-            return message.reply({
-              embeds: [embed]
-            });
-          }
+        // Validate message author (blacklist check)
+        const validation = validateMessageAuthor(message);
+        if (!validation.valid) {
+          return message.reply({
+            embeds: [createErrorEmbed('Blacklisted', validation.error)]
+          });
         }
+        
         if (activeRequests.has(message.author.id)) {
-          const embed = new EmbedBuilder()
-            .setColor(0xFFFF00)
-            .setTitle('Request In Progress')
-            .setDescription('Please wait until your previous action is complete.');
           await message.reply({
-            embeds: [embed]
+            embeds: [createWarningEmbed('Request In Progress', 'Please wait until your previous action is complete.')]
           });
         } else {
           activeRequests.add(message.author.id);
@@ -183,19 +161,10 @@ async function handleTextMessage(message) {
     return console.error('Error initialising message', error);
   }
 
-  let instructions;
-  if (guildId) {
-    if (state.channelWideChatHistory[channelId]) {
-      instructions = state.customInstructions[channelId];
-    } else if (state.serverSettings[guildId]?.customServerPersonality && state.customInstructions[guildId]) {
-      instructions = state.customInstructions[guildId];
-    } else {
-      instructions = state.customInstructions[userId];
-    }
-  } else {
-    instructions = state.customInstructions[userId];
-  }
+  // Get instructions using utility function
+  const instructions = getInstructions(userId, channelId, guildId);
 
+  // Build user info string for server context
   let infoStr = '';
   if (guildId) {
     const userInfo = {
@@ -206,18 +175,12 @@ async function handleTextMessage(message) {
   }
 
   const isServerChatHistoryEnabled = guildId ? state.serverSettings[guildId]?.serverChatHistory : false;
-  const isChannelChatHistoryEnabled = guildId ? state.channelWideChatHistory[channelId] : false;
-  const finalInstructions = isServerChatHistoryEnabled ? instructions + infoStr : instructions;
-  const historyId = isChannelChatHistoryEnabled ? (isServerChatHistoryEnabled ? guildId : channelId) : userId;
+  const finalInstructions = isServerChatHistoryEnabled ? (instructions || '') + infoStr : instructions;
+  
+  // Get history ID using utility function
+  const historyId = getHistoryId(userId, channelId, guildId);
 
-  // Always enable all three tools: Google Search, URL Context, and Code Execution
-  const tools = [
-    { googleSearch: {} },
-    { urlContext: {} },
-    { codeExecution: {} }
-  ];
-
-  // Create chat with new Google GenAI API format
+  // Create chat with Google GenAI API using config values
   const chat = genAI.chats.create({
     model: MODEL,
     config: {

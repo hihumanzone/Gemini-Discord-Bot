@@ -17,11 +17,12 @@ import { registerMessageHandler, registerInteractionHandler } from './handlers/i
 // Initialize the bot state
 initialize().catch(console.error);
 
-// Configuration
+// Configuration from centralized config
 const activities = config.activities.map(activity => ({
   name: activity.name,
   type: ActivityType[activity.type]
 }));
+const activityInterval = config.activityInterval;
 
 // Register event handlers
 registerMessageHandler();
@@ -58,7 +59,7 @@ client.once('ready', async () => {
       activities: [activities[activityIndex]],
       status: 'idle',
     });
-  }, 30000);
+  }, activityInterval);
 });
 
 // Login to Discord

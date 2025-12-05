@@ -1,4 +1,9 @@
-// Utility exports
+/**
+ * Utility Module Exports
+ * Re-exports all utility functions for convenient importing
+ */
+
+// File utilities
 export {
   downloadFile,
   sanitizeFileName,
@@ -9,6 +14,7 @@ export {
   sendAsTextFile,
 } from './fileUtils.js';
 
+// Embed utilities
 export {
   createStopGeneratingButton,
   addDownloadButton,
@@ -20,3 +26,15 @@ export {
   createInfoEmbed,
   createWarningEmbed,
 } from './embedUtils.js';
+
+// Validation utilities
+export {
+  requireServer,
+  requireAdmin,
+  checkBlacklist,
+  validateInteraction,
+  validateMessageAuthor,
+  isFeatureEnabled,
+  getHistoryId,
+  getInstructions,
+} from './validationUtils.js';

@@ -10,6 +10,7 @@ import config from '../config.js';
 import { state, getUserResponsePreference } from '../botManager.js';
 
 const hexColour = config.hexColour;
+const { colors } = config;
 
 /**
  * Creates the "Stop Generating" button row
@@ -233,10 +234,10 @@ function shouldShowGroundingMetadata(message) {
  * Creates a standard error embed
  * @param {string} title - Error title
  * @param {string} description - Error description
- * @param {number} color - Hex color (default red)
+ * @param {number} color - Hex color (default red from config)
  * @returns {EmbedBuilder} Error embed
  */
-export function createErrorEmbed(title, description, color = 0xFF0000) {
+export function createErrorEmbed(title, description, color = colors.error) {
   return new EmbedBuilder()
     .setColor(color)
     .setTitle(title)
@@ -251,7 +252,7 @@ export function createErrorEmbed(title, description, color = 0xFF0000) {
  */
 export function createSuccessEmbed(title, description) {
   return new EmbedBuilder()
-    .setColor(0x00FF00)
+    .setColor(colors.success)
     .setTitle(title)
     .setDescription(description);
 }
@@ -264,7 +265,7 @@ export function createSuccessEmbed(title, description) {
  */
 export function createInfoEmbed(title, description) {
   return new EmbedBuilder()
-    .setColor(0x00FFFF)
+    .setColor(colors.info)
     .setTitle(title)
     .setDescription(description);
 }
@@ -277,7 +278,7 @@ export function createInfoEmbed(title, description) {
  */
 export function createWarningEmbed(title, description) {
   return new EmbedBuilder()
-    .setColor(0xFFA500)
+    .setColor(colors.warning)
     .setTitle(title)
     .setDescription(description);
 }
