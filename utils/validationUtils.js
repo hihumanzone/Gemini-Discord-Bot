@@ -50,19 +50,29 @@ export function requireAdmin(interaction) {
 }
 
 /**
- * Checks if user is blacklisted
+ * Internal helper to check if a user is blacklisted in a guild
+ * @param {string} guildId - Guild ID
+ * @param {string} userId - User ID
+ * @returns {boolean} True if user is blacklisted
+ * @private
+ */
+function isUserBlacklisted(guildId, userId) {
+  if (!guildId) return false;
+  initializeBlacklistForGuild(guildId);
+  return state.blacklistedUsers[guildId]?.includes(userId) ?? false;
+}
+
+/**
+ * Checks if user is blacklisted (for interactions)
  * @param {Interaction} interaction - Discord interaction
  * @returns {ValidationResult} Validation result
  */
 export function checkBlacklist(interaction) {
-  if (interaction.guild) {
-    initializeBlacklistForGuild(interaction.guild.id);
-    if (state.blacklistedUsers[interaction.guild.id]?.includes(interaction.user.id)) {
-      return {
-        valid: false,
-        error: 'You are blacklisted and cannot use this interaction.'
-      };
-    }
+  if (isUserBlacklisted(interaction.guild?.id, interaction.user.id)) {
+    return {
+      valid: false,
+      error: 'You are blacklisted and cannot use this interaction.'
+    };
   }
   return { valid: true, error: null };
 }
@@ -105,19 +115,16 @@ export async function validateInteraction(interaction, options = {}) {
 }
 
 /**
- * Validates a message author
+ * Validates a message author (checks blacklist)
  * @param {Message} message - Discord message
  * @returns {ValidationResult} Validation result
  */
 export function validateMessageAuthor(message) {
-  if (message.guild) {
-    initializeBlacklistForGuild(message.guild.id);
-    if (state.blacklistedUsers[message.guild.id]?.includes(message.author.id)) {
-      return {
-        valid: false,
-        error: 'You are blacklisted and cannot use this bot.'
-      };
-    }
+  if (isUserBlacklisted(message.guild?.id, message.author.id)) {
+    return {
+      valid: false,
+      error: 'You are blacklisted and cannot use this bot.'
+    };
   }
   return { valid: true, error: null };
 }
