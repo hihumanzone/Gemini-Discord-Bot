@@ -24,6 +24,6 @@ export default {
     settingsSaveButton: true,
     customServerPersonality: false,
     serverResponsePreference: false,
-    responseStyle: "embedded"
+    responseStyle: "Embedded"
   }
 };

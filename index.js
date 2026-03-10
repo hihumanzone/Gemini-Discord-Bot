@@ -11,7 +11,6 @@ import {
   EmbedBuilder,
   AttachmentBuilder,
   ActivityType,
-  ComponentType,
   REST,
   Routes,
 } from 'discord.js';
@@ -36,6 +35,9 @@ import axios from 'axios';
 
 import config from './config.js';
 import {
+  commands
+} from './commands.js';
+import {
   client,
   genAI,
   createPartFromUri,
@@ -51,6 +53,21 @@ import {
   getUserResponsePreference,
   initializeBlacklistForGuild
 } from './botManager.js';
+import {
+  delay,
+} from './tools/others.js';
+import {
+  getAttachmentExtension,
+  hasSupportedAttachments,
+  isOfficeDocumentExtension,
+  isTextExtractableAttachment,
+  isUploadableAttachment,
+  sanitizeFileName,
+} from './tools/attachments.js';
+import {
+  appendButtonToMessage,
+  createActionRowsFromButtons,
+} from './tools/discordComponents.js';
 
 initialize().catch(console.error);
 
@@ -93,36 +110,21 @@ const generationConfig = {
   }
 };
 
-const defaultResponseFormat = config.defaultResponseFormat;
-const defaultTool = config.defaultTool;
 const hexColour = config.hexColour;
 const activities = config.activities.map(activity => ({
   name: activity.name,
   type: ActivityType[activity.type]
 }));
 const defaultPersonality = config.defaultPersonality;
-const defaultServerSettings = config.defaultServerSettings;
 const workInDMs = config.workInDMs;
 const shouldDisplayPersonalityButtons = config.shouldDisplayPersonalityButtons;
 const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
-
-
-
-import {
-  delay,
-  retryOperation,
-} from './tools/others.js';
-
+const EMBEDDED_RESPONSE_FORMAT = 'Embedded';
 // <==========>
 
 
 
 // <=====[Register Commands And Activities]=====>
-
-import {
-  commands
-} from './commands.js';
-
 let activityIndex = 0;
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
@@ -204,9 +206,7 @@ client.on('messageCreate', async (message) => {
     }
   } catch (error) {
     console.error('Error processing the message:', error);
-    if (activeRequests.has(message.author.id)) {
-      activeRequests.delete(message.author.id);
-    }
+    releaseActiveRequest(message.author.id);
   }
 });
 
@@ -223,6 +223,28 @@ client.on('interactionCreate', async (interaction) => {
     console.error('Error handling interaction:', error.message);
   }
 });
+
+function releaseActiveRequest(userId) {
+  activeRequests.delete(userId);
+}
+
+function normalizeResponsePreference(responsePreference) {
+  if (typeof responsePreference !== 'string') {
+    return config.defaultResponseFormat;
+  }
+
+  return responsePreference.toLowerCase() === EMBEDDED_RESPONSE_FORMAT.toLowerCase()
+    ? EMBEDDED_RESPONSE_FORMAT
+    : responsePreference;
+}
+
+function getResponsePreferenceForMessage(message) {
+  if (message.guild && state.serverSettings[message.guild.id]?.serverResponsePreference) {
+    return normalizeResponsePreference(state.serverSettings[message.guild.id].responseStyle);
+  }
+
+  return normalizeResponsePreference(getUserResponsePreference(message.author.id));
+}
 
 async function handleCommandInteraction(interaction) {
   if (!interaction.isChatInputCommand()) return;
@@ -419,9 +441,7 @@ async function handleTextMessage(message) {
   let messageContent = message.content.replace(new RegExp(`<@!?${botId}>`), '').trim();
 
   if (messageContent === '' && !(message.attachments.size > 0 && hasSupportedAttachments(message))) {
-    if (activeRequests.has(userId)) {
-      activeRequests.delete(userId);
-    }
+    releaseActiveRequest(userId);
     const embed = new EmbedBuilder()
       .setColor(0x00FFFF)
       .setTitle('Empty Message')
@@ -472,6 +492,8 @@ async function handleTextMessage(message) {
       parts = await processPromptAndMediaAttachments(messageContent, message);
     }
   } catch (error) {
+    clearInterval(typingInterval);
+    releaseActiveRequest(userId);
     return console.error('Error initialising message', error);
   }
 
@@ -527,23 +549,6 @@ async function handleTextMessage(message) {
   await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId);
 }
 
-function hasSupportedAttachments(message) {
-  const supportedFileExtensions = ['.html', '.js', '.css', '.json', '.xml', '.csv', '.py', '.java', '.sql', '.log', '.md', '.txt', '.docx', '.pptx'];
-
-  return message.attachments.some((attachment) => {
-    const contentType = (attachment.contentType || "").toLowerCase();
-    const fileExtension = path.extname(attachment.name) || '';
-    return (
-      (contentType.startsWith('image/') && contentType !== 'image/gif') ||
-      contentType.startsWith('audio/') ||
-      contentType.startsWith('video/') ||
-      contentType.startsWith('application/pdf') ||
-      contentType.startsWith('application/x-pdf') ||
-      supportedFileExtensions.includes(fileExtension)
-    );
-  });
-}
-
 async function downloadFile(url, filePath) {
   const writer = createWriteStream(filePath);
   const response = await axios({
@@ -558,13 +563,6 @@ async function downloadFile(url, filePath) {
   });
 }
 
-function sanitizeFileName(fileName) {
-  return fileName
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
 async function processPromptAndMediaAttachments(prompt, message) {
   const attachments = JSON.parse(JSON.stringify(Array.from(message.attachments.values())));
   let parts = [{
@@ -572,14 +570,7 @@ async function processPromptAndMediaAttachments(prompt, message) {
   }];
 
   if (attachments.length > 0) {
-    const validAttachments = attachments.filter(attachment => {
-      const contentType = (attachment.contentType || "").toLowerCase();
-      return (contentType.startsWith('image/') && contentType !== 'image/gif') ||
-        contentType.startsWith('audio/') ||
-        contentType.startsWith('video/') ||
-        contentType.startsWith('application/pdf') ||
-        contentType.startsWith('application/x-pdf');
-    });
+    const validAttachments = attachments.filter(isUploadableAttachment);
 
     if (validAttachments.length > 0) {
       const attachmentParts = await Promise.all(
@@ -641,14 +632,12 @@ async function processPromptAndMediaAttachments(prompt, message) {
 
 async function extractFileText(message, messageContent) {
   if (message.attachments.size > 0) {
-    let attachments = Array.from(message.attachments.values());
+    const attachments = Array.from(message.attachments.values());
     for (const attachment of attachments) {
-      const fileType = path.extname(attachment.name) || '';
-      const fileTypes = ['.html', '.js', '.css', '.json', '.xml', '.csv', '.py', '.java', '.sql', '.log', '.md', '.txt', '.docx', '.pptx'];
-
-      if (fileTypes.includes(fileType)) {
+      const fileType = getAttachmentExtension(attachment);
+      if (isTextExtractableAttachment(attachment)) {
         try {
-          let fileContent = await downloadAndReadFile(attachment.url, fileType);
+          const fileContent = await downloadAndReadFile(attachment.url, fileType);
           messageContent += `\n\n[\`${attachment.name}\` File Content]:\n\`\`\`\n${fileContent}\n\`\`\``;
         } catch (error) {
           console.error(`Error reading file ${attachment.name}: ${error.message}`);
@@ -660,19 +649,17 @@ async function extractFileText(message, messageContent) {
 }
 
 async function downloadAndReadFile(url, fileType) {
-  switch (fileType) {
-    case 'pptx':
-    case 'docx':
-      const extractor = getTextExtractor();
-      return (await extractor.extractText({
-        input: url,
-        type: 'url'
-      }));
-    default:
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`Failed to download ${response.statusText}`);
-      return await response.text();
+  if (isOfficeDocumentExtension(fileType)) {
+    const extractor = getTextExtractor();
+    return extractor.extractText({
+      input: url,
+      type: 'url'
+    });
   }
+
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to download ${response.statusText}`);
+  return response.text();
 }
 
 // <==========>
@@ -1618,15 +1605,7 @@ async function showSettings(interaction, edit = false) {
       },
     ];
 
-    const mainButtonsComponents = mainButtons.map(config =>
-      new ButtonBuilder()
-      .setCustomId(config.customId)
-      .setLabel(config.label)
-      .setEmoji(config.emoji)
-      .setStyle(config.style)
-    );
-
-    const mainActionRow = new ActionRowBuilder().addComponents(...mainButtonsComponents);
+    const actionRows = createActionRowsFromButtons(mainButtons);
 
     const embed = new EmbedBuilder()
       .setColor(0x00FFFF)
@@ -1635,13 +1614,13 @@ async function showSettings(interaction, edit = false) {
     if (edit) {
       await interaction.update({
         embeds: [embed],
-        components: [mainActionRow],
+        components: actionRows,
         flags: MessageFlags.Ephemeral
       });
     } else {
       await interaction.reply({
         embeds: [embed],
-        components: [mainActionRow],
+        components: actionRows,
         flags: MessageFlags.Ephemeral
       });
     }
@@ -1699,18 +1678,9 @@ async function handleSubButtonInteraction(interaction, update = false) {
   };
 
   if (update || subButtonConfigs[interaction.customId]) {
-    const subButtons = subButtonConfigs[update ? 'general-settings' : interaction.customId].map(config =>
-      new ButtonBuilder()
-      .setCustomId(config.customId)
-      .setLabel(config.label)
-      .setEmoji(config.emoji)
-      .setStyle(config.style)
+    const actionRows = createActionRowsFromButtons(
+      subButtonConfigs[update ? 'general-settings' : interaction.customId]
     );
-
-    const actionRows = [];
-    while (subButtons.length > 0) {
-      actionRows.push(new ActionRowBuilder().addComponents(subButtons.splice(0, 5)));
-    }
 
     await interaction.update({
       embeds: [
@@ -1797,20 +1767,7 @@ async function showDashboard(interaction) {
     }
   ];
 
-  const allButtons = buttonConfigs.map((config) =>
-    new ButtonBuilder()
-    .setCustomId(config.customId)
-    .setLabel(config.label)
-    .setEmoji(config.emoji)
-    .setStyle(config.style)
-  );
-
-  const actionRows = [];
-  while (allButtons.length > 0) {
-    actionRows.push(
-      new ActionRowBuilder().addComponents(allButtons.splice(0, 5))
-    );
-  }
+  const actionRows = createActionRowsFromButtons(buttonConfigs);
 
   const embed = new EmbedBuilder()
     .setColor(0xFFFFFF)
@@ -1831,23 +1788,11 @@ async function showDashboard(interaction) {
 
 async function addDownloadButton(botMessage) {
   try {
-    const messageComponents = botMessage.components || [];
-    const downloadButton = new ButtonBuilder()
-      .setCustomId('download_message')
-      .setLabel('Save')
-      .setEmoji('⬇️')
-      .setStyle(ButtonStyle.Secondary);
-
-    let actionRow;
-    if (messageComponents.length > 0 && messageComponents[0].type === ComponentType.ActionRow) {
-      actionRow = ActionRowBuilder.from(messageComponents[0]);
-    } else {
-      actionRow = new ActionRowBuilder();
-    }
-
-    actionRow.addComponents(downloadButton);
-    return await botMessage.edit({
-      components: [actionRow]
+    return await appendButtonToMessage(botMessage, {
+      customId: 'download_message',
+      label: 'Save',
+      emoji: '⬇️',
+      style: ButtonStyle.Secondary
     });
   } catch (error) {
     console.error('Error adding download button:', error.message);
@@ -1857,23 +1802,11 @@ async function addDownloadButton(botMessage) {
 
 async function addDeleteButton(botMessage, msgId) {
   try {
-    const messageComponents = botMessage.components || [];
-    const downloadButton = new ButtonBuilder()
-      .setCustomId(`delete_message-${msgId}`)
-      .setLabel('Delete')
-      .setEmoji('🗑️')
-      .setStyle(ButtonStyle.Secondary);
-
-    let actionRow;
-    if (messageComponents.length > 0 && messageComponents[0].type === ComponentType.ActionRow) {
-      actionRow = ActionRowBuilder.from(messageComponents[0]);
-    } else {
-      actionRow = new ActionRowBuilder();
-    }
-
-    actionRow.addComponents(downloadButton);
-    return await botMessage.edit({
-      components: [actionRow]
+    return await appendButtonToMessage(botMessage, {
+      customId: `delete_message-${msgId}`,
+      label: 'Delete',
+      emoji: '🗑️',
+      style: ButtonStyle.Secondary
     });
   } catch (error) {
     console.error('Error adding delete button:', error.message);
@@ -1883,14 +1816,10 @@ async function addDeleteButton(botMessage, msgId) {
 
 async function addSettingsButton(botMessage) {
   try {
-    const settingsButton = new ButtonBuilder()
-      .setCustomId('settings')
-      .setEmoji('⚙️')
-      .setStyle(ButtonStyle.Secondary);
-
-    const actionRow = new ActionRowBuilder().addComponents(settingsButton);
-    return await botMessage.edit({
-      components: [actionRow]
+    return await appendButtonToMessage(botMessage, {
+      customId: 'settings',
+      emoji: '⚙️',
+      style: ButtonStyle.Secondary
     });
   } catch (error) {
     console.log('Error adding settings button:', error.message);
@@ -1906,8 +1835,8 @@ async function addSettingsButton(botMessage) {
 
 async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId) {
   const userId = originalMessage.author.id;
-  const userResponsePreference = originalMessage.guild && state.serverSettings[originalMessage.guild.id]?.serverResponsePreference ? state.serverSettings[originalMessage.guild.id].responseStyle : getUserResponsePreference(userId);
-  const maxCharacterLimit = userResponsePreference === 'Embedded' ? 3900 : 1900;
+  const userResponsePreference = getResponsePreferenceForMessage(originalMessage);
+  const maxCharacterLimit = userResponsePreference === EMBEDDED_RESPONSE_FORMAT ? 3900 : 1900;
   let attempts = 3;
 
   let updateTimeout;
@@ -1992,7 +1921,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       botMessage.edit({
         content: '...'
       });
-    } else if (userResponsePreference === 'Embedded') {
+    } else if (userResponsePreference === EMBEDDED_RESPONSE_FORMAT) {
       updateEmbed(botMessage, tempResponse, originalMessage, groundingMetadata, urlContextMetadata);
     } else {
       botMessage.edit({
@@ -2064,7 +1993,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       await getResponse(parts);
 
       // Final update to ensure grounding and URL context metadata is displayed in embedded responses
-      if (!isLargeResponse && userResponsePreference === 'Embedded') {
+      if (!isLargeResponse && userResponsePreference === EMBEDDED_RESPONSE_FORMAT) {
         updateEmbed(botMessage, finalResponse, originalMessage, groundingMetadata, urlContextMetadata);
       }
 
@@ -2090,9 +2019,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       });
       break;
     } catch (error) {
-      if (activeRequests.has(userId)) {
-        activeRequests.delete(userId);
-      }
+      releaseActiveRequest(userId);
       console.error('Generation Attempt Failed: ', error);
       attempts--;
 
@@ -2137,9 +2064,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       }
     }
   }
-  if (activeRequests.has(userId)) {
-    activeRequests.delete(userId);
-  }
+  releaseActiveRequest(userId);
 }
 
 function updateEmbed(botMessage, finalResponse, message, groundingMetadata = null, urlContextMetadata = null) {
@@ -2230,12 +2155,7 @@ function addUrlContextMetadataToEmbed(embed, urlContextMetadata) {
 
 function shouldShowGroundingMetadata(message) {
   // Tools are always enabled; only show when user prefers Embedded responses
-  const userId = message.author.id;
-  const userResponsePreference = message.guild && state.serverSettings[message.guild.id]?.serverResponsePreference
-    ? state.serverSettings[message.guild.id].responseStyle
-    : getUserResponsePreference(userId);
-  
-  return userResponsePreference === 'Embedded';
+  return getResponsePreferenceForMessage(message) === EMBEDDED_RESPONSE_FORMAT;
 }
 
 async function sendAsTextFile(text, message, orgId) {

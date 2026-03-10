@@ -81,64 +81,15 @@ export const chatHistoryLock = new Mutex();
 
 // --- State and Data Management ---
 
-let chatHistories = {};
-let activeUsersInChannels = {};
-let customInstructions = {};
-let serverSettings = {};
-let userResponsePreference = {};
-let alwaysRespondChannels = {};
-let channelWideChatHistory = {};
-let blacklistedUsers = {};
-
 export const state = {
-  get chatHistories() {
-    return chatHistories;
-  },
-  set chatHistories(v) {
-    chatHistories = v;
-  },
-  get activeUsersInChannels() {
-    return activeUsersInChannels;
-  },
-  set activeUsersInChannels(v) {
-    activeUsersInChannels = v;
-  },
-  get customInstructions() {
-    return customInstructions;
-  },
-  set customInstructions(v) {
-    customInstructions = v;
-  },
-  get serverSettings() {
-    return serverSettings;
-  },
-  set serverSettings(v) {
-    serverSettings = v;
-  },
-  get userResponsePreference() {
-    return userResponsePreference;
-  },
-  set userResponsePreference(v) {
-    userResponsePreference = v;
-  },
-  get alwaysRespondChannels() {
-    return alwaysRespondChannels;
-  },
-  set alwaysRespondChannels(v) {
-    alwaysRespondChannels = v;
-  },
-  get channelWideChatHistory() {
-    return channelWideChatHistory;
-  },
-  set channelWideChatHistory(v) {
-    channelWideChatHistory = v;
-  },
-  get blacklistedUsers() {
-    return blacklistedUsers;
-  },
-  set blacklistedUsers(v) {
-    blacklistedUsers = v;
-  },
+  chatHistories: {},
+  activeUsersInChannels: {},
+  customInstructions: {},
+  serverSettings: {},
+  userResponsePreference: {},
+  alwaysRespondChannels: {},
+  channelWideChatHistory: {},
+  blacklistedUsers: {},
 };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -178,7 +129,7 @@ export async function saveStateToFile() {
       recursive: true
     });
 
-    const chatHistoryPromises = Object.entries(chatHistories).map(([key, value]) => {
+    const chatHistoryPromises = Object.entries(state.chatHistories).map(([key, value]) => {
       const filePath = path.join(CHAT_HISTORIES_DIR, `${key}.json`);
       return fs.writeFile(filePath, JSON.stringify(value, null, 2), 'utf-8');
     });
@@ -219,7 +170,7 @@ async function loadStateFromFile() {
         const filePath = path.join(CHAT_HISTORIES_DIR, file);
         try {
           const data = await fs.readFile(filePath, 'utf-8');
-          chatHistories[user] = JSON.parse(data);
+          state.chatHistories[user] = JSON.parse(data);
         } catch (readError) {
           console.error(`Error reading chat history for ${user}:`, readError);
         }
@@ -248,15 +199,17 @@ async function loadStateFromFile() {
 function removeFileData(histories) {
   try {
     Object.values(histories).forEach(subIdEntries => {
-      subIdEntries.forEach(message => {
-        if (message.content) {
-          message.content = message.content.filter(contentItem => {
-            if (contentItem.fileData) {
-              delete contentItem.fileData;
-            }
-            return Object.keys(contentItem).length > 0;
-          });
-        }
+      Object.values(subIdEntries).forEach(messages => {
+        messages.forEach(message => {
+          if (message.content) {
+            message.content = message.content.filter(contentItem => {
+              if (contentItem.fileData) {
+                delete contentItem.fileData;
+              }
+              return Object.keys(contentItem).length > 0;
+            });
+          }
+        });
       });
     });
     console.log('fileData elements have been removed from chat histories.');
@@ -278,7 +231,7 @@ function scheduleDailyReset() {
     setTimeout(async () => {
       console.log('Running daily cleanup task...');
       await chatHistoryLock.runExclusive(async () => {
-        removeFileData(chatHistories);
+        removeFileData(state.chatHistories);
         await saveStateToFile();
       });
       console.log('Daily cleanup task finished.');
@@ -300,15 +253,8 @@ export async function initialize() {
 // --- State Helper Functions ---
 
 export function getHistory(id) {
-  const historyObject = chatHistories[id] || {};
-  let combinedHistory = [];
-
-  // Combine all message histories for this ID
-  for (const messagesId in historyObject) {
-    if (historyObject.hasOwnProperty(messagesId)) {
-      combinedHistory = [...combinedHistory, ...historyObject[messagesId]];
-    }
-  }
+  const historyObject = state.chatHistories[id] || {};
+  const combinedHistory = Object.values(historyObject).flat();
 
   // Transform to format expected by new Google GenAI API
   return combinedHistory.map(entry => {
@@ -320,15 +266,15 @@ export function getHistory(id) {
 }
 
 export function updateChatHistory(id, newHistory, messagesId) {
-  if (!chatHistories[id]) {
-    chatHistories[id] = {};
+  if (!state.chatHistories[id]) {
+    state.chatHistories[id] = {};
   }
 
-  if (!chatHistories[id][messagesId]) {
-    chatHistories[id][messagesId] = [];
+  if (!state.chatHistories[id][messagesId]) {
+    state.chatHistories[id][messagesId] = [];
   }
 
-  chatHistories[id][messagesId] = [...chatHistories[id][messagesId], ...newHistory];
+  state.chatHistories[id][messagesId] = [...state.chatHistories[id][messagesId], ...newHistory];
 }
 
 export function getUserResponsePreference(userId) {
@@ -341,7 +287,9 @@ export function initializeBlacklistForGuild(guildId) {
       state.blacklistedUsers[guildId] = [];
     }
     if (!state.serverSettings[guildId]) {
-      state.serverSettings[guildId] = config.defaultServerSettings;
+      state.serverSettings[guildId] = {
+        ...config.defaultServerSettings
+      };
     }
   } catch (error) {}
 }
