@@ -1,0 +1,1 @@
+{"version":3,"file":"TableResult.js","sourceRoot":"","sources":["../../../src/pdf-parse/TableResult.ts"],"names":[],"mappings":"AAWA;;;GAGG;AACH,MAAM,OAAO,WAAW;IACvB,KAAK,GAA2B,EAAE,CAAC;IACnC,YAAY,GAAiB,EAAE,CAAC;IAChC,KAAK,GAAW,CAAC,CAAC;IAElB,YAAY,KAAa;QACxB,IAAI,CAAC,KAAK,GAAG,KAAK,CAAC;IACpB,CAAC;CACD"}
