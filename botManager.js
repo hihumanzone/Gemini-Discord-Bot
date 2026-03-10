@@ -198,8 +198,8 @@ async function loadStateFromFile() {
 
 function removeFileData(histories) {
   try {
-    Object.values(histories).forEach(subIdEntries => {
-      Object.values(subIdEntries).forEach(messages => {
+    Object.values(histories).forEach(historyByMessageId => {
+      Object.values(historyByMessageId).forEach(messages => {
         messages.forEach(message => {
           if (message.content) {
             message.content = message.content.filter(contentItem => {

@@ -58,10 +58,14 @@ export function isOfficeDocumentExtension(fileExtension) {
 }
 
 export function sanitizeFileName(fileName = 'file') {
-  const sanitizedFileName = fileName
+  const { name, ext } = path.parse(fileName);
+  const sanitizedBaseName = (name || fileName)
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, '-')
     .replace(/^-+|-+$/g, '');
+  const sanitizedExtension = ext.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  return sanitizedFileName || 'file';
+  return sanitizedExtension
+    ? `${sanitizedBaseName || 'file'}.${sanitizedExtension}`
+    : sanitizedBaseName || 'file';
 }

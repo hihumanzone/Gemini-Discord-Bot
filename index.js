@@ -239,8 +239,9 @@ function normalizeResponsePreference(responsePreference) {
 }
 
 function getResponsePreferenceForMessage(message) {
-  if (message.guild && state.serverSettings[message.guild.id]?.serverResponsePreference) {
-    return normalizeResponsePreference(state.serverSettings[message.guild.id].responseStyle);
+  const serverSettings = message.guild ? state.serverSettings[message.guild.id] : null;
+  if (serverSettings?.serverResponsePreference && serverSettings.responseStyle) {
+    return normalizeResponsePreference(serverSettings.responseStyle);
   }
 
   return normalizeResponsePreference(getUserResponsePreference(message.author.id));
@@ -494,7 +495,31 @@ async function handleTextMessage(message) {
   } catch (error) {
     clearInterval(typingInterval);
     releaseActiveRequest(userId);
-    return console.error('Error initialising message', error);
+    console.error('Error initialising message', error);
+
+    const preprocessingErrorEmbed = new EmbedBuilder()
+      .setColor(0xFF0000)
+      .setTitle('Processing Failed')
+      .setDescription('I ran into an issue while preparing your message or attachments. Please try again.');
+
+    try {
+      if (botMessage) {
+        await botMessage.edit({
+          embeds: [preprocessingErrorEmbed],
+          components: []
+        });
+        await addSettingsButton(botMessage);
+      } else {
+        const errorMessage = await message.reply({
+          embeds: [preprocessingErrorEmbed]
+        });
+        await addSettingsButton(errorMessage);
+      }
+    } catch (replyError) {
+      console.error('Error sending preprocessing failure message:', replyError);
+    }
+
+    return;
   }
 
   let instructions;
@@ -651,7 +676,7 @@ async function extractFileText(message, messageContent) {
 async function downloadAndReadFile(url, fileType) {
   if (isOfficeDocumentExtension(fileType)) {
     const extractor = getTextExtractor();
-    return extractor.extractText({
+    return await extractor.extractText({
       input: url,
       type: 'url'
     });
@@ -659,7 +684,7 @@ async function downloadAndReadFile(url, fileType) {
 
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to download ${response.statusText}`);
-  return response.text();
+  return await response.text();
 }
 
 // <==========>
