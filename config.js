@@ -1,6 +1,6 @@
 // For advanced configuration, edit `constants.js`.
 const config = Object.freeze({
-  defaultModel: 'gemini-flash-latest',
+  defaultModel: 'gemini-3.1-flash-lite-preview',
   maxGenerationAttempts: 3,
   defaultResponseFormat: 'Embedded',
   hexColour: '#505050',

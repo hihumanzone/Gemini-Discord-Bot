@@ -153,20 +153,27 @@ async function sendSavedContentToUser(
   }
 }
 
-async function handleDeleteMessageInteraction(interaction, messageId) {
+async function handleDeleteMessageInteraction(interaction, messageIdStr) {
   const userId = interaction.user.id;
   const userChatHistory = state.chatHistories[userId];
   const channel = interaction.channel;
-  const targetMessage = channel ? await channel.messages.fetch(messageId).catch(() => null) : null;
+  const messageIds = messageIdStr.split(',');
+  const primaryId = messageIds[0];
+  const targetMessage = channel ? await channel.messages.fetch(primaryId).catch(() => null) : null;
 
-  const canDeleteOwnSavedMessage = Boolean(userChatHistory?.[messageId]);
-  if (canDeleteOwnSavedMessage) {
-    delete userChatHistory[messageId];
-    await persistStateChange();
+  const performDeletion = async () => {
     await safeDeleteMessage(interaction.message);
-    if (targetMessage) {
-      await safeDeleteMessage(targetMessage);
+    if (targetMessage) await safeDeleteMessage(targetMessage);
+    for (const id of messageIds.slice(1)) {
+      const msg = await channel.messages.fetch(id).catch(() => null);
+      if (msg) await safeDeleteMessage(msg);
     }
+  };
+
+  if (userChatHistory?.[primaryId]) {
+    delete userChatHistory[primaryId];
+    await persistStateChange();
+    await performDeletion();
     return;
   }
 
@@ -176,10 +183,7 @@ async function handleDeleteMessageInteraction(interaction, messageId) {
       : null;
 
     if (repliedToMessage?.author?.id === userId) {
-      await safeDeleteMessage(interaction.message);
-      if (targetMessage) {
-        await safeDeleteMessage(targetMessage);
-      }
+      await performDeletion();
       return;
     }
   } catch {
