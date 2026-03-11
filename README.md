@@ -56,17 +56,44 @@ A Discord bot leveraging Google Gemini for advanced conversation, content unders
 
 ## Usage
 
-- **Invite the bot to your Discord server.**
-- Use `/settings` to configure personal or channel preferences.
-- Use `/server_settings` for server-wide admin controls.
-- Upload supported files or image/video/audio files and ask the bot about them.
-- Use slash commands:
-    - `/respond_to_all enabled:true|false` – Bot responds to every message in a channel
-    - `/clear_memory` – Clear your personal conversation history
-    - `/toggle_channel_chat_history enabled:true|false [instructions]` – Channel-wide conversation
-    - `/blacklist user:@user` – Prevent a user from using the bot
-    - `/whitelist user:@user` – Remove a user from the blacklist
-    - `/status` – Show system status
+### How to Send Messages to the Bot
+
+There are several ways to interact with the Gemini bot:
+
+1. **Direct Messages (DMs)**
+   - Open a DM with the bot and send any message
+   - The bot will respond with Gemini AI responses
+
+2. **Mention the Bot in a Channel**
+   - In any server channel, mention the bot (@Gemini-Discord-Bot) and send your message
+   - The bot will respond in the same channel
+
+3. **Enable "Always Respond" Mode**
+   - Use `/respond_to_all enabled:true` in a channel
+   - The bot will respond to every message posted in that channel (by any user)
+   - Use `/respond_to_all enabled:false` to disable this mode
+
+4. **Personal Active Mode**
+   - Use `/settings` to configure personal preferences
+   - You can enable your messages to trigger bot responses in specific channels
+
+### Supported Features
+
+- **File/Media Support**: Upload supported files (images, videos, audio, PDFs, docx, pptx, code files) along with your message for the bot to analyze
+- **Custom Personalities**: Use `/settings` to set custom instruction prompts for personalized responses
+- **Server-wide Chat History**: Use `/toggle_channel_chat_history` to enable persistent conversation history in a channel
+- **Conversation Memory**: The bot remembers your conversation history within a session
+
+### Available Slash Commands
+
+- `/settings` – Configure personal or channel preferences
+- `/server_settings` – Server-wide admin controls (admins only)
+- `/respond_to_all enabled:true|false` – Toggle bot response to all messages in a channel
+- `/clear_memory` – Clear your personal conversation history
+- `/toggle_channel_chat_history enabled:true|false [instructions]` – Enable channel-wide conversation memory
+- `/blacklist user:@user` – Prevent a user from using the bot (admins only)
+- `/whitelist user:@user` – Remove a user from the blacklist (admins only)
+- `/status` – Show system status (RAM, CPU, reset timer)
 
 ---
 
