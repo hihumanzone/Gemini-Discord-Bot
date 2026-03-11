@@ -7,7 +7,6 @@ import {
 } from 'discord.js';
 import {
   GoogleGenAI,
-  createUserContent,
   createPartFromUri
 } from '@google/genai';
 import fs from 'fs/promises';
@@ -17,6 +16,11 @@ import {
 } from 'url';
 
 import config from './config.js';
+import {
+  cloneDefaultGeminiToolPreferences,
+  cloneDefaultServerSettings,
+  normalizeGeminiToolPreferences,
+} from './src/constants.js';
 
 // --- Core Client and API Initialization ---
 // Using new Google GenAI library instead of deprecated @google/generative-ai
@@ -33,12 +37,21 @@ export const client = new Client({
 
 // Initialize with new API format that requires apiKey object
 export const genAI = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
-export { createUserContent, createPartFromUri };
+export { createPartFromUri };
 export const token = process.env.DISCORD_BOT_TOKEN;
 
 // --- Concurrency and Request Management ---
 
 export const activeRequests = new Set();
+
+function assertRequiredEnvironmentVariables() {
+  const requiredVariables = ['GOOGLE_API_KEY', 'DISCORD_BOT_TOKEN'];
+  const missingVariables = requiredVariables.filter((variableName) => !process.env[variableName]);
+
+  if (missingVariables.length > 0) {
+    throw new Error(`Missing required environment variables: ${missingVariables.join(', ')}`);
+  }
+}
 
 class Mutex {
   constructor() {
@@ -86,6 +99,7 @@ let activeUsersInChannels = {};
 let customInstructions = {};
 let serverSettings = {};
 let userResponsePreference = {};
+let userGeminiToolPreferences = {};
 let alwaysRespondChannels = {};
 let channelWideChatHistory = {};
 let blacklistedUsers = {};
@@ -121,6 +135,12 @@ export const state = {
   set userResponsePreference(v) {
     userResponsePreference = v;
   },
+  get userGeminiToolPreferences() {
+    return userGeminiToolPreferences;
+  },
+  set userGeminiToolPreferences(v) {
+    userGeminiToolPreferences = v;
+  },
   get alwaysRespondChannels() {
     return alwaysRespondChannels;
   },
@@ -141,6 +161,19 @@ export const state = {
   },
 };
 
+function getSerializableState() {
+  return {
+    activeUsersInChannels,
+    customInstructions,
+    serverSettings,
+    userResponsePreference,
+    userGeminiToolPreferences,
+    alwaysRespondChannels,
+    channelWideChatHistory,
+    blacklistedUsers,
+  };
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -153,6 +186,7 @@ const FILE_PATHS = {
   customInstructions: path.join(CONFIG_DIR, 'custom_instructions.json'),
   serverSettings: path.join(CONFIG_DIR, 'server_settings.json'),
   userResponsePreference: path.join(CONFIG_DIR, 'user_response_preference.json'),
+  userGeminiToolPreferences: path.join(CONFIG_DIR, 'user_gemini_tool_preferences.json'),
   alwaysRespondChannels: path.join(CONFIG_DIR, 'always_respond_channels.json'),
   channelWideChatHistory: path.join(CONFIG_DIR, 'channel_wide_chathistory.json'),
   blacklistedUsers: path.join(CONFIG_DIR, 'blacklisted_users.json')
@@ -183,8 +217,9 @@ export async function saveStateToFile() {
       return fs.writeFile(filePath, JSON.stringify(value, null, 2), 'utf-8');
     });
 
+    const serializableState = getSerializableState();
     const filePromises = Object.entries(FILE_PATHS).map(([key, filePath]) => {
-      return fs.writeFile(filePath, JSON.stringify(state[key], null, 2), 'utf-8');
+      return fs.writeFile(filePath, JSON.stringify(serializableState[key], null, 2), 'utf-8');
     });
 
     await Promise.all([...chatHistoryPromises, ...filePromises]);
@@ -247,16 +282,20 @@ async function loadStateFromFile() {
 
 function removeFileData(histories) {
   try {
-    Object.values(histories).forEach(subIdEntries => {
-      subIdEntries.forEach(message => {
-        if (message.content) {
-          message.content = message.content.filter(contentItem => {
+    Object.values(histories).forEach((messagesById) => {
+      Object.values(messagesById).forEach((messageEntries) => {
+        messageEntries.forEach((message) => {
+          if (!Array.isArray(message.content)) {
+            return;
+          }
+
+          message.content = message.content.filter((contentItem) => {
             if (contentItem.fileData) {
               delete contentItem.fileData;
             }
             return Object.keys(contentItem).length > 0;
           });
-        }
+        });
       });
     });
     console.log('fileData elements have been removed from chat histories.');
@@ -291,6 +330,7 @@ function scheduleDailyReset() {
 }
 
 export async function initialize() {
+  assertRequiredEnvironmentVariables();
   scheduleDailyReset();
   await loadStateFromFile();
   console.log('Bot state loaded and initialized.');
@@ -304,9 +344,9 @@ export function getHistory(id) {
   let combinedHistory = [];
 
   // Combine all message histories for this ID
-  for (const messagesId in historyObject) {
-    if (historyObject.hasOwnProperty(messagesId)) {
-      combinedHistory = [...combinedHistory, ...historyObject[messagesId]];
+  for (const [messagesId, messageHistory] of Object.entries(historyObject)) {
+    if (Object.hasOwn(historyObject, messagesId)) {
+      combinedHistory = [...combinedHistory, ...messageHistory];
     }
   }
 
@@ -335,13 +375,24 @@ export function getUserResponsePreference(userId) {
   return state.userResponsePreference[userId] || config.defaultResponseFormat;
 }
 
+export function getUserGeminiToolPreferences(userId) {
+  if (!state.userGeminiToolPreferences[userId]) {
+    state.userGeminiToolPreferences[userId] = cloneDefaultGeminiToolPreferences();
+  }
+
+  state.userGeminiToolPreferences[userId] = normalizeGeminiToolPreferences(state.userGeminiToolPreferences[userId]);
+  return state.userGeminiToolPreferences[userId];
+}
+
 export function initializeBlacklistForGuild(guildId) {
   try {
     if (!state.blacklistedUsers[guildId]) {
       state.blacklistedUsers[guildId] = [];
     }
     if (!state.serverSettings[guildId]) {
-      state.serverSettings[guildId] = config.defaultServerSettings;
+      state.serverSettings[guildId] = cloneDefaultServerSettings();
     }
-  } catch (error) {}
+  } catch (error) {
+    console.error(`Failed to initialize guild state for ${guildId}:`, error);
+  }
 }

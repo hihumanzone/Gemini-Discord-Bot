@@ -75,6 +75,22 @@ A Discord bot leveraging Google Gemini for advanced conversation, content unders
 - Modify `config.js` to change default personalities, activities, colors, and feature toggles.
 - Persistent data (chat history, settings, blacklists, etc.) is stored in the `config` directory.
 
+## Project Structure
+
+- `index.js` bootstraps the bot.
+- `botManager.js` owns Discord/Gemini clients plus persisted runtime state.
+- `src/bootstrap.js` registers Discord lifecycle handlers.
+- `src/handlers/` contains message and interaction routing.
+- `src/services/` contains attachment parsing and Gemini conversation orchestration.
+- `src/ui/` contains reusable Discord button and settings views.
+- `src/utils/` contains shared Discord helper utilities.
+
+## Runtime Notes
+
+- Settings and moderation changes are persisted immediately instead of waiting for a later chat response.
+- Attachment parsing is split between text extraction and media uploads to keep message handling predictable.
+- Default server settings are cloned per guild, preventing cross-server state leakage.
+
 ---
 
 ## Admin & Security

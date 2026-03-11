@@ -1,28 +1,22 @@
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+export function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function retryOperation(fn, maxRetries, delayMs = 1000) {
-  let error;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+export async function retryOperation(fn, maxRetries, delayMs = 1_000) {
+  let lastError;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
       return await fn();
-    } catch (err) {
-      console.log(`Attempt ${attempt} failed: ${err.message}`);
-      error = err;
+    } catch (error) {
+      lastError = error;
+      console.log(`Attempt ${attempt + 1} failed: ${error.message}`);
+
       if (attempt < maxRetries) {
-        console.log(`Waiting ${delayMs}ms before next attempt...`);
         await delay(delayMs);
-      } else {
-        console.log(`All ${maxRetries} attempts failed.`);
       }
     }
   }
 
-  throw new Error(`Operation failed after ${maxRetries} attempts: ${error.message}`);
+  throw new Error(`Operation failed after ${maxRetries + 1} attempt(s): ${lastError.message}`);
 }
-
-export {
-  delay,
-  retryOperation
-};

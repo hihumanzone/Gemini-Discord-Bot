@@ -3,7 +3,7 @@
   "dependencies": {
     "@google/genai": "*",
     "axios": "*",
-    "discord.js": "*",
+    "discord.js": "14.25.1",
     "dotenv": "*",
     "fs": "*",
     "sharp": "*",
