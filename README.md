@@ -105,10 +105,12 @@ There are several ways to interact with the Gemini bot:
 ## Project Structure
 
 - `index.js` bootstraps the bot.
-- `botManager.js` owns Discord/Gemini clients plus persisted runtime state.
+- `botManager.js` is a thin compatibility facade that re-exports runtime and state services.
 - `src/bootstrap.js` registers Discord lifecycle handlers.
+- `src/core/` contains runtime initialization and shared process-level resources.
 - `src/handlers/` contains message and interaction routing.
 - `src/services/` contains attachment parsing and Gemini conversation orchestration.
+- `src/state/` contains persisted bot state, history locking, and storage lifecycle logic.
 - `src/ui/` contains reusable Discord button and settings views.
 - `src/utils/` contains shared Discord helper utilities.
 
@@ -117,6 +119,8 @@ There are several ways to interact with the Gemini bot:
 - Settings and moderation changes are persisted immediately instead of waiting for a later chat response.
 - Attachment parsing is split between text extraction and media uploads to keep message handling predictable.
 - Default server settings are cloned per guild, preventing cross-server state leakage.
+- Chat-history persistence now removes stale JSON files when histories are cleared or channel/server history modes are disabled.
+- Conversation context resolution is isolated from streaming logic, making message handling easier to extend without touching transport code.
 
 ---
 

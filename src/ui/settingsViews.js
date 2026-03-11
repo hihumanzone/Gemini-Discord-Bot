@@ -3,8 +3,8 @@ import { ButtonStyle, MessageFlags } from 'discord.js';
 import {
   getUserGeminiToolPreferences,
   getUserResponsePreference,
-  initializeBlacklistForGuild,
-  state,
+  isChannelUserActive,
+  isUserBlacklisted,
 } from '../../botManager.js';
 import { DISPLAY_PERSONALITY_BUTTONS } from '../constants.js';
 import { buildButtonRows, buildTextModal, createEmbed } from '../utils/discord.js';
@@ -27,18 +27,9 @@ const GEMINI_TOOL_BUTTONS = [
   },
 ];
 
-function ensureChannelUserState(channelId, userId) {
-  if (!state.activeUsersInChannels[channelId]) {
-    state.activeUsersInChannels[channelId] = {};
-  }
-
-  return Boolean(state.activeUsersInChannels[channelId][userId]);
-}
-
 export async function showSettings(interaction, edit = false) {
   if (interaction.guild) {
-    initializeBlacklistForGuild(interaction.guild.id);
-    if (state.blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
+    if (isUserBlacklisted(interaction.guild.id, interaction.user.id)) {
       return interaction.reply({
         embeds: [createEmbed({
           color: 0xFF0000,
@@ -87,7 +78,7 @@ export async function showSettings(interaction, edit = false) {
 export async function updateGeneralSettingsView(interaction) {
   const channelId = interaction.channel.id;
   const userId = interaction.user.id;
-  const alwaysRespondEnabled = ensureChannelUserState(channelId, userId);
+  const alwaysRespondEnabled = isChannelUserActive(channelId, userId);
   const responseMode = getUserResponsePreference(userId);
   const toolPreferences = getUserGeminiToolPreferences(userId);
 

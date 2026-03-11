@@ -5,13 +5,26 @@ import { AttachmentBuilder, ChannelType, MessageFlags } from 'discord.js';
 import osu from 'node-os-utils';
 
 import {
+  addBlacklistedUser,
+  clearChatHistoryFor,
+  clearCustomInstruction,
   getUserGeminiToolPreferences,
   getHistory,
-  getUserResponsePreference,
-  initializeBlacklistForGuild,
+  getServerSettings as getPersistedServerSettings,
+  getTimeUntilNextReset,
+  isUserBlacklisted,
+  removeBlacklistedUser,
   saveStateToFile,
+  setAlwaysRespondChannel,
+  setChannelWideChatHistory,
+  setCustomInstruction,
+  setUserGeminiToolPreference,
   state,
   TEMP_DIR,
+  toggleChannelUserActive,
+  toggleServerResponseStyle,
+  toggleServerSetting,
+  toggleUserResponseFormat,
 } from '../../botManager.js';
 import {
   DEFAULT_PERSONALITY,
@@ -42,11 +55,6 @@ async function persistStateChange() {
   await saveStateToFile();
 }
 
-function getServerSettings(guildId) {
-  initializeBlacklistForGuild(guildId);
-  return state.serverSettings[guildId];
-}
-
 async function requireGuildAdmin(interaction) {
   const inGuild = await ensureGuildInteraction(interaction, 'This command cannot be used in DMs.');
   if (!inGuild) {
@@ -69,8 +77,7 @@ async function ensureInteractionNotBlacklisted(interaction) {
     return true;
   }
 
-  initializeBlacklistForGuild(interaction.guild.id);
-  if (!state.blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
+  if (!isUserBlacklisted(interaction.guild.id, interaction.user.id)) {
     return true;
   }
 
@@ -187,7 +194,7 @@ async function handleDeleteMessageInteraction(interaction, messageId) {
 }
 
 async function clearChatHistory(interaction) {
-  state.chatHistories[interaction.user.id] = {};
+  clearChatHistoryFor(interaction.user.id);
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
@@ -221,15 +228,7 @@ async function alwaysRespond(interaction) {
   const channelId = interaction.channelId;
   const userId = interaction.user.id;
 
-  if (!state.activeUsersInChannels[channelId]) {
-    state.activeUsersInChannels[channelId] = {};
-  }
-
-  if (state.activeUsersInChannels[channelId][userId]) {
-    delete state.activeUsersInChannels[channelId][userId];
-  } else {
-    state.activeUsersInChannels[channelId][userId] = true;
-  }
+  toggleChannelUserActive(channelId, userId);
 
   await persistStateChange();
   return updateGeneralSettingsView(interaction);
@@ -241,11 +240,7 @@ async function handleRespondToAllCommand(interaction) {
   }
 
   const enabled = interaction.options.getBoolean('enabled');
-  if (enabled) {
-    state.alwaysRespondChannels[interaction.channelId] = true;
-  } else {
-    delete state.alwaysRespondChannels[interaction.channelId];
-  }
+  setAlwaysRespondChannel(interaction.channelId, enabled);
 
   await persistStateChange();
 
@@ -268,14 +263,7 @@ async function toggleChannelChatHistory(interaction) {
   const enabled = interaction.options.getBoolean('enabled');
   const instructions = interaction.options.getString('instructions') || DEFAULT_PERSONALITY;
 
-  if (enabled) {
-    state.channelWideChatHistory[channelId] = true;
-    state.customInstructions[channelId] = instructions;
-  } else {
-    delete state.channelWideChatHistory[channelId];
-    delete state.customInstructions[channelId];
-    delete state.chatHistories[channelId];
-  }
+  setChannelWideChatHistory(channelId, enabled, instructions);
 
   await persistStateChange();
 
@@ -287,21 +275,6 @@ async function toggleChannelChatHistory(interaction) {
       : 'Channel-wide chat history has been disabled.',
     flags: undefined,
   });
-}
-
-function getTimeUntilNextReset() {
-  const now = new Date();
-  const nextReset = new Date();
-  nextReset.setHours(0, 0, 0, 0);
-  if (nextReset <= now) {
-    nextReset.setDate(now.getDate() + 1);
-  }
-
-  const timeLeftMillis = nextReset - now;
-  const hours = Math.floor(timeLeftMillis / 3_600_000);
-  const minutes = Math.floor((timeLeftMillis % 3_600_000) / 60_000);
-  const seconds = Math.floor((timeLeftMillis % 60_000) / 1_000);
-  return `${hours}h ${minutes}m ${seconds}s`;
 }
 
 async function handleStatusCommand(interaction) {
@@ -369,10 +342,8 @@ async function handleBlacklistCommand(interaction) {
 
   const userId = interaction.options.getUser('user').id;
   const guildId = interaction.guild.id;
-  getServerSettings(guildId);
 
-  if (!state.blacklistedUsers[guildId].includes(userId)) {
-    state.blacklistedUsers[guildId].push(userId);
+  if (addBlacklistedUser(guildId, userId)) {
     await persistStateChange();
     return replyWithEmbed(interaction, {
       color: 0x00FF00,
@@ -397,11 +368,8 @@ async function handleWhitelistCommand(interaction) {
 
   const userId = interaction.options.getUser('user').id;
   const guildId = interaction.guild.id;
-  getServerSettings(guildId);
 
-  const index = state.blacklistedUsers[guildId].indexOf(userId);
-  if (index > -1) {
-    state.blacklistedUsers[guildId].splice(index, 1);
+  if (removeBlacklistedUser(guildId, userId)) {
     await persistStateChange();
     return replyWithEmbed(interaction, {
       color: 0x00FF00,
@@ -440,7 +408,7 @@ async function handleRemovePersonalityCommand(interaction) {
     );
   }
 
-  delete state.customInstructions[interaction.user.id];
+  clearCustomInstruction(interaction.user.id);
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
@@ -495,9 +463,7 @@ async function downloadConversation(interaction) {
 }
 
 async function toggleUserResponsePreference(interaction) {
-  const userId = interaction.user.id;
-  const currentPreference = getUserResponsePreference(userId);
-  state.userResponsePreference[userId] = currentPreference === 'Normal' ? 'Embedded' : 'Normal';
+  toggleUserResponseFormat(interaction.user.id);
   await persistStateChange();
   return updateGeneralSettingsView(interaction);
 }
@@ -515,10 +481,7 @@ async function toggleUserGeminiTool(interaction) {
     });
   }
 
-  state.userGeminiToolPreferences[interaction.user.id] = {
-    ...currentPreferences,
-    [toolName]: !currentPreferences[toolName],
-  };
+  setUserGeminiToolPreference(interaction.user.id, toolName, !currentPreferences[toolName]);
   await persistStateChange();
   return updateGeneralSettingsView(interaction);
 }
@@ -529,8 +492,8 @@ async function toggleServerWideChatHistory(interaction) {
   }
 
   const guildId = interaction.guild.id;
-  const settings = getServerSettings(guildId);
-  settings.serverChatHistory = !settings.serverChatHistory;
+  const settings = getPersistedServerSettings(guildId);
+  settings.serverChatHistory = toggleServerSetting(guildId, 'serverChatHistory');
   await persistStateChange();
 
   const warningMessage = settings.serverChatHistory && !settings.customServerPersonality
@@ -550,8 +513,8 @@ async function toggleServerPersonality(interaction) {
   }
 
   const guildId = interaction.guild.id;
-  const settings = getServerSettings(guildId);
-  settings.customServerPersonality = !settings.customServerPersonality;
+  const settings = getPersistedServerSettings(guildId);
+  settings.customServerPersonality = toggleServerSetting(guildId, 'customServerPersonality');
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
@@ -567,8 +530,8 @@ async function toggleServerResponsePreference(interaction) {
   }
 
   const guildId = interaction.guild.id;
-  const settings = getServerSettings(guildId);
-  settings.serverResponsePreference = !settings.serverResponsePreference;
+  const settings = getPersistedServerSettings(guildId);
+  settings.serverResponsePreference = toggleServerSetting(guildId, 'serverResponsePreference');
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
@@ -584,8 +547,8 @@ async function toggleSettingSaveButton(interaction) {
   }
 
   const guildId = interaction.guild.id;
-  const settings = getServerSettings(guildId);
-  settings.settingsSaveButton = !settings.settingsSaveButton;
+  const settings = getPersistedServerSettings(guildId);
+  settings.settingsSaveButton = toggleServerSetting(guildId, 'settingsSaveButton');
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
@@ -605,7 +568,7 @@ async function clearServerChatHistory(interaction) {
   }
 
   const guildId = interaction.guild.id;
-  const settings = getServerSettings(guildId);
+  const settings = getPersistedServerSettings(guildId);
   if (!settings.serverChatHistory) {
     return replyWithEmbed(interaction, {
       color: 0xFFA500,
@@ -614,7 +577,7 @@ async function clearServerChatHistory(interaction) {
     });
   }
 
-  state.chatHistories[guildId] = {};
+  clearChatHistoryFor(guildId);
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
@@ -650,8 +613,8 @@ async function downloadServerConversation(interaction) {
 }
 
 async function toggleServerPreference(interaction) {
-  const settings = getServerSettings(interaction.guild.id);
-  settings.responseStyle = settings.responseStyle === 'Embedded' ? 'Normal' : 'Embedded';
+  const settings = getPersistedServerSettings(interaction.guild.id);
+  settings.responseStyle = toggleServerResponseStyle(interaction.guild.id);
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
@@ -663,7 +626,7 @@ async function toggleServerPreference(interaction) {
 
 async function handleModalSubmit(interaction) {
   if (interaction.customId === 'custom-personality-modal') {
-    state.customInstructions[interaction.user.id] = interaction.fields.getTextInputValue('custom-personality-input').trim();
+    setCustomInstruction(interaction.user.id, interaction.fields.getTextInputValue('custom-personality-input').trim());
     await persistStateChange();
     return replyWithEmbed(interaction, {
       color: 0x00FF00,
@@ -673,9 +636,10 @@ async function handleModalSubmit(interaction) {
   }
 
   if (interaction.customId === 'custom-server-personality-modal') {
-    state.customInstructions[interaction.guild.id] = interaction.fields
-      .getTextInputValue('custom-server-personality-input')
-      .trim();
+    setCustomInstruction(
+      interaction.guild.id,
+      interaction.fields.getTextInputValue('custom-server-personality-input').trim(),
+    );
     await persistStateChange();
     return replyWithEmbed(interaction, {
       color: 0x00FF00,

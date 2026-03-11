@@ -10,14 +10,12 @@ import {
   genAI,
   getHistory,
   getUserGeminiToolPreferences,
-  getUserResponsePreference,
   saveStateToFile,
   state,
   TEMP_DIR,
   updateChatHistory,
 } from '../../botManager.js';
 import {
-  DEFAULT_PERSONALITY,
   EMBED_COLOR,
   EMBED_RESPONSE_LIMIT,
   EXTERNAL_TEXT_SHARE_URL,
@@ -33,61 +31,21 @@ import {
   STREAM_UPDATE_DEBOUNCE_MS,
   TEXT_FILE_TTL_MINUTES,
 } from '../constants.js';
+import {
+  buildConversationContext,
+  getResponsePreference,
+  resolveHistoryId,
+  resolveInstructions,
+} from './conversationContext.js';
 import { extractFileText, hasSupportedAttachments, processPromptAndMediaAttachments } from './attachmentService.js';
-import { addDeleteButton, addDownloadButton, addSettingsButton, clearMessageActionRows } from '../ui/messageActions.js';
+import {
+  addDeleteButton,
+  addDownloadButton,
+  addSettingsButton,
+  clearMessageActionRows,
+  removeStopGeneratingButton,
+} from '../ui/messageActions.js';
 import { createEmbed } from '../utils/discord.js';
-
-function getResponsePreference(message) {
-  const guildPreference = message.guild && state.serverSettings[message.guild.id]?.serverResponsePreference;
-  return guildPreference ? state.serverSettings[message.guild.id].responseStyle : getUserResponsePreference(message.author.id);
-}
-
-function resolveInstructions(message) {
-  const guildId = message.guild?.id;
-  const channelId = message.channel.id;
-  const userId = message.author.id;
-
-  if (!guildId) {
-    return state.customInstructions[userId] || DEFAULT_PERSONALITY;
-  }
-
-  if (state.channelWideChatHistory[channelId]) {
-    return state.customInstructions[channelId] || DEFAULT_PERSONALITY;
-  }
-
-  if (state.serverSettings[guildId]?.customServerPersonality && state.customInstructions[guildId]) {
-    return state.customInstructions[guildId];
-  }
-
-  return state.customInstructions[userId] || DEFAULT_PERSONALITY;
-}
-
-function buildConversationContext(message, instructions) {
-  if (!message.guild || !state.serverSettings[message.guild.id]?.serverChatHistory) {
-    return instructions;
-  }
-
-  return `${instructions}\nYou are currently engaging with users in the ${message.guild.name} Discord server.\n\n## Current User Information\nUsername: \`${message.author.username}\`\nDisplay Name: \`${message.author.displayName}\``;
-}
-
-function resolveHistoryId(message) {
-  const guildId = message.guild?.id;
-  const channelId = message.channel.id;
-  const userId = message.author.id;
-
-  if (!guildId) {
-    return userId;
-  }
-
-  const isServerHistoryEnabled = Boolean(state.serverSettings[guildId]?.serverChatHistory);
-  const isChannelHistoryEnabled = Boolean(state.channelWideChatHistory[channelId]);
-
-  if (!isChannelHistoryEnabled) {
-    return userId;
-  }
-
-  return isServerHistoryEnabled ? guildId : channelId;
-}
 
 function createChatSession(message) {
   const instructions = buildConversationContext(message, resolveInstructions(message));
@@ -329,25 +287,24 @@ async function persistConversation(historyId, messageId, parts, responseText) {
 }
 
 async function handleLargeOrFinalResponse(botMessage, originalMessage, responseText, isLargeResponse) {
-  await clearMessageActionRows(botMessage);
-  await addSettingsButton(botMessage);
+  let updatedMessage = await clearMessageActionRows(botMessage);
+  updatedMessage = await addSettingsButton(updatedMessage);
 
   if (isLargeResponse) {
     await sendAsTextFile(responseText, originalMessage, botMessage.id);
-    await addDeleteButton(botMessage, botMessage.id);
-    return botMessage;
+    updatedMessage = await addDeleteButton(updatedMessage, updatedMessage.id);
+    return updatedMessage;
   }
 
   const shouldAddActionButtons = originalMessage.guild ? state.serverSettings[originalMessage.guild.id]?.settingsSaveButton : true;
 
   if (!shouldAddActionButtons) {
-    await botMessage.edit({ components: [] });
-    return botMessage;
+    return clearMessageActionRows(updatedMessage);
   }
 
-  await addDownloadButton(botMessage);
-  await addDeleteButton(botMessage, botMessage.id);
-  return botMessage;
+  updatedMessage = await addDownloadButton(updatedMessage);
+  updatedMessage = await addDeleteButton(updatedMessage, updatedMessage.id);
+  return updatedMessage;
 }
 
 async function streamModelResponse({ initialBotMessage, chat, parts, originalMessage }) {
@@ -430,7 +387,7 @@ async function streamModelResponse({ initialBotMessage, chat, parts, originalMes
           await buildResponseEmbed(botMessage, finalResponse, originalMessage, groundingMetadata, urlContextMetadata);
         }
 
-        await handleLargeOrFinalResponse(botMessage, originalMessage, finalResponse, isLargeResponse);
+        botMessage = await handleLargeOrFinalResponse(botMessage, originalMessage, finalResponse, isLargeResponse);
         await persistConversation(resolveHistoryId(originalMessage), botMessage.id, parts, finalResponse);
         finalized = true;
         collector.stop();
@@ -458,8 +415,8 @@ async function streamModelResponse({ initialBotMessage, chat, parts, originalMes
               embeds: [embed],
             });
             await addSettingsButton(errorMessage);
-            await clearMessageActionRows(botMessage);
-            await addSettingsButton(botMessage);
+            botMessage = await clearMessageActionRows(botMessage);
+            botMessage = await addSettingsButton(botMessage);
             finalized = true;
           }
 
@@ -483,7 +440,9 @@ async function streamModelResponse({ initialBotMessage, chat, parts, originalMes
     }
   } finally {
     clearTimeout(updateTimeout);
-    if (!finalized && wasStopped()) {
+    if (finalized) {
+      await removeStopGeneratingButton(botMessage);
+    } else if (wasStopped()) {
       await clearMessageActionRows(botMessage);
     }
     activeRequests.delete(originalMessage.author.id);

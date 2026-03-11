@@ -1,6 +1,13 @@
 import { ChannelType } from 'discord.js';
 
-import { activeRequests, client, initializeBlacklistForGuild, state } from '../../botManager.js';
+import {
+  activeRequests,
+  client,
+  initializeBlacklistForGuild,
+  isChannelUserActive,
+  isUserBlacklisted,
+  state,
+} from '../../botManager.js';
 import { WORK_IN_DMS } from '../constants.js';
 import { handleTextMessage } from '../services/conversationService.js';
 import { createEmbed } from '../utils/discord.js';
@@ -12,7 +19,7 @@ function shouldRespondToMessage(message) {
     (WORK_IN_DMS && isDirectMessage) ||
     Boolean(state.alwaysRespondChannels[message.channelId]) ||
     (!isDirectMessage && message.mentions.users.has(client.user.id)) ||
-    Boolean(state.activeUsersInChannels[message.channelId]?.[message.author.id])
+    isChannelUserActive(message.channelId, message.author.id)
   );
 }
 
@@ -48,7 +55,7 @@ export async function handleMessageCreate(message) {
   try {
     if (message.guild) {
       initializeBlacklistForGuild(message.guild.id);
-      if (state.blacklistedUsers[message.guild.id].includes(message.author.id)) {
+      if (isUserBlacklisted(message.guild.id, message.author.id)) {
         await replyBlacklisted(message);
         return;
       }
