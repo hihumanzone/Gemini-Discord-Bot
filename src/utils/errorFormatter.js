@@ -190,26 +190,95 @@ function parseRetryDelay(delayString) {
 function buildReadableReason({ status, message, retryDelay, quota }) {
   const cleaned = stripNoise(message);
 
-  if (status === 'RESOURCE_EXHAUSTED') {
-    const parts = ['The Gemini API quota has been exceeded.'];
+  switch (status) {
+    case 'INVALID_ARGUMENT':
+      return cleaned || 'The request body is malformed. Check for typos or missing required fields.';
 
-    if (quota?.model || quota?.limit) {
-      const details = [quota.model && `model: ${quota.model}`, quota.limit && `limit: ${quota.limit}`].filter(Boolean);
-      parts.push(`Quota info: ${details.join(', ')}.`);
+    case 'FAILED_PRECONDITION':
+      return cleaned || 'Gemini API free tier is not available in your region, or billing is not enabled.';
+
+    case 'PERMISSION_DENIED':
+      return cleaned || 'The API key doesn\u2019t have the required permissions.';
+
+    case 'NOT_FOUND':
+      return cleaned || 'The requested resource was not found. A referenced file may be missing or invalid.';
+
+    case 'RESOURCE_EXHAUSTED': {
+      const parts = ['The Gemini API quota has been exceeded.'];
+
+      if (quota?.model || quota?.limit) {
+        const details = [quota.model && `model: ${quota.model}`, quota.limit && `limit: ${quota.limit}`].filter(Boolean);
+        parts.push(`Quota info: ${details.join(', ')}.`);
+      }
+
+      if (retryDelay) {
+        parts.push(`Retry after ~${pluralize(retryDelay, 'second')}.`);
+      }
+
+      return parts.join(' ');
     }
 
-    if (retryDelay) {
-      parts.push(`Retry after ~${pluralize(retryDelay, 'second')}.`);
-    }
+    case 'INTERNAL':
+      return cleaned || 'An unexpected error occurred on Google\u2019s side. Your input context may be too long.';
 
-    return parts.join(' ');
+    case 'UNAVAILABLE':
+      return cleaned
+        ? cleaned.replace(/Spikes in demand are usually temporary\.?/i, 'This is usually temporary.')
+        : 'The Gemini API service is temporarily overloaded or down. This is usually temporary.';
+
+    case 'DEADLINE_EXCEEDED':
+      return cleaned || 'The service could not finish processing your request in time. Your prompt may be too large.';
+
+    default:
+      return cleaned;
+  }
+}
+
+function getSolutionAdvice({ status, isFinal, retryDelay }) {
+  if (!isFinal) {
+    return retryDelay
+      ? `The bot will retry in ~${pluralize(retryDelay, 'second')}.`
+      : 'No action needed \u2014 the bot will retry shortly.';
   }
 
-  if (status === 'UNAVAILABLE' && cleaned) {
-    return cleaned.replace(/Spikes in demand are usually temporary\.?/i, 'This is usually temporary.');
+  switch (status) {
+    case 'INVALID_ARGUMENT':
+      return 'Check for typos or missing fields in the request. Using features from a newer API version with an older endpoint can also cause this.';
+
+    case 'FAILED_PRECONDITION':
+      return 'The Gemini API free tier may not be available in your region. A paid plan may need to be set up in Google AI Studio.';
+
+    case 'PERMISSION_DENIED':
+      return 'Make sure the correct API key is configured and has proper access. Tuned models require additional authentication.';
+
+    case 'NOT_FOUND':
+      return 'Check that all referenced files and parameters are valid for the current API version.';
+
+    case 'RESOURCE_EXHAUSTED':
+      return 'The rate limit has been reached. Wait a moment and try again, or request a quota increase if this persists.';
+
+    case 'INTERNAL':
+      return 'Try reducing your input length or temporarily switching to another model. If the issue persists, it may be a problem on Google\u2019s side.';
+
+    case 'UNAVAILABLE':
+      return 'The service is temporarily overloaded. Try switching to another model or wait a moment and try again.';
+
+    case 'DEADLINE_EXCEEDED':
+      return 'Your prompt or context may be too large. Try shortening your message or reducing attached content.';
+
+    default:
+      return 'Wait a moment and try again. If this persists, the API may be overloaded or quota-limited.';
+  }
+}
+
+function buildStatusLabel({ status, code }) {
+  const friendlyStatus = status ? toTitleCase(status) : null;
+
+  if (friendlyStatus && code) {
+    return `${friendlyStatus} (${code})`;
   }
 
-  return cleaned;
+  return friendlyStatus || (code ? String(code) : 'Unknown error');
 }
 
 export function parseGeminiError(error) {
@@ -246,30 +315,70 @@ export function parseGeminiError(error) {
   return { code, status, message: readable || apiMessage, retryDelay };
 }
 
+export function formatGeminiErrorForConsole(error, {
+  attemptNumber,
+  totalAttempts,
+  remainingAttempts,
+  userId,
+  channelId,
+  historyId,
+} = {}) {
+  const parsed = parseGeminiError(error);
+  const rawMessage = stripNoise(stripSdkWrappers(String(error?.message || '').trim()));
+  const lines = ['Generation attempt failed.'];
+
+  if (Number.isInteger(attemptNumber) && Number.isInteger(totalAttempts) && totalAttempts > 0) {
+    lines.push(`Attempt: ${attemptNumber}/${totalAttempts}`);
+  }
+
+  if (Number.isInteger(remainingAttempts)) {
+    lines.push(
+      remainingAttempts > 0
+        ? `Next step: retrying automatically (${pluralize(remainingAttempts, 'attempt')} remaining).`
+        : 'Next step: no retry attempts remain.',
+    );
+  }
+
+  lines.push(`Status: ${buildStatusLabel(parsed)}`);
+  lines.push(`Reason: ${parsed.message || 'No details available.'}`);
+
+  if (parsed.retryDelay) {
+    lines.push(`Retry after: ~${pluralize(parsed.retryDelay, 'second')}`);
+  }
+
+  if (rawMessage && rawMessage !== parsed.message) {
+    lines.push(`Raw API message: ${truncate(rawMessage, 500)}`);
+  }
+
+  const contextParts = [
+    userId && `user=${userId}`,
+    channelId && `channel=${channelId}`,
+    historyId && `history=${historyId}`,
+  ].filter(Boolean);
+
+  if (contextParts.length > 0) {
+    lines.push(`Context: ${contextParts.join(', ')}`);
+  }
+
+  return lines.join('\n');
+}
+
 export function buildRetryErrorEmbed(error, { isFinal }) {
   const parsed = parseGeminiError(error);
-
-  const friendlyStatus = parsed.status ? toTitleCase(parsed.status) : null;
-  const statusLabel = friendlyStatus && parsed.code
-    ? `${friendlyStatus} (${parsed.code})`
-    : friendlyStatus || (parsed.code ? String(parsed.code) : null);
+  const statusLabel = buildStatusLabel(parsed);
 
   const description = isFinal
     ? 'The request could not be completed after all retry attempts.'
     : 'The request hit a temporary error — retrying automatically.';
 
-  const nextStep = isFinal
-    ? 'Wait a moment and try again. If this persists, the API may be overloaded or quota-limited.'
-    : parsed.retryDelay
-      ? `The bot will retry in ~${pluralize(parsed.retryDelay, 'second')}.`
-      : 'No action needed — the bot will retry shortly.';
+  const nextStep = getSolutionAdvice({ status: parsed.status, isFinal, retryDelay: parsed.retryDelay });
 
   return createEmbed({
     color: isFinal ? 0xFF0000 : 0xFFFF00,
     title: isFinal ? 'Generation Failed' : 'Retrying Request',
     description,
     fields: [
-      { name: 'Status', value: statusLabel || 'Unknown error', inline: false },
+      { name: 'Status', value: statusLabel, inline: false },
       { name: 'Reason', value: truncate(parsed.message) || 'No details available.', inline: false },
       { name: isFinal ? 'What to do' : 'Next step', value: nextStep, inline: false },
     ],

@@ -3,9 +3,11 @@ import { createWriteStream } from 'fs';
 import path from 'path';
 
 import axios from 'axios';
+import { createPartFromUri } from '@google/genai';
 import { getTextExtractor } from 'office-text-extractor';
 
-import { createPartFromUri, genAI, TEMP_DIR } from '../../botManager.js';
+import { genAI } from '../core/runtime.js';
+import { TEMP_DIR } from '../core/paths.js';
 import { TEXT_ATTACHMENT_EXTENSIONS, VIDEO_POLL_INTERVAL_MS } from '../constants.js';
 
 function isMediaAttachment(attachment) {

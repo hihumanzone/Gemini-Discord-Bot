@@ -6,7 +6,7 @@ import {
   CHAT_HISTORIES_DIR,
   CONFIG_DIR,
   TEMP_DIR,
-} from '../core/runtime.js';
+} from '../core/paths.js';
 import {
   cloneDefaultGeminiToolPreferences,
   cloneDefaultServerSettings,

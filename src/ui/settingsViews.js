@@ -5,7 +5,7 @@ import {
   getUserResponsePreference,
   isChannelUserActive,
   isUserBlacklisted,
-} from '../../botManager.js';
+} from '../state/botState.js';
 import { DISPLAY_PERSONALITY_BUTTONS } from '../constants.js';
 import { buildButtonRows, buildTextModal, createEmbed } from '../utils/discord.js';
 

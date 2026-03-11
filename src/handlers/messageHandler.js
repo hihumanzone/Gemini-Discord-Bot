@@ -1,16 +1,15 @@
 import { ChannelType } from 'discord.js';
 
+import { activeRequests, client } from '../core/runtime.js';
 import {
-  activeRequests,
-  client,
-  initializeBlacklistForGuild,
+  initializeGuildState,
   isChannelUserActive,
   isUserBlacklisted,
   state,
-} from '../../botManager.js';
+} from '../state/botState.js';
 import { WORK_IN_DMS } from '../constants.js';
 import { handleTextMessage } from '../services/conversationService.js';
-import { createEmbed } from '../utils/discord.js';
+import { applyEmbedFallback, createEmbed } from '../utils/discord.js';
 
 function shouldRespondToMessage(message) {
   const isDirectMessage = message.channel.type === ChannelType.DM;
@@ -24,23 +23,23 @@ function shouldRespondToMessage(message) {
 }
 
 async function replyBlacklisted(message) {
-  return message.reply({
+  return message.reply(applyEmbedFallback(message.channel, {
     embeds: [createEmbed({
       color: 0xFF0000,
       title: 'Blacklisted',
       description: 'You are blacklisted and cannot use this bot.',
     })],
-  });
+  }));
 }
 
 async function replyRequestInProgress(message) {
-  return message.reply({
+  return message.reply(applyEmbedFallback(message.channel, {
     embeds: [createEmbed({
       color: 0xFFFF00,
       title: 'Request In Progress',
       description: 'Please wait until your previous action is complete.',
     })],
-  });
+  }));
 }
 
 export async function handleMessageCreate(message) {
@@ -54,7 +53,7 @@ export async function handleMessageCreate(message) {
 
   try {
     if (message.guild) {
-      initializeBlacklistForGuild(message.guild.id);
+      initializeGuildState(message.guild.id);
       if (isUserBlacklisted(message.guild.id, message.author.id)) {
         await replyBlacklisted(message);
         return;

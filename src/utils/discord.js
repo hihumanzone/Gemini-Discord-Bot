@@ -11,6 +11,39 @@ import {
 
 import { EMBED_COLOR } from '../constants.js';
 
+export function canSendEmbeds(channel) {
+  if (!channel.guild) return true;
+  const me = channel.guild.members.me;
+  if (!me) return true;
+  const perms = channel.permissionsFor(me);
+  return perms ? perms.has(PermissionsBitField.Flags.EmbedLinks) : true;
+}
+
+export function embedToPlainText(embed) {
+  const data = embed?.data ?? embed;
+  const parts = [];
+  if (data.author?.name) parts.push(data.author.name);
+  if (data.title) parts.push(`**${data.title}**`);
+  if (data.description) parts.push(data.description);
+  if (data.fields?.length) {
+    for (const field of data.fields) {
+      parts.push(`**${field.name}:** ${field.value}`);
+    }
+  }
+  if (data.footer?.text) parts.push(`_${data.footer.text}_`);
+  return parts.join('\n');
+}
+
+export function applyEmbedFallback(channel, payload) {
+  if (!payload.embeds?.length || canSendEmbeds(channel)) return payload;
+  const textParts = [];
+  if (payload.content && payload.content.trim()) textParts.push(payload.content.trim());
+  for (const embed of payload.embeds) {
+    textParts.push(embedToPlainText(embed));
+  }
+  return { ...payload, content: textParts.join('\n\n') || 'No content.', embeds: [] };
+}
+
 export function createEmbed({ color = EMBED_COLOR, title, description, fields, author, footer, timestamp = false }) {
   const embed = new EmbedBuilder().setColor(color);
 

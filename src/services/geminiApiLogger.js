@@ -2,13 +2,8 @@ import fs from 'fs';
 import fsPromises from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, '../..');
-
-export const LOGS_DIR = path.join(ROOT_DIR, 'logs');
+import { LOGS_DIR } from '../core/paths.js';
 
 const GEMINI_API_HOSTNAMES = new Set(['generativelanguage.googleapis.com']);
 const FETCH_PATCH_FLAG = Symbol.for('gemini-discord-bot.fetch-logger-installed');

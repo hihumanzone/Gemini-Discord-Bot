@@ -1,6 +1,6 @@
 import { REST, Routes } from 'discord.js';
 
-import { client, token } from '../botManager.js';
+import { client, token } from './core/runtime.js';
 import { commands } from '../commands.js';
 import { PRESENCE_ACTIVITIES, PRESENCE_ROTATION_INTERVAL_MS } from './constants.js';
 import { handleInteraction } from './handlers/interactionHandler.js';

@@ -1,76 +1,14 @@
-import {
-  activeRequests,
-  client,
-  createPartFromUri,
-  genAI,
-  initializeRuntime,
-  TEMP_DIR,
-  token,
-} from './src/core/runtime.js';
-import {
-  addBlacklistedUser,
-  chatHistoryLock,
-  clearChatHistoryFor,
-  clearCustomInstruction,
-  getHistory,
-  getServerSettings,
-  getTimeUntilNextReset,
-  getUserGeminiToolPreferences,
-  getUserResponsePreference,
-  initializeGuildState,
-  initializeState,
-  isChannelUserActive,
-  isUserBlacklisted,
-  removeBlacklistedUser,
-  saveStateToFile,
-  setAlwaysRespondChannel,
-  setChannelWideChatHistory,
-  setCustomInstruction,
-  setUserGeminiToolPreference,
-  state,
-  toggleChannelUserActive,
-  toggleServerResponseStyle,
-  toggleServerSetting,
-  toggleUserResponseFormat,
-  updateChatHistory,
-} from './src/state/botState.js';
+/**
+ * Bot initialization module.
+ * Validates the environment, loads persisted state, and prepares the bot for startup.
+ * Import runtime objects (client, genAI, etc.) directly from src/core/runtime.js.
+ * Import state functions directly from src/state/botState.js.
+ */
 
-export {
-  activeRequests,
-  addBlacklistedUser,
-  chatHistoryLock,
-  clearChatHistoryFor,
-  clearCustomInstruction,
-  client,
-  createPartFromUri,
-  genAI,
-  getHistory,
-  getServerSettings,
-  getTimeUntilNextReset,
-  getUserGeminiToolPreferences,
-  getUserResponsePreference,
-  isChannelUserActive,
-  isUserBlacklisted,
-  removeBlacklistedUser,
-  saveStateToFile,
-  setAlwaysRespondChannel,
-  setChannelWideChatHistory,
-  setCustomInstruction,
-  setUserGeminiToolPreference,
-  state,
-  TEMP_DIR,
-  toggleChannelUserActive,
-  toggleServerResponseStyle,
-  toggleServerSetting,
-  toggleUserResponseFormat,
-  token,
-  updateChatHistory,
-};
+import { initializeRuntime } from './src/core/runtime.js';
+import { initializeState } from './src/state/botState.js';
 
-export function initializeBlacklistForGuild(guildId) {
-  initializeGuildState(guildId);
-}
-
+/** Validates environment variables and loads all persisted state from disk. */
 export async function initialize() {
   initializeRuntime();
   await initializeState();
