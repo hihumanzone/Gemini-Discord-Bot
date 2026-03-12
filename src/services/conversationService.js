@@ -35,8 +35,8 @@ import { addSettingsButton } from '../ui/messageActions.js';
 import { applyEmbedFallback, createEmbed } from '../utils/discord.js';
 
 /** Creates a Gemini chat session configured for the given Discord message context. */
-function createChatSession(message) {
-  const instructions = buildConversationContext(message, resolveInstructions(message));
+async function createChatSession(message) {
+  const instructions = await buildConversationContext(message, resolveInstructions(message));
   const selectedTools = buildGeminiToolsFromPreferences(getUserGeminiToolPreferences(message.author.id));
   const chatConfig = {
     systemInstruction: {
@@ -149,7 +149,7 @@ export async function handleTextMessage(message) {
 
   await streamModelResponse({
     initialBotMessage: processingMessage,
-    chat: createChatSession(message),
+    chat: await createChatSession(message),
     parts,
     originalMessage: message,
   });

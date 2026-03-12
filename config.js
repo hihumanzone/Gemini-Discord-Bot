@@ -43,9 +43,10 @@ const config = Object.freeze({
   },
   chatHistoryLimits: {
     users: 10,
-    servers: 20,
+    servers: 12,
     channels: 15,
   },
+  recentChannelMessagesLimit: 15,
 });
 
 export default config;
