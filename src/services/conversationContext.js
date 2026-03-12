@@ -54,7 +54,7 @@ export function buildConversationContext(message, instructions) {
 
   const contextSections = [];
 
-  if (serverHistoryEnabled) {
+  if (serverHistoryEnabled || channelHistoryEnabled) {
     contextSections.push(`You are currently engaging with users in the ${message.guild.name} Discord server.`);
   }
 
@@ -63,7 +63,18 @@ export function buildConversationContext(message, instructions) {
     contextSections.push(`This conversation is taking place in the #${channelName} channel.`);
   }
 
-  contextSections.push(`## Current User Information\nUsername: \`${message.author.username}\`\nDisplay Name: \`${message.author.displayName}\``);
+  if (serverHistoryEnabled || channelHistoryEnabled) {
+    contextSections.push(
+      '## Multi-User Conversation Format\n'
+      + 'This is a shared conversation where multiple Discord users participate. '
+      + 'Each user message in the conversation history is prefixed with a tag in the format:\n'
+      + '`[user:<username>|display:<displayName>]`\n'
+      + 'Always pay attention to these tags to correctly identify who sent each message. '
+      + 'Different users may have different contexts, questions, and conversation threads.'
+    );
+
+    contextSections.push(`## Current Message Sender\n- Username: \`${message.author.username}\`\n- Display Name: \`${message.author.displayName}\``);
+  }
 
   return `${instructions}\n${contextSections.join('\n\n')}`;
 }
@@ -83,6 +94,21 @@ export function resolveHistoryId(message) {
   }
 
   return state.serverSettings[guildId]?.serverChatHistory ? guildId : channelId;
+}
+
+export function isSharedConversation(message) {
+  if (!message.guild) return false;
+  const channelHistoryEnabled = getChannelSettings(message.channel.id).channelWideChatHistory;
+  const serverHistoryEnabled = state.serverSettings[message.guild.id]?.serverChatHistory;
+  return channelHistoryEnabled || serverHistoryEnabled;
+}
+
+export function tagPartsWithUser(parts, message) {
+  const tag = `[user:${message.author.username}|display:${message.author.displayName}]`;
+  if (parts.length > 0 && parts[0].text !== undefined) {
+    return [{ ...parts[0], text: `${tag} ${parts[0].text}` }, ...parts.slice(1)];
+  }
+  return [{ text: tag }, ...parts];
 }
 
 export function resolveHistoryCategory(message) {

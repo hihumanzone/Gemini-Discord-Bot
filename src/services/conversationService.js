@@ -23,9 +23,11 @@ import {
 import {
   buildConversationContext,
   getResponsePreference,
+  isSharedConversation,
   resolveHistoryCategory,
   resolveHistoryId,
   resolveInstructions,
+  tagPartsWithUser,
 } from './conversationContext.js';
 import { extractFileText, hasSupportedAttachments, processPromptAndMediaAttachments } from './attachmentService.js';
 import { streamModelResponse } from './streamingService.js';
@@ -140,6 +142,10 @@ export async function handleTextMessage(message) {
   }
 
   stopTyping();
+
+  if (isSharedConversation(message)) {
+    parts = tagPartsWithUser(parts, message);
+  }
 
   await streamModelResponse({
     initialBotMessage: processingMessage,
