@@ -10,7 +10,7 @@ A Discord bot leveraging Google Gemini for advanced conversation, content unders
 - **Image/video/audio and file recognition** (supports images, videos, audios, PDFs, docx, pptx, and code/text files)
 - **Custom personalities per user, channel, or server**
 - **Server and channel-wide chat history** options
-- **Admin controls** for blacklisting/whitelisting users
+- **Admin controls** for blocking/unblocking users
 - **Downloadable conversation/message history**
 - **Multiple AI tools:** Google Search, code execution, and function calling
 - **Status monitoring** (RAM, CPU, and reset timer)
@@ -91,8 +91,8 @@ There are several ways to interact with the Gemini bot:
 - `/channel_settings` – Channel-wide admin controls for the current channel (admins only)
 - `/server_settings` – Server-wide admin controls (admins only)
 - `/clear_memory` – Clear your personal conversation history
-- `/blacklist user:@user` – Prevent a user from using the bot (admins only)
-- `/whitelist user:@user` – Remove a user from the blacklist (admins only)
+- `/block user:@user` – Prevent a user from using the bot (admins only)
+- `/unblock user:@user` – Remove a user from the block list (admins only)
 - `/status` – Show system status (RAM, CPU, reset timer)
 
 ---
@@ -126,8 +126,8 @@ There are several ways to interact with the Gemini bot:
 
 ## Admin & Security
 
-- Only server admins can use admin commands (blacklist, whitelist, server settings).
-- Blacklisted users cannot interact with the bot.
+- Only server admins can use admin commands (block, unblock, server settings).
+- Blocked users cannot interact with the bot.
 
 ---
 

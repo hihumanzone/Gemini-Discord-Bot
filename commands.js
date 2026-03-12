@@ -13,11 +13,11 @@ export const commands = Object.freeze([
   new SlashCommandBuilder().setName('settings').setDescription('Opens up settings.'),
   createAdminGuildCommand('server_settings', 'Opens up the server settings.'),
   createAdminGuildCommand('channel_settings', 'Opens up the channel settings for this channel.'),
-  createAdminGuildCommand('blacklist', 'Blacklists a user from using certain interactions.').addUserOption((option) =>
-    option.setName('user').setDescription('The user to blacklist.').setRequired(true),
+  createAdminGuildCommand('block', 'Blocks a user from using certain interactions.').addUserOption((option) =>
+    option.setName('user').setDescription('The user to block.').setRequired(true),
   ),
-  createAdminGuildCommand('whitelist', 'Removes a user from the blacklist.').addUserOption((option) =>
-    option.setName('user').setDescription('The user to whitelist.').setRequired(true),
+  createAdminGuildCommand('unblock', 'Removes a user from the block list.').addUserOption((option) =>
+    option.setName('user').setDescription('The user to unblock.').setRequired(true),
   ),
   new SlashCommandBuilder().setName('status').setDescription('Displays bot CPU and RAM usage in detail.'),
 ]);
