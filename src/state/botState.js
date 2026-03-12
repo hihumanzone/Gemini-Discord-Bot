@@ -43,6 +43,13 @@ export const state = {
 
 export const chatHistoryLock = new Mutex();
 
+// Track which chat histories have been modified since last save
+const dirtyChatHistories = new Set();
+// Track chat histories that have been deleted since last save
+const deletedChatHistories = new Set();
+
+const SAVE_DEBOUNCE_MS = 2_000;
+
 const FILE_PATHS = Object.freeze({
   activeUsersInChannels: path.join(CONFIG_DIR, 'active_users_in_channels.json'),
   customInstructions: path.join(CONFIG_DIR, 'custom_instructions.json'),
@@ -56,7 +63,7 @@ const FILE_PATHS = Object.freeze({
 });
 
 let isSaving = false;
-let savePending = false;
+let saveDebounceTimer = null;
 
 function resetState() {
   state.chatHistories = {};
@@ -64,6 +71,9 @@ function resetState() {
   for (const key of PERSISTED_STATE_KEYS) {
     state[key] = {};
   }
+
+  dirtyChatHistories.clear();
+  deletedChatHistories.clear();
 }
 
 function getSerializableState() {
@@ -77,44 +87,43 @@ async function ensureDataDirectories() {
 }
 
 async function syncChatHistoriesToDisk() {
-  const existingFiles = new Set(
-    (await fs.readdir(CHAT_HISTORIES_DIR)).filter((fileName) => fileName.endsWith('.json')),
-  );
-  const expectedFiles = new Set();
-
-  const writeOperations = Object.entries(state.chatHistories).map(([historyId, history]) => {
-    const fileName = `${historyId}.json`;
-    expectedFiles.add(fileName);
-
+  // Only write histories that have been modified
+  const writeOperations = [...dirtyChatHistories].map((historyId) => {
+    const history = state.chatHistories[historyId];
+    if (!history) return Promise.resolve();
     return fs.writeFile(
-      path.join(CHAT_HISTORIES_DIR, fileName),
-      JSON.stringify(history, null, 2),
+      path.join(CHAT_HISTORIES_DIR, `${historyId}.json`),
+      JSON.stringify(history),
       'utf-8',
     );
   });
 
-  const deleteOperations = [...existingFiles]
-    .filter((fileName) => !expectedFiles.has(fileName))
-    .map((fileName) => fs.unlink(path.join(CHAT_HISTORIES_DIR, fileName)).catch(() => {}));
+  // Only delete histories that have been explicitly removed
+  const deleteOperations = [...deletedChatHistories].map((historyId) =>
+    fs.unlink(path.join(CHAT_HISTORIES_DIR, `${historyId}.json`)).catch(() => {}),
+  );
 
   await Promise.all([...writeOperations, ...deleteOperations]);
+  dirtyChatHistories.clear();
+  deletedChatHistories.clear();
 }
 
-export async function saveStateToFile() {
-  if (isSaving) {
-    savePending = true;
-    return;
-  }
+let directoriesEnsured = false;
 
+async function executeSave() {
+  if (isSaving) return;
   isSaving = true;
 
   try {
-    await ensureDataDirectories();
+    if (!directoriesEnsured) {
+      await ensureDataDirectories();
+      directoriesEnsured = true;
+    }
     await syncChatHistoriesToDisk();
 
     const serializableState = getSerializableState();
     const fileWrites = Object.entries(FILE_PATHS).map(([key, filePath]) =>
-      fs.writeFile(filePath, JSON.stringify(serializableState[key], null, 2), 'utf-8'),
+      fs.writeFile(filePath, JSON.stringify(serializableState[key]), 'utf-8'),
     );
 
     await Promise.all(fileWrites);
@@ -122,12 +131,20 @@ export async function saveStateToFile() {
     console.error('Error saving state to files:', error);
   } finally {
     isSaving = false;
-
-    if (savePending) {
-      savePending = false;
-      await saveStateToFile();
-    }
   }
+}
+
+export async function saveStateToFile() {
+  clearTimeout(saveDebounceTimer);
+  saveDebounceTimer = setTimeout(() => {
+    executeSave();
+  }, SAVE_DEBOUNCE_MS);
+}
+
+/** Force an immediate save, bypassing the debounce. Used for critical operations. */
+export async function saveStateToFileImmediate() {
+  clearTimeout(saveDebounceTimer);
+  await executeSave();
 }
 
 async function loadChatHistories() {
@@ -206,8 +223,12 @@ export function getTimeUntilNextReset() {
   return `${hours}h ${minutes}m ${seconds}s`;
 }
 
+let dailyResetTimer = null;
+
 function scheduleDailyReset() {
   try {
+    clearTimeout(dailyResetTimer);
+
     const now = new Date();
     const nextReset = new Date();
     nextReset.setHours(0, 0, 0, 0);
@@ -218,12 +239,16 @@ function scheduleDailyReset() {
 
     const timeUntilNextReset = nextReset - now;
 
-    setTimeout(async () => {
+    dailyResetTimer = setTimeout(async () => {
       console.log('Running daily cleanup task...');
 
       await chatHistoryLock.runExclusive(async () => {
         removeFileDataFromHistories();
-        await saveStateToFile();
+        // Mark all histories dirty after cleanup modifies them
+        for (const historyId of Object.keys(state.chatHistories)) {
+          dirtyChatHistories.add(historyId);
+        }
+        await saveStateToFileImmediate();
       });
 
       console.log('Daily cleanup task finished.');
@@ -266,25 +291,37 @@ export function updateChatHistory(historyId, newHistory, messageId) {
     ...state.chatHistories[historyId][messageId],
     ...newHistory,
   ];
+
+  dirtyChatHistories.add(historyId);
 }
 
 export function getUserResponsePreference(userId) {
   return state.userResponsePreference[userId] || config.defaultResponseFormat;
 }
 
+const normalizedToolPreferences = new Set();
+
 export function getUserGeminiToolPreferences(userId) {
   if (!state.userGeminiToolPreferences[userId]) {
     state.userGeminiToolPreferences[userId] = cloneDefaultGeminiToolPreferences();
+    normalizedToolPreferences.add(userId);
+    return state.userGeminiToolPreferences[userId];
   }
 
-  state.userGeminiToolPreferences[userId] = normalizeGeminiToolPreferences(
-    state.userGeminiToolPreferences[userId],
-  );
+  if (!normalizedToolPreferences.has(userId)) {
+    state.userGeminiToolPreferences[userId] = normalizeGeminiToolPreferences(
+      state.userGeminiToolPreferences[userId],
+    );
+    normalizedToolPreferences.add(userId);
+  }
+
   return state.userGeminiToolPreferences[userId];
 }
 
+const initializedGuilds = new Set();
+
 export function initializeGuildState(guildId) {
-  if (!guildId) {
+  if (!guildId || initializedGuilds.has(guildId)) {
     return;
   }
 
@@ -295,6 +332,8 @@ export function initializeGuildState(guildId) {
   if (!state.serverSettings[guildId]) {
     state.serverSettings[guildId] = cloneDefaultServerSettings();
   }
+
+  initializedGuilds.add(guildId);
 }
 
 export function getServerSettings(guildId) {
@@ -302,8 +341,15 @@ export function getServerSettings(guildId) {
   return state.serverSettings[guildId];
 }
 
+const initializedChannels = new Set();
+
 export function initializeChannelState(channelId) {
   if (!channelId) {
+    return;
+  }
+
+  // Skip re-normalization for already-initialized channels
+  if (initializedChannels.has(channelId)) {
     return;
   }
 
@@ -322,6 +368,12 @@ export function initializeChannelState(channelId) {
   }
 
   state.channelSettings[channelId] = normalizedSettings;
+  initializedChannels.add(channelId);
+}
+
+/** Invalidate a channel's cached initialization so it re-normalizes on next access. */
+export function invalidateChannelState(channelId) {
+  initializedChannels.delete(channelId);
 }
 
 export function getChannelSettings(channelId) {
@@ -359,6 +411,7 @@ export function toggleChannelUserActive(channelId, userId) {
 export function setAlwaysRespondChannel(channelId, enabled) {
   const settings = getChannelSettings(channelId);
   settings.alwaysRespond = enabled;
+  invalidateChannelState(channelId);
 
   if (enabled) {
     state.alwaysRespondChannels[channelId] = true;
@@ -371,6 +424,7 @@ export function setAlwaysRespondChannel(channelId, enabled) {
 export function setChannelWideChatHistory(channelId, enabled, instructions) {
   const settings = getChannelSettings(channelId);
   settings.channelWideChatHistory = enabled;
+  invalidateChannelState(channelId);
 
   if (enabled) {
     state.channelWideChatHistory[channelId] = true;
@@ -383,6 +437,9 @@ export function setChannelWideChatHistory(channelId, enabled, instructions) {
   }
 
   delete state.channelWideChatHistory[channelId];
+  if (state.chatHistories[channelId]) {
+    deletedChatHistories.add(channelId);
+  }
   delete state.chatHistories[channelId];
 }
 
@@ -396,6 +453,16 @@ export function clearCustomInstruction(targetId) {
 
 export function clearChatHistoryFor(targetId) {
   state.chatHistories[targetId] = {};
+  dirtyChatHistories.add(targetId);
+}
+
+export function deleteChatHistoryEntry(historyId, messageId) {
+  if (state.chatHistories[historyId]?.[messageId]) {
+    delete state.chatHistories[historyId][messageId];
+    dirtyChatHistories.add(historyId);
+    return true;
+  }
+  return false;
 }
 
 export function toggleUserResponseFormat(userId) {
@@ -410,6 +477,7 @@ export function setUserGeminiToolPreference(userId, toolName, enabled) {
     [toolName]: enabled,
   };
 
+  normalizedToolPreferences.delete(userId);
   return state.userGeminiToolPreferences[userId];
 }
 
@@ -422,6 +490,7 @@ export function toggleServerSetting(guildId, settingName) {
 export function toggleChannelSetting(channelId, settingName) {
   const settings = getChannelSettings(channelId);
   settings[settingName] = !settings[settingName];
+  invalidateChannelState(channelId);
   return settings[settingName];
 }
 

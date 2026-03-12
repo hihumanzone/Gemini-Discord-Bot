@@ -10,6 +10,14 @@ import { genAI } from '../core/runtime.js';
 import { TEMP_DIR } from '../core/paths.js';
 import { TEXT_ATTACHMENT_EXTENSIONS, VIDEO_POLL_INTERVAL_MS } from '../constants.js';
 
+let cachedTextExtractor = null;
+function getOrCreateTextExtractor() {
+  if (!cachedTextExtractor) {
+    cachedTextExtractor = getTextExtractor();
+  }
+  return cachedTextExtractor;
+}
+
 function isMediaAttachment(attachment) {
   const contentType = (attachment.contentType || '').toLowerCase();
 
@@ -119,7 +127,7 @@ export async function processPromptAndMediaAttachments(prompt, message) {
 
 async function downloadAndReadFile(url, extension) {
   if (extension === '.pptx' || extension === '.docx') {
-    const extractor = getTextExtractor();
+    const extractor = getOrCreateTextExtractor();
     return extractor.extractText({ input: url, type: 'url' });
   }
 

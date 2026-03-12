@@ -5,8 +5,7 @@
  */
 
 import config from '../../config.js';
-import { activeRequests } from '../core/runtime.js';
-import { genAI } from '../core/runtime.js';
+import { activeRequests, genAI } from '../core/runtime.js';
 import {
   getHistory,
   getUserGeminiToolPreferences,
@@ -96,12 +95,24 @@ function createEmptyMessageEmbed() {
   });
 }
 
+/** Cached mention regex per client user ID. */
+let cachedMentionPattern = null;
+let cachedMentionClientId = null;
+
+function getMentionPattern(clientUserId) {
+  if (cachedMentionClientId !== clientUserId) {
+    cachedMentionPattern = new RegExp(`<@!?${clientUserId}>`, 'g');
+    cachedMentionClientId = clientUserId;
+  }
+  return cachedMentionPattern;
+}
+
 /**
  * Main entry point for handling a text message from a Discord user.
  * Strips the bot mention, extracts attachments, and streams a Gemini response.
  */
 export async function handleTextMessage(message) {
-  const mentionPattern = new RegExp(`<@!?${message.client.user.id}>`);
+  const mentionPattern = getMentionPattern(message.client.user.id);
   let messageContent = message.content.replace(mentionPattern, '').trim();
 
   if (!messageContent && !(message.attachments.size > 0 && hasSupportedAttachments(message))) {

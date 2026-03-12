@@ -8,6 +8,7 @@ import { ChannelType } from 'discord.js';
 import {
   clearChatHistoryFor,
   clearCustomInstruction,
+  deleteChatHistoryEntry,
   getChannelSettings,
   getHistory,
   getServerSettings,
@@ -15,7 +16,6 @@ import {
   setAlwaysRespondChannel,
   setChannelWideChatHistory,
   setUserGeminiToolPreference,
-  state,
   toggleChannelUserActive,
   toggleChannelSetting,
   toggleServerResponseStyle,
@@ -51,7 +51,6 @@ import {
 
 async function handleDeleteMessageInteraction(interaction, messageIdStr) {
   const userId = interaction.user.id;
-  const userChatHistory = state.chatHistories[userId];
   const channel = interaction.channel;
   const messageIds = messageIdStr.split(',');
   const primaryId = messageIds[0];
@@ -66,8 +65,7 @@ async function handleDeleteMessageInteraction(interaction, messageIdStr) {
     }
   };
 
-  if (userChatHistory?.[primaryId]) {
-    delete userChatHistory[primaryId];
+  if (deleteChatHistoryEntry(userId, primaryId)) {
     await persistStateChange();
     await performDeletion();
     return;

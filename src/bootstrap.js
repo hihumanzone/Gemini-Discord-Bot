@@ -29,13 +29,15 @@ export function registerBotHandlers() {
         status: 'idle',
       });
 
-      setInterval(() => {
-        activityIndex = (activityIndex + 1) % PRESENCE_ACTIVITIES.length;
-        client.user.setPresence({
-          activities: [PRESENCE_ACTIVITIES[activityIndex]],
-          status: 'idle',
-        });
-      }, PRESENCE_ROTATION_INTERVAL_MS);
+      if (PRESENCE_ACTIVITIES.length > 1) {
+        setInterval(() => {
+          activityIndex = (activityIndex + 1) % PRESENCE_ACTIVITIES.length;
+          client.user.setPresence({
+            activities: [PRESENCE_ACTIVITIES[activityIndex]],
+            status: 'idle',
+          });
+        }, PRESENCE_ROTATION_INTERVAL_MS);
+      }
     }
   });
 
