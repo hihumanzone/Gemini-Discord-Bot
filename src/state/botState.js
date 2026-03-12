@@ -8,8 +8,10 @@ import {
   TEMP_DIR,
 } from '../core/paths.js';
 import {
+  cloneDefaultChannelSettings,
   cloneDefaultGeminiToolPreferences,
   cloneDefaultServerSettings,
+  normalizeChannelSettings,
   normalizeGeminiToolPreferences,
 } from '../constants.js';
 import { Mutex } from './mutex.js';
@@ -18,6 +20,7 @@ const PERSISTED_STATE_KEYS = Object.freeze([
   'activeUsersInChannels',
   'customInstructions',
   'serverSettings',
+  'channelSettings',
   'userResponsePreference',
   'userGeminiToolPreferences',
   'alwaysRespondChannels',
@@ -30,6 +33,7 @@ export const state = {
   activeUsersInChannels: {},
   customInstructions: {},
   serverSettings: {},
+  channelSettings: {},
   userResponsePreference: {},
   userGeminiToolPreferences: {},
   alwaysRespondChannels: {},
@@ -43,6 +47,7 @@ const FILE_PATHS = Object.freeze({
   activeUsersInChannels: path.join(CONFIG_DIR, 'active_users_in_channels.json'),
   customInstructions: path.join(CONFIG_DIR, 'custom_instructions.json'),
   serverSettings: path.join(CONFIG_DIR, 'server_settings.json'),
+  channelSettings: path.join(CONFIG_DIR, 'channel_settings.json'),
   userResponsePreference: path.join(CONFIG_DIR, 'user_response_preference.json'),
   userGeminiToolPreferences: path.join(CONFIG_DIR, 'user_gemini_tool_preferences.json'),
   alwaysRespondChannels: path.join(CONFIG_DIR, 'always_respond_channels.json'),
@@ -237,8 +242,10 @@ export async function initializeState() {
   scheduleDailyReset();
 }
 
-export function getHistory(historyId) {
-  return Object.values(state.chatHistories[historyId] || {})
+export function getHistory(historyId, maxElements = 0) {
+  const elements = Object.values(state.chatHistories[historyId] || {});
+  const limited = maxElements > 0 ? elements.slice(-maxElements) : elements;
+  return limited
     .flat()
     .map((entry) => ({
       role: entry.role === 'assistant' ? 'model' : entry.role,
@@ -295,6 +302,33 @@ export function getServerSettings(guildId) {
   return state.serverSettings[guildId];
 }
 
+export function initializeChannelState(channelId) {
+  if (!channelId) {
+    return;
+  }
+
+  const existingSettings = state.channelSettings[channelId];
+  const normalizedSettings = existingSettings
+    ? normalizeChannelSettings(existingSettings)
+    : cloneDefaultChannelSettings();
+
+  normalizedSettings.alwaysRespond = Boolean(state.alwaysRespondChannels[channelId]);
+  normalizedSettings.channelWideChatHistory = Boolean(state.channelWideChatHistory[channelId]);
+
+  if (!existingSettings || !Object.hasOwn(existingSettings, 'customChannelPersonality')) {
+    normalizedSettings.customChannelPersonality = Boolean(
+      state.channelWideChatHistory[channelId] && state.customInstructions[channelId],
+    );
+  }
+
+  state.channelSettings[channelId] = normalizedSettings;
+}
+
+export function getChannelSettings(channelId) {
+  initializeChannelState(channelId);
+  return state.channelSettings[channelId];
+}
+
 export function isUserBlacklisted(guildId, userId) {
   if (!guildId) {
     return false;
@@ -323,6 +357,9 @@ export function toggleChannelUserActive(channelId, userId) {
 }
 
 export function setAlwaysRespondChannel(channelId, enabled) {
+  const settings = getChannelSettings(channelId);
+  settings.alwaysRespond = enabled;
+
   if (enabled) {
     state.alwaysRespondChannels[channelId] = true;
     return;
@@ -332,14 +369,20 @@ export function setAlwaysRespondChannel(channelId, enabled) {
 }
 
 export function setChannelWideChatHistory(channelId, enabled, instructions) {
+  const settings = getChannelSettings(channelId);
+  settings.channelWideChatHistory = enabled;
+
   if (enabled) {
     state.channelWideChatHistory[channelId] = true;
-    state.customInstructions[channelId] = instructions;
+
+    if (instructions !== undefined) {
+      state.customInstructions[channelId] = instructions;
+    }
+
     return;
   }
 
   delete state.channelWideChatHistory[channelId];
-  delete state.customInstructions[channelId];
   delete state.chatHistories[channelId];
 }
 
@@ -372,6 +415,12 @@ export function setUserGeminiToolPreference(userId, toolName, enabled) {
 
 export function toggleServerSetting(guildId, settingName) {
   const settings = getServerSettings(guildId);
+  settings[settingName] = !settings[settingName];
+  return settings[settingName];
+}
+
+export function toggleChannelSetting(channelId, settingName) {
+  const settings = getChannelSettings(channelId);
   settings[settingName] = !settings[settingName];
   return settings[settingName];
 }

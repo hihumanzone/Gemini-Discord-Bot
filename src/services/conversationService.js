@@ -4,6 +4,7 @@
  * attachments, and delegates streaming to the streaming service.
  */
 
+import config from '../../config.js';
 import { activeRequests } from '../core/runtime.js';
 import { genAI } from '../core/runtime.js';
 import {
@@ -22,6 +23,7 @@ import {
 import {
   buildConversationContext,
   getResponsePreference,
+  resolveHistoryCategory,
   resolveHistoryId,
   resolveInstructions,
 } from './conversationContext.js';
@@ -47,10 +49,14 @@ function createChatSession(message) {
     chatConfig.tools = selectedTools;
   }
 
+  const historyId = resolveHistoryId(message);
+  const category = resolveHistoryCategory(message);
+  const limit = config.chatHistoryLimits[category];
+
   return genAI.chats.create({
     model: MODEL,
     config: chatConfig,
-    history: getHistory(resolveHistoryId(message)),
+    history: getHistory(historyId, limit),
   });
 }
 

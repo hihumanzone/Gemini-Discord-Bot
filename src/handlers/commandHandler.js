@@ -3,62 +3,37 @@
  * Each exported function corresponds to a registered slash command.
  */
 
-import { ChannelType, MessageFlags } from 'discord.js';
+import { MessageFlags } from 'discord.js';
 import osu from 'node-os-utils';
 
 import {
   addBlacklistedUser,
   clearChatHistoryFor,
-  getServerSettings,
   getTimeUntilNextReset,
   removeBlacklistedUser,
   saveStateToFile,
-  setAlwaysRespondChannel,
-  setChannelWideChatHistory,
   state,
 } from '../state/botState.js';
 import {
-  DEFAULT_PERSONALITY,
   EMBED_COLOR,
   STATUS_LIFETIME_MS,
   STATUS_REFRESH_INTERVAL_MS,
 } from '../constants.js';
 import { addSettingsButton } from '../ui/messageActions.js';
-import { showDashboard, showSettings } from '../ui/settingsViews.js';
+import { showDashboard, showChannelDashboard, showSettings } from '../ui/settingsViews.js';
 import { createEmbed, replyWithEmbed } from '../utils/discord.js';
-import { requireGuildAdmin, replyFeatureDisabled } from './interactionHelpers.js';
+import {
+  getClearMemoryDisabledReason,
+  requireGuildAdmin,
+  replyFeatureDisabled,
+} from './interactionHelpers.js';
 
 const { cpu, mem } = osu;
 
-async function handleRespondToAllCommand(interaction) {
-  if (!(await requireGuildAdmin(interaction))) {
-    return;
-  }
-
-  const enabled = interaction.options.getBoolean('enabled');
-  setAlwaysRespondChannel(interaction.channelId, enabled);
-  await saveStateToFile();
-
-  return replyWithEmbed(interaction, {
-    color: enabled ? 0x00FF00 : 0xFFA500,
-    title: enabled ? 'Bot Response Enabled' : 'Bot Response Disabled',
-    description: enabled
-      ? 'The bot will now respond to all messages in this channel.'
-      : 'The bot will now stop responding to all messages in this channel.',
-    flags: undefined,
-  });
-}
-
 async function handleClearMemoryCommand(interaction) {
-  const serverChatHistoryEnabled = interaction.guild
-    ? state.serverSettings[interaction.guild.id]?.serverChatHistory
-    : false;
-
-  if (serverChatHistoryEnabled) {
-    return replyFeatureDisabled(
-      interaction,
-      'Clearing chat history is not enabled for this server, Server-Wide chat history is active.',
-    );
+  const disabledReason = getClearMemoryDisabledReason(interaction);
+  if (disabledReason) {
+    return replyFeatureDisabled(interaction, disabledReason);
   }
 
   clearChatHistoryFor(interaction.user.id);
@@ -68,28 +43,6 @@ async function handleClearMemoryCommand(interaction) {
     color: 0x00FF00,
     title: 'Chat History Cleared',
     description: 'Chat history cleared!',
-  });
-}
-
-async function handleToggleChannelChatHistory(interaction) {
-  if (!(await requireGuildAdmin(interaction))) {
-    return;
-  }
-
-  const channelId = interaction.channelId;
-  const enabled = interaction.options.getBoolean('enabled');
-  const instructions = interaction.options.getString('instructions') || DEFAULT_PERSONALITY;
-
-  setChannelWideChatHistory(channelId, enabled, instructions);
-  await saveStateToFile();
-
-  return replyWithEmbed(interaction, {
-    color: enabled ? 0x00FF00 : 0xFFA500,
-    title: enabled ? 'Channel History Enabled' : 'Channel History Disabled',
-    description: enabled
-      ? 'Channel-wide chat history has been enabled.'
-      : 'Channel-wide chat history has been disabled.',
-    flags: undefined,
   });
 }
 
@@ -206,8 +159,6 @@ async function handleWhitelistCommand(interaction) {
 /** Routes a chat-input command interaction to its handler. */
 export async function handleCommandInteraction(interaction) {
   const handlers = {
-    respond_to_all: handleRespondToAllCommand,
-    toggle_channel_chat_history: handleToggleChannelChatHistory,
     whitelist: handleWhitelistCommand,
     blacklist: handleBlacklistCommand,
     clear_memory: handleClearMemoryCommand,
@@ -217,6 +168,12 @@ export async function handleCommandInteraction(interaction) {
         return;
       }
       return showDashboard(cmd);
+    },
+    channel_settings: async (cmd) => {
+      if (!(await requireGuildAdmin(cmd))) {
+        return;
+      }
+      return showChannelDashboard(cmd);
     },
     status: handleStatusCommand,
   };

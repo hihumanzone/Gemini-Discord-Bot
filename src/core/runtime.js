@@ -8,6 +8,7 @@ import {
 } from 'discord.js';
 import { GoogleGenAI } from '@google/genai';
 
+import config from '../../config.js';
 import { initializeGeminiApiLogging } from '../services/geminiApiLogger.js';
 
 export const token = process.env.DISCORD_BOT_TOKEN;
@@ -22,7 +23,9 @@ export const client = new Client({
   partials: [Partials.Channel],
 });
 
-initializeGeminiApiLogging();
+if (config.enableGeminiApiLogging) {
+  initializeGeminiApiLogging();
+}
 
 export const genAI = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
 

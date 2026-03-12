@@ -21,6 +21,9 @@ export const DEFAULT_PERSONALITY = config.defaultPersonality;
 export const DEFAULT_SERVER_SETTINGS = Object.freeze({
   ...config.defaultServerSettings,
 });
+export const DEFAULT_CHANNEL_SETTINGS = Object.freeze({
+  ...config.defaultChannelSettings,
+});
 export const WORK_IN_DMS = config.workInDMs;
 export const DISPLAY_PERSONALITY_BUTTONS = config.shouldDisplayPersonalityButtons;
 export const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
@@ -97,8 +100,22 @@ export function cloneDefaultServerSettings() {
   return structuredClone(DEFAULT_SERVER_SETTINGS);
 }
 
+export function cloneDefaultChannelSettings() {
+  return structuredClone(DEFAULT_CHANNEL_SETTINGS);
+}
+
 export function cloneDefaultGeminiToolPreferences() {
   return { ...DEFAULT_GEMINI_TOOL_PREFERENCES };
+}
+
+export function normalizeChannelSettings(settings = {}) {
+  const normalized = { ...DEFAULT_CHANNEL_SETTINGS };
+  for (const key of Object.keys(normalized)) {
+    if (settings[key] !== undefined) {
+      normalized[key] = Boolean(settings[key]);
+    }
+  }
+  return normalized;
 }
 
 export function normalizeGeminiToolPreferences(preferences = {}) {

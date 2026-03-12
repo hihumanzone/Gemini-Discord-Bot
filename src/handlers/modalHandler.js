@@ -35,4 +35,17 @@ export async function handleModalSubmit(interaction) {
       description: 'Custom Server Personality Instructions Saved!',
     });
   }
+
+  if (interaction.customId === 'custom-channel-personality-modal') {
+    setCustomInstruction(
+      interaction.channel.id,
+      interaction.fields.getTextInputValue('custom-channel-personality-input').trim(),
+    );
+    await saveStateToFile();
+    return replyWithEmbed(interaction, {
+      color: 0x00FF00,
+      title: 'Success',
+      description: 'Custom Channel Personality Instructions Saved!',
+    });
+  }
 }

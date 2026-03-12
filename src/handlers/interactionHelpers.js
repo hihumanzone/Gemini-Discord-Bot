@@ -9,7 +9,12 @@ import path from 'path';
 import { AttachmentBuilder, ChannelType, MessageFlags } from 'discord.js';
 
 import { TEMP_DIR } from '../core/paths.js';
-import { saveStateToFile, isUserBlacklisted } from '../state/botState.js';
+import {
+  getChannelSettings,
+  getServerSettings,
+  saveStateToFile,
+  isUserBlacklisted,
+} from '../state/botState.js';
 import { createSharedTextLink } from '../services/textSharingService.js';
 import {
   createEmbed,
@@ -45,6 +50,34 @@ export async function replyFeatureDisabled(interaction, description) {
     title: 'Feature Disabled',
     description,
   });
+}
+
+export function getClearMemoryDisabledReason(interaction) {
+  const channelId = interaction.channelId ?? interaction.channel?.id;
+  if (channelId && getChannelSettings(channelId).channelWideChatHistory) {
+    return 'Clearing chat history is not enabled for this channel, channel-wide chat history is active.';
+  }
+
+  const guildId = interaction.guild?.id;
+  if (guildId && getServerSettings(guildId).serverChatHistory) {
+    return 'Clearing chat history is not enabled for this server, server-wide chat history is active.';
+  }
+
+  return null;
+}
+
+export function getCustomPersonalityDisabledReason(interaction) {
+  const channelId = interaction.channelId ?? interaction.channel?.id;
+  if (channelId && getChannelSettings(channelId).customChannelPersonality) {
+    return 'Custom personality is not enabled for this channel, channel-wide personality is active.';
+  }
+
+  const guildId = interaction.guild?.id;
+  if (guildId && getServerSettings(guildId).customServerPersonality) {
+    return 'Custom personality is not enabled for this server, server-wide personality is active.';
+  }
+
+  return null;
 }
 
 /**

@@ -8,14 +8,16 @@ import { ChannelType } from 'discord.js';
 import {
   clearChatHistoryFor,
   clearCustomInstruction,
+  getChannelSettings,
   getHistory,
   getServerSettings,
   getUserGeminiToolPreferences,
-  saveStateToFile,
-  setCustomInstruction,
+  setAlwaysRespondChannel,
+  setChannelWideChatHistory,
   setUserGeminiToolPreference,
   state,
   toggleChannelUserActive,
+  toggleChannelSetting,
   toggleServerResponseStyle,
   toggleServerSetting,
   toggleUserResponseFormat,
@@ -23,10 +25,13 @@ import {
 import { serializeConversationHistory } from '../services/textSharingService.js';
 import { addSettingsButton } from '../ui/messageActions.js';
 import {
+  buildChannelPersonalityModal,
   buildCustomPersonalityModal,
   buildServerPersonalityModal,
   showSettings,
+  updateChannelSettingsView,
   updateGeneralSettingsView,
+  updateServerSettingsView,
 } from '../ui/settingsViews.js';
 import {
   createEmbed,
@@ -36,6 +41,8 @@ import {
 } from '../utils/discord.js';
 import {
   ensureInteractionNotBlacklisted,
+  getClearMemoryDisabledReason,
+  getCustomPersonalityDisabledReason,
   persistStateChange,
   replyFeatureDisabled,
   requireGuildAdmin,
@@ -87,15 +94,9 @@ async function handleDeleteMessageInteraction(interaction, messageIdStr) {
 }
 
 async function handleClearMemoryButton(interaction) {
-  const serverChatHistoryEnabled = interaction.guild
-    ? state.serverSettings[interaction.guild.id]?.serverChatHistory
-    : false;
-
-  if (serverChatHistoryEnabled) {
-    return replyFeatureDisabled(
-      interaction,
-      'Clearing chat history is not enabled for this server, Server-Wide chat history is active.',
-    );
+  const disabledReason = getClearMemoryDisabledReason(interaction);
+  if (disabledReason) {
+    return replyFeatureDisabled(interaction, disabledReason);
   }
 
   clearChatHistoryFor(interaction.user.id);
@@ -123,30 +124,18 @@ async function alwaysRespond(interaction) {
 }
 
 async function handleCustomPersonalityCommand(interaction) {
-  const serverCustomEnabled = interaction.guild
-    ? state.serverSettings[interaction.guild.id]?.customServerPersonality
-    : false;
-
-  if (serverCustomEnabled) {
-    return replyFeatureDisabled(
-      interaction,
-      'Custom personality is not enabled for this server, Server-Wide personality is active.',
-    );
+  const disabledReason = getCustomPersonalityDisabledReason(interaction);
+  if (disabledReason) {
+    return replyFeatureDisabled(interaction, disabledReason);
   }
 
   return interaction.showModal(buildCustomPersonalityModal());
 }
 
 async function handleRemovePersonalityCommand(interaction) {
-  const serverCustomEnabled = interaction.guild
-    ? state.serverSettings[interaction.guild.id]?.customServerPersonality
-    : false;
-
-  if (serverCustomEnabled) {
-    return replyFeatureDisabled(
-      interaction,
-      'Custom personality is not enabled for this server, Server-Wide personality is active.',
-    );
+  const disabledReason = getCustomPersonalityDisabledReason(interaction);
+  if (disabledReason) {
+    return replyFeatureDisabled(interaction, disabledReason);
   }
 
   clearCustomInstruction(interaction.user.id);
@@ -235,19 +224,10 @@ async function toggleServerWideChatHistory(interaction) {
   }
 
   const guildId = interaction.guild.id;
-  const settings = getServerSettings(guildId);
-  settings.serverChatHistory = toggleServerSetting(guildId, 'serverChatHistory');
+  toggleServerSetting(guildId, 'serverChatHistory');
   await persistStateChange();
 
-  const warningMessage = settings.serverChatHistory && !settings.customServerPersonality
-    ? '\n\nWarning: enabling server-side chat history without server-wide personality management can mix personalities between users.'
-    : '';
-
-  return replyWithEmbed(interaction, {
-    color: settings.serverChatHistory ? 0x00FF00 : 0xFF0000,
-    title: 'Chat History Toggled',
-    description: `Server-wide Chat History is now \`${settings.serverChatHistory ? 'enabled' : 'disabled'}\`${warningMessage}`,
-  });
+  return updateServerSettingsView(interaction);
 }
 
 async function toggleServerPersonality(interaction) {
@@ -256,15 +236,10 @@ async function toggleServerPersonality(interaction) {
   }
 
   const guildId = interaction.guild.id;
-  const settings = getServerSettings(guildId);
-  settings.customServerPersonality = toggleServerSetting(guildId, 'customServerPersonality');
+  toggleServerSetting(guildId, 'customServerPersonality');
   await persistStateChange();
 
-  return replyWithEmbed(interaction, {
-    color: settings.customServerPersonality ? 0x00FF00 : 0xFF0000,
-    title: 'Server Personality Toggled',
-    description: `Server-wide Personality is now \`${settings.customServerPersonality ? 'enabled' : 'disabled'}\``,
-  });
+  return updateServerSettingsView(interaction);
 }
 
 async function toggleServerResponsePreference(interaction) {
@@ -273,15 +248,10 @@ async function toggleServerResponsePreference(interaction) {
   }
 
   const guildId = interaction.guild.id;
-  const settings = getServerSettings(guildId);
-  settings.serverResponsePreference = toggleServerSetting(guildId, 'serverResponsePreference');
+  toggleServerSetting(guildId, 'serverResponsePreference');
   await persistStateChange();
 
-  return replyWithEmbed(interaction, {
-    color: settings.serverResponsePreference ? 0x00FF00 : 0xFF0000,
-    title: 'Server Response Preference Toggled',
-    description: `Server-wide Response Following is now \`${settings.serverResponsePreference ? 'enabled' : 'disabled'}\``,
-  });
+  return updateServerSettingsView(interaction);
 }
 
 async function toggleSettingSaveButton(interaction) {
@@ -290,15 +260,10 @@ async function toggleSettingSaveButton(interaction) {
   }
 
   const guildId = interaction.guild.id;
-  const settings = getServerSettings(guildId);
-  settings.settingsSaveButton = toggleServerSetting(guildId, 'settingsSaveButton');
+  toggleServerSetting(guildId, 'settingsSaveButton');
   await persistStateChange();
 
-  return replyWithEmbed(interaction, {
-    color: settings.settingsSaveButton ? 0x00FF00 : 0xFF0000,
-    title: 'Settings Save Button Toggled',
-    description: `Server-wide "Settings and Save Button" is now \`${settings.settingsSaveButton ? 'enabled' : 'disabled'}\``,
-  });
+  return updateServerSettingsView(interaction);
 }
 
 async function serverPersonality(interaction) {
@@ -356,14 +321,92 @@ async function downloadServerConversation(interaction) {
 }
 
 async function toggleServerPreference(interaction) {
-  const settings = getServerSettings(interaction.guild.id);
-  settings.responseStyle = toggleServerResponseStyle(interaction.guild.id);
+  toggleServerResponseStyle(interaction.guild.id);
+  await persistStateChange();
+
+  return updateServerSettingsView(interaction);
+}
+
+// --- Channel admin button handlers ---
+
+async function toggleChannelAlwaysRespond(interaction) {
+  if (!(await requireGuildAdmin(interaction))) return;
+
+  const channelId = interaction.channel.id;
+  const current = getChannelSettings(channelId).alwaysRespond;
+  setAlwaysRespondChannel(channelId, !current);
+  await persistStateChange();
+
+  return updateChannelSettingsView(interaction);
+}
+
+async function toggleChannelChatHistory(interaction) {
+  if (!(await requireGuildAdmin(interaction))) return;
+
+  const channelId = interaction.channel.id;
+  const current = getChannelSettings(channelId).channelWideChatHistory;
+  setChannelWideChatHistory(channelId, !current);
+  await persistStateChange();
+
+  return updateChannelSettingsView(interaction);
+}
+
+async function toggleChannelPersonality(interaction) {
+  if (!(await requireGuildAdmin(interaction))) return;
+
+  toggleChannelSetting(interaction.channel.id, 'customChannelPersonality');
+  await persistStateChange();
+
+  return updateChannelSettingsView(interaction);
+}
+
+async function clearChannelChatHistory(interaction) {
+  if (!(await requireGuildAdmin(interaction))) return;
+
+  const channelId = interaction.channel.id;
+  if (!getChannelSettings(channelId).channelWideChatHistory) {
+    return replyWithEmbed(interaction, {
+      color: 0xFFA500,
+      title: 'Feature Disabled',
+      description: 'Channel-wide chat history is not enabled for this channel.',
+    });
+  }
+
+  clearChatHistoryFor(channelId);
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
     color: 0x00FF00,
-    title: 'Server Response Style Updated',
-    description: `Server response style updated to: ${settings.responseStyle}`,
+    title: 'Chat History Cleared',
+    description: 'Channel-wide chat history cleared!',
+  });
+}
+
+async function channelPersonality(interaction) {
+  if (!(await requireGuildAdmin(interaction))) return;
+  return interaction.showModal(buildChannelPersonalityModal());
+}
+
+async function downloadChannelConversation(interaction) {
+  if (!(await requireGuildAdmin(interaction))) return;
+
+  const history = getHistory(interaction.channel.id);
+  if (!history.length) {
+    return replyWithEmbed(interaction, {
+      color: 0xFF0000,
+      title: 'No History Found',
+      description: 'No channel-wide conversation history found.',
+    });
+  }
+
+  return sendSavedContentToUser(interaction, {
+    text: serializeConversationHistory(history),
+    fileBaseName: 'channel_conversation_history',
+    title: 'Message Content Downloaded',
+    description: 'Here is the content of the channel conversation.',
+    successTitle: 'Content Sent',
+    successDescription: 'The conversation content has been sent to your DMs.',
+    failureDescription: 'Failed to send the conversation content to your DMs. The saved content is attached below instead.',
   });
 }
 
@@ -388,6 +431,12 @@ export async function handleButtonInteraction(interaction) {
     'download-server-conversation': downloadServerConversation,
     'response-server-mode': toggleServerPreference,
     'toggle-response-server-mode': toggleServerResponsePreference,
+    'channel-always-respond': toggleChannelAlwaysRespond,
+    'channel-chat-history': toggleChannelChatHistory,
+    'toggle-channel-personality': toggleChannelPersonality,
+    'clear-channel-history': clearChannelChatHistory,
+    'channel-custom-personality': channelPersonality,
+    'channel-download-conversation': downloadChannelConversation,
     settings: showSettings,
     back_to_main_settings: (btnInteraction) => showSettings(btnInteraction, true),
     'clear-memory': handleClearMemoryButton,
