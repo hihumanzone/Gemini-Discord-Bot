@@ -26,6 +26,7 @@ const PERSISTED_STATE_KEYS = Object.freeze([
   'alwaysRespondChannels',
   'channelWideChatHistory',
   'blacklistedUsers',
+  'userSessions',
 ]);
 
 export const state = {
@@ -39,6 +40,7 @@ export const state = {
   alwaysRespondChannels: {},
   channelWideChatHistory: {},
   blacklistedUsers: {},
+  userSessions: {},
 };
 
 export const chatHistoryLock = new Mutex();
@@ -60,6 +62,7 @@ const FILE_PATHS = Object.freeze({
   alwaysRespondChannels: path.join(CONFIG_DIR, 'always_respond_channels.json'),
   channelWideChatHistory: path.join(CONFIG_DIR, 'channel_wide_chathistory.json'),
   blacklistedUsers: path.join(CONFIG_DIR, 'blacklisted_users.json'),
+  userSessions: path.join(CONFIG_DIR, 'user_sessions.json'),
 });
 
 let isSaving = false;
@@ -521,4 +524,62 @@ export function removeBlacklistedUser(guildId, userId) {
 
   state.blacklistedUsers[guildId].splice(index, 1);
   return true;
+}
+export function getUserSessions(userId) {
+  if (!state.userSessions[userId]) {
+    state.userSessions[userId] = {
+      activeSessionId: 'default',
+      sessions: {
+        'default': 'Default Session'
+      }
+    };
+  }
+  return state.userSessions[userId];
+}
+
+export function setActiveSession(userId, sessionId) {
+  const userState = getUserSessions(userId);
+  if (userState.sessions[sessionId]) {
+    userState.activeSessionId = sessionId;
+    saveStateToFile();
+    return true;
+  }
+  return false;
+}
+
+export function createSession(userId, sessionId, sessionName) {
+  const userState = getUserSessions(userId);
+  if (!userState.sessions[sessionId]) {
+    userState.sessions[sessionId] = sessionName;
+    saveStateToFile();
+    return true;
+  }
+  return false;
+}
+
+export function renameSession(userId, sessionId, newName) {
+  const userState = getUserSessions(userId);
+  if (userState.sessions[sessionId]) {
+    userState.sessions[sessionId] = newName;
+    saveStateToFile();
+    return true;
+  }
+  return false;
+}
+
+export function deleteSession(userId, sessionId) {
+  const userState = getUserSessions(userId);
+  if (userState.sessions[sessionId] && sessionId !== 'default') {
+    delete userState.sessions[sessionId];
+    if (userState.activeSessionId === sessionId) {
+      userState.activeSessionId = 'default';
+    }
+    saveStateToFile();
+    // Also delete history
+    delete state.chatHistories[`${userId}_${sessionId}`];
+    deletedChatHistories.add(`${userId}_${sessionId}`);
+    saveStateToFileImmediate();
+    return true;
+  }
+  return false;
 }

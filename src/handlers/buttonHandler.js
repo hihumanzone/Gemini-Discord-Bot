@@ -1,3 +1,4 @@
+import { getUserSessions } from "../state/botState.js";
 /**
  * Button interaction handlers.
  * Each function handles a specific button customId or prefix.
@@ -97,7 +98,11 @@ async function handleClearMemoryButton(interaction) {
     return replyFeatureDisabled(interaction, disabledReason);
   }
 
-  clearChatHistoryFor(interaction.user.id);
+  const userId = interaction.user.id;
+  const userSessionId = getUserSessions(userId).activeSessionId;
+  const targetId = userSessionId === 'default' ? userId : `${userId}_${userSessionId}`;
+  
+  clearChatHistoryFor(targetId);
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
