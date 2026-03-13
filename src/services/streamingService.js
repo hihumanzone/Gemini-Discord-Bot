@@ -367,9 +367,10 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
   let urlContextMetadata = null;
   let bufferedText = '';
   let updateTimeout = null;
+  let isLargeResponse = false;
 
   const flushBufferedText = () => {
-    if (wasStopped()) {
+    if (wasStopped() || finalized || isLargeResponse) {
       return;
     }
 
@@ -392,7 +393,7 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
       try {
         const stream = await chat.sendMessageStream({ message: parts });
         let finalResponse = '';
-        let isLargeResponse = false;
+        isLargeResponse = false; // reset for each attempt
         const inlineDataFiles = [];
 
         for await (const chunk of stream) {
@@ -446,6 +447,10 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
           if (finalResponse.length > maxCharacterLimit) {
             if (!isLargeResponse) {
               isLargeResponse = true;
+              if (updateTimeout) {
+                clearTimeout(updateTimeout);
+                updateTimeout = null;
+              }
               await botMessage.edit(applyEmbedFallback(originalMessage.channel, {
                 embeds: [createEmbed({
                   color: 0xFFFF00,
@@ -465,6 +470,11 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
           inlineDataFiles[i].name = sandboxFilenames[i] || null;
         }
         finalResponse = cleanSandboxLinks(finalResponse);
+
+        if (updateTimeout) {
+          clearTimeout(updateTimeout);
+          updateTimeout = null;
+        }
 
         if (!isLargeResponse) {
           if (responsePreference === 'Embedded') {
