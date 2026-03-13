@@ -1,143 +1,145 @@
 # Gemini Discord Bot
 
-A Discord bot leveraging Google Gemini for advanced conversation, content understanding, image/video/audio recognition, and more.
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-3C873A?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Discord.js](https://img.shields.io/badge/discord.js-14.25.1-5865F2?logo=discord&logoColor=white)](https://discord.js.org/)
+[![Gemini API](https://img.shields.io/badge/Google-Gemini%20API-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 
----
+AI Discord bot powered by Google Gemini with streaming responses, multimodal input, session-based memory, and rich settings UI.
 
-## Features
+## What It Does
 
-- **Conversational AI** powered by Google Gemini (Gemini Flash)
-- **Image/video/audio and file recognition** (supports images, videos, audios, PDFs, docx, pptx, and code/text files)
-- **Custom personalities per user, channel, or server**
-- **Server and channel-wide chat history** options
-- **Admin controls** for blocking/unblocking users
-- **Downloadable conversation/message history**
-- **Multiple AI tools:** Google Search, code execution, and function calling
-- **Status monitoring** (RAM, CPU, and reset timer)
-- **Slash command and button-based UI**
+- Chats in DMs or in servers (mention, always-respond mode, or personal active mode)
+- Understands text, images, videos, audio, PDFs, and office/code files
+- Supports per-user sessions plus optional channel-wide or server-wide shared memory
+- Lets users toggle Gemini tools (Google Search, URL Context, Code Execution)
+- Provides admin controls for moderation and server/channel behavior
+- Exports message content and full conversation history as shareable links
 
----
+## Quick Start
 
-## Getting Started
+### 1) Requirements
 
-### Prerequisites
+- Node.js 20+
+- Discord bot token: https://discord.com/developers/applications
+- Google Gemini API key: https://aistudio.google.com/app/apikey
 
-- Node.js v20+ recommended
-- Discord bot token ([create here](https://discord.com/developers/applications))
-- Google Gemini API key ([get one here](https://aistudio.google.com/app/apikey))
+### 2) Install
 
-### Setup
+```bash
+git clone https://github.com/hihumanzone/Gemini-Discord-Bot.git
+cd Gemini-Discord-Bot
+npm install
+```
 
-1. **Clone the repo:**
-    ```bash
-    git clone https://github.com/hihumanzone/Gemini-Discord-Bot.git
-    cd Gemini-Discord-Bot
-    ```
+### 3) Configure Environment
 
-2. **Install dependencies:**
-    ```bash
-    npm install
-    ```
+Create a `.env` file:
 
-3. **Configure environment variables:**
-    - Copy `example.env` to `.env`
-    - Fill in your Discord and Google API tokens:
-      ```
-      DISCORD_BOT_TOKEN=your_discord_bot_token
-      GOOGLE_API_KEY=your_google_api_key
-      ```
+```env
+DISCORD_BOT_TOKEN=your_discord_bot_token
+GOOGLE_API_KEY=your_google_api_key
+```
 
-4. **Start the bot:**
-    ```bash
-    npm start
-    ```
+### 4) Run
 
----
+```bash
+npm start
+```
 
-## Usage
+## Discord Bot Setup Checklist
 
-### How to Send Messages to the Bot
+Enable these intents in the Discord Developer Portal:
 
-There are several ways to interact with the Gemini bot:
+- Guilds
+- Guild Messages
+- Message Content
+- Direct Messages
 
-1. **Direct Messages (DMs)**
-   - Open a DM with the bot and send any message
-   - The bot will respond with Gemini AI responses
+Recommended bot permissions:
 
-2. **Mention the Bot in a Channel**
-   - In any server channel, mention the bot (@Gemini-Discord-Bot) and send your message
-   - The bot will respond in the same channel
+- Send Messages
+- Embed Links
+- Attach Files
+- Use Slash Commands
+- Manage Messages
 
-3. **Enable "Always Respond" Mode**
-   - Open `/channel_settings` in a channel
-   - Turn on `Always Respond`
-   - The bot will respond to every message posted in that channel (by any user)
-   - Turn it off in the same menu to disable this mode
+## Commands
 
-4. **Personal Active Mode**
-   - Use `/settings` to configure personal preferences
-   - You can enable your messages to trigger bot responses in specific channels
+| Command | Who can use it | Purpose |
+|---|---|---|
+| `/settings` | Everyone | Open personal control center |
+| `/clear_memory` | Everyone | Clear active session memory |
+| `/status` | Everyone | Show CPU/RAM and reset timer |
+| `/channel_settings` | Admin | Configure channel behavior |
+| `/server_settings` | Admin | Configure server-wide behavior |
+| `/block user:@user` | Admin | Block a user in this server |
+| `/unblock user:@user` | Admin | Remove user block |
 
-### Supported Features
+Slash commands are auto-registered when the bot starts.
 
-- **File/Media Support**: Upload supported files (images, videos, audio, PDFs, docx, pptx, code files) along with your message for the bot to analyze
-- **Custom Personalities**: Use `/settings` to set custom instruction prompts for personalized responses
-- **Channel-wide Chat History**: Use `/channel_settings` to enable persistent conversation history in a channel
-- **Conversation Memory**: The bot remembers your conversation history within a session
+## How Memory Works
 
-### Available Slash Commands
+- **User sessions**: each user can maintain multiple independent conversations.
+- **Channel-wide history**: one shared memory per channel.
+- **Server-wide history**: one shared memory for the whole server.
+- If shared history is enabled (channel/server), it overrides personal session history in that scope.
 
-- `/settings` – Configure personal or channel preferences
-- `/channel_settings` – Channel-wide admin controls for the current channel (admins only)
-- `/server_settings` – Server-wide admin controls (admins only)
-- `/clear_memory` – Clear your personal conversation history
-- `/block user:@user` – Prevent a user from using the bot (admins only)
-- `/unblock user:@user` – Remove a user from the block list (admins only)
-- `/status` – Show system status (RAM, CPU, reset timer)
+## Screenshots
 
----
+### Settings UI
 
-## Customization
+![Control Center](Screenshots/settings/settings-control-center.png)
+![Session Manager](Screenshots/settings/settings-session-manager.png)
+![Server and Channel Settings](Screenshots/settings/settings-server-and-channel-panels.png)
+![Custom Personality Modal](Screenshots/settings/settings-custom-personality-modal.png)
 
-- Modify `config.js` to change default personalities, activities, colors, and feature toggles.
-- Persistent data (chat history, settings, blacklists, etc.) is stored in the `config` directory.
+### Chat and Responses
+
+![Basic Mention Reply](Screenshots/chat/chat-basic-mention-reply.png)
+![Custom Personality Reply](Screenshots/chat/chat-custom-personality-reply.png)
+
+### Tooling and Grounded Responses
+
+![Code Execution Prompt and Output Code](Screenshots/tools/tools-code-execution-prompt-and-code.png)
+![Code Execution Generated Files](Screenshots/tools/tools-code-execution-generated-files.png)
+![Google Search Grounding Part 1](Screenshots/chat/chat-google-search-grounding-part-1.png)
+![Google Search Grounding Part 2](Screenshots/chat/chat-google-search-grounding-part-2.png)
+
+### Downloads and Sharing
+
+![Content Sent Confirmation](Screenshots/downloads/downloads-content-sent-confirmation.png)
+![Message Content Download Link](Screenshots/downloads/downloads-message-content-link.png)
+![Session Conversation Download Link](Screenshots/downloads/downloads-session-conversation-link.png)
+
+## Configuration
+
+Core defaults live in `config.js`:
+
+- Model: `gemini-flash-lite-latest`
+- Max generation attempts: `3`
+- Default response mode: `Embedded`
+- Tool defaults: Google Search = on, URL Context = on, Code Execution = off
 
 ## Project Structure
 
-- `index.js` bootstraps the bot.
-- `botManager.js` is a thin compatibility facade that re-exports runtime and state services.
-- `src/bootstrap.js` registers Discord lifecycle handlers.
-- `src/core/` contains runtime initialization and shared process-level resources.
-- `src/handlers/` contains message and interaction routing.
-- `src/services/` contains attachment parsing and Gemini conversation orchestration.
-- `src/state/` contains persisted bot state, history locking, and storage lifecycle logic.
-- `src/ui/` contains reusable Discord button and settings views.
-- `src/utils/` contains shared Discord helper utilities.
+```text
+src/
+  core/        runtime setup and shared paths
+  handlers/    message and interaction routing
+  services/    Gemini orchestration, attachments, streaming, sessions
+  state/       JSON persistence, history lifecycle, locking
+  ui/          Discord settings views and action buttons
+  utils/       Discord and error formatting helpers
+```
 
-## Runtime Notes
-
-- Settings and moderation changes are persisted immediately instead of waiting for a later chat response.
-- Attachment parsing is split between text extraction and media uploads to keep message handling predictable.
-- Default server settings are cloned per guild, preventing cross-server state leakage.
-- Chat-history persistence now removes stale JSON files when histories are cleared or channel/server history modes are disabled.
-- Conversation context resolution is isolated from streaming logic, making message handling easier to extend without touching transport code.
-
----
-
-## Admin & Security
-
-- Only server admins can use admin commands (block, unblock, server settings).
-- Blocked users cannot interact with the bot.
-
----
+Runtime data is stored in `config/` and temporary files in `temp/`.
 
 ## Notes
 
-- The bot stores chat history and settings locally. For production use, consider using persistent cloud storage.
-- **Do not commit your `.env` with secrets.**
-
----
+- Keep `.env` private and never commit secrets.
+- Conversation/state is persisted locally as JSON files.
 
 ## License
 
-[MIT](LICENSE.md)
+MIT ([LICENSE.md](LICENSE.md))
