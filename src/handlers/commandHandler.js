@@ -1,4 +1,3 @@
-import { getUserSessions, setActiveSession, createSession, renameSession, deleteSession } from "../state/botState.js";
 /**
  * Slash command interaction handlers.
  * Each exported function corresponds to a registered slash command.
@@ -15,6 +14,7 @@ import {
   saveStateToFile,
   state,
 } from '../state/botState.js';
+import { getActiveSessionDetails } from '../services/sessionService.js';
 import {
   EMBED_COLOR,
   STATUS_LIFETIME_MS,
@@ -46,17 +46,15 @@ async function handleClearMemoryCommand(interaction) {
     return replyFeatureDisabled(interaction, disabledReason);
   }
 
-  const userId = interaction.user.id;
-  const userSessionId = getUserSessions(userId).activeSessionId;
-  const targetId = userSessionId === 'default' ? userId : `${userId}_${userSessionId}`;
-  
-  clearChatHistoryFor(targetId);
+  const activeSession = getActiveSessionDetails(interaction.user.id);
+
+  clearChatHistoryFor(activeSession.historyId);
   await saveStateToFile();
 
   return replyWithEmbed(interaction, {
     color: 0x00FF00,
     title: 'Chat History Cleared',
-    description: 'Chat history cleared!',
+    description: `Cleared history for session **${activeSession.sessionName}** (ID: ${activeSession.sessionId}).`,
   });
 }
 
@@ -182,7 +180,6 @@ export async function handleCommandInteraction(interaction) {
     unblock: handleWhitelistCommand,
     block: handleBlacklistCommand,
     clear_memory: handleClearMemoryCommand,
-    session: handleSessionCommand,
     settings: showSettings,
     server_settings: async (cmd) => {
       if (!(await requireGuildAdmin(cmd))) {
@@ -208,60 +205,3 @@ export async function handleCommandInteraction(interaction) {
   console.warn(`Unknown command: ${interaction.commandName}`);
 }
 
-
-async function handleSessionCommand(interaction) {
-  const userId = interaction.user.id;
-  const subcommand = interaction.options.getSubcommand();
-
-  if (subcommand === 'list') {
-    const userState = getUserSessions(userId);
-    let sessionList = 'Your Sessions:\n';
-    for (const [id, name] of Object.entries(userState.sessions)) {
-      const activeMark = id === userState.activeSessionId ? ' [ACTIVE]' : '';
-      sessionList += `- **${name}** (ID: ${id})${activeMark}\n`;
-    }
-    return interaction.reply({ content: sessionList, flags: 64 }); // ephemeral
-  }
-
-  if (subcommand === 'switch') {
-    const id = interaction.options.getString('id');
-    const success = setActiveSession(userId, id);
-    if (success) {
-      return interaction.reply({ content: `Switched to session: **${id}**.`, flags: 64 });
-    }
-    return interaction.reply({ content: `Session **${id}** not found.`, flags: 64 });
-  }
-
-  if (subcommand === 'create') {
-    const name = interaction.options.getString('name');
-    const id = name.toLowerCase().replace(/[^a-z0-9_]/g, '_'); // Generate ID
-    const success = createSession(userId, id, name);
-    if (success) {
-      setActiveSession(userId, id);
-      return interaction.reply({ content: `Created and switched to new session: **${name}** (ID: ${id}).`, flags: 64 });
-    }
-    return interaction.reply({ content: `Session with ID **${id}** already exists.`, flags: 64 });
-  }
-
-  if (subcommand === 'rename') {
-    const id = interaction.options.getString('id');
-    const newName = interaction.options.getString('new_name');
-    const success = renameSession(userId, id, newName);
-    if (success) {
-      return interaction.reply({ content: `Session **${id}** renamed to **${newName}**.`, flags: 64 });
-    }
-    return interaction.reply({ content: `Session **${id}** not found.`, flags: 64 });
-  }
-
-  if (subcommand === 'delete') {
-    const id = interaction.options.getString('id');
-    if (id === 'default') {
-      return interaction.reply({ content: `Cannot delete the default session.`, flags: 64 });
-    }
-    const success = deleteSession(userId, id);
-    if (success) {
-      return interaction.reply({ content: `Session **${id}** deleted.`, flags: 64 });
-    }
-    return interaction.reply({ content: `Session **${id}** not found.`, flags: 64 });
-  }
-}

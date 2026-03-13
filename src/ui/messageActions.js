@@ -1,6 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
 
 const STOP_GENERATING_BUTTON_ID = 'stopGenerating';
+const MAX_CUSTOM_ID_LENGTH = 100;
 
 function cloneActionRows(message, { excludeCustomIds = [] } = {}) {
   const excludedIds = new Set(excludeCustomIds);
@@ -102,11 +103,19 @@ export async function addDownloadButton(message) {
   );
 }
 
-export async function addDeleteButton(message, messageId) {
+export async function addDeleteButton(message, messageId, historyId = null) {
+  let payload = historyId
+    ? `${historyId}::${messageId}`
+    : messageId;
+
+  if (`delete_message-${payload}`.length > MAX_CUSTOM_ID_LENGTH) {
+    payload = messageId;
+  }
+
   return appendButton(
     message,
     new ButtonBuilder()
-      .setCustomId(`delete_message-${messageId}`)
+      .setCustomId(`delete_message-${payload}`)
       .setLabel('Delete')
       .setEmoji('🗑️')
       .setStyle(ButtonStyle.Secondary),

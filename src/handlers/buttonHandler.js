@@ -1,4 +1,3 @@
-import { getUserSessions } from "../state/botState.js";
 /**
  * Button interaction handlers.
  * Each function handles a specific button customId or prefix.
@@ -8,6 +7,7 @@ import { ChannelType } from 'discord.js';
 
 import {
   clearChatHistoryFor,
+  deleteSession,
   clearCustomInstruction,
   deleteChatHistoryEntry,
   getChannelSettings,
@@ -24,14 +24,23 @@ import {
   toggleUserResponseFormat,
 } from '../state/botState.js';
 import { serializeConversationHistory } from '../services/textSharingService.js';
+import {
+  getActiveSessionDetails,
+  getSessionDetails,
+  parseDeleteMessagePayload,
+  resolveDeleteHistoryId,
+} from '../services/sessionService.js';
 import { addSettingsButton } from '../ui/messageActions.js';
 import {
   buildChannelPersonalityModal,
   buildCustomPersonalityModal,
+  buildSessionCreateModal,
+  buildSessionRenameModal,
   buildServerPersonalityModal,
   showSettings,
   updateChannelSettingsView,
   updateGeneralSettingsView,
+  updateSessionSettingsView,
   updateServerSettingsView,
 } from '../ui/settingsViews.js';
 import {
@@ -52,8 +61,18 @@ import {
 
 async function handleDeleteMessageInteraction(interaction, messageIdStr) {
   const userId = interaction.user.id;
+  const { historyRef, messageIds } = parseDeleteMessagePayload(messageIdStr);
+  const targetHistoryId = resolveDeleteHistoryId(userId, historyRef);
+
   const channel = interaction.channel;
-  const messageIds = messageIdStr.split(',');
+  if (messageIds.length === 0) {
+    return replyWithEmbed(interaction, {
+      color: 0xFF0000,
+      title: 'Invalid Message Link',
+      description: 'This delete button payload is invalid or expired.',
+    });
+  }
+
   const primaryId = messageIds[0];
   const targetMessage = channel ? await channel.messages.fetch(primaryId).catch(() => null) : null;
 
@@ -66,7 +85,7 @@ async function handleDeleteMessageInteraction(interaction, messageIdStr) {
     }
   };
 
-  if (deleteChatHistoryEntry(userId, primaryId)) {
+  if (deleteChatHistoryEntry(targetHistoryId, primaryId)) {
     await persistStateChange();
     await performDeletion();
     return;
@@ -98,17 +117,15 @@ async function handleClearMemoryButton(interaction) {
     return replyFeatureDisabled(interaction, disabledReason);
   }
 
-  const userId = interaction.user.id;
-  const userSessionId = getUserSessions(userId).activeSessionId;
-  const targetId = userSessionId === 'default' ? userId : `${userId}_${userSessionId}`;
-  
-  clearChatHistoryFor(targetId);
+  const activeSession = getActiveSessionDetails(interaction.user.id);
+
+  clearChatHistoryFor(activeSession.historyId);
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
     color: 0x00FF00,
     title: 'Chat History Cleared',
-    description: 'Chat history cleared!',
+    description: `Cleared history for session **${activeSession.sessionName}** (ID: ${activeSession.sessionId}).`,
   });
 }
 
@@ -175,23 +192,25 @@ async function downloadMessage(interaction) {
 }
 
 async function downloadConversation(interaction) {
-  const history = getHistory(interaction.user.id);
+  const activeSession = getActiveSessionDetails(interaction.user.id);
+  const history = getHistory(activeSession.historyId);
+
   if (!history.length) {
     return replyWithEmbed(interaction, {
       color: 0xFF0000,
       title: 'No History Found',
-      description: 'No conversation history found.',
+      description: `No conversation history found for session **${activeSession.sessionName}** (ID: ${activeSession.sessionId}).`,
     });
   }
 
   return sendSavedContentToUser(interaction, {
     text: serializeConversationHistory(history),
-    fileBaseName: 'conversation_history',
-    title: 'Message Content Downloaded',
-    description: 'Here is the content of the conversation.',
+    fileBaseName: `conversation_history_${activeSession.sessionId}`,
+    title: 'Session Conversation Downloaded',
+    description: `Here is the conversation from session **${activeSession.sessionName}** (ID: ${activeSession.sessionId}).`,
     successTitle: 'Content Sent',
-    successDescription: 'The conversation content has been sent to your DMs.',
-    failureDescription: 'Failed to send the conversation content to your DMs. The saved content is attached below instead.',
+    successDescription: `Session **${activeSession.sessionName}** (ID: ${activeSession.sessionId}) conversation has been sent to your DMs.`,
+    failureDescription: `Failed to send the session conversation to your DMs. Session: **${activeSession.sessionName}** (ID: ${activeSession.sessionId}).`,
   });
 }
 
@@ -217,6 +236,124 @@ async function toggleUserGeminiTool(interaction) {
   setUserGeminiToolPreference(interaction.user.id, toolName, !currentPreferences[toolName]);
   await persistStateChange();
   return updateGeneralSettingsView(interaction);
+}
+
+async function showSessionManager(interaction) {
+  return updateSessionSettingsView(interaction);
+}
+
+async function showCreateSessionModal(interaction) {
+  return interaction.showModal(buildSessionCreateModal());
+}
+
+async function showRenameSessionModal(interaction) {
+  const prefix = 'open-rename-session-modal-';
+  const sessionId = interaction.customId.slice(prefix.length);
+
+  if (sessionId === 'default') {
+    return replyWithEmbed(interaction, {
+      color: 0xFFA500,
+      title: 'Rename Not Allowed',
+      description: 'The default session cannot be renamed.',
+    });
+  }
+
+  const details = getSessionDetails(interaction.user.id, sessionId);
+  const currentSessionName = details?.sessionName;
+
+  if (!currentSessionName) {
+    return replyWithEmbed(interaction, {
+      color: 0xFF0000,
+      title: 'Session Not Found',
+      description: `No session with ID **${sessionId}** was found.`,
+    });
+  }
+
+  return interaction.showModal(buildSessionRenameModal(sessionId, currentSessionName));
+}
+
+function buildSessionConversationPayload(history, sessionDetails, sessionId) {
+  return {
+    text: serializeConversationHistory(history),
+    fileBaseName: `conversation_history_${sessionId}`,
+    title: 'Session Conversation Downloaded',
+    description: `Here is the conversation from session **${sessionDetails.sessionName}** (ID: ${sessionId}).`,
+    successTitle: 'Content Sent',
+    successDescription: `Session **${sessionDetails.sessionName}** (ID: ${sessionId}) conversation has been sent to your DMs.`,
+    failureDescription: `Failed to send the session conversation to your DMs. Session: **${sessionDetails.sessionName}** (ID: ${sessionId}).`,
+  };
+}
+
+async function handleDeleteSession(interaction) {
+  const prefix = 'delete-session-';
+  const sessionId = interaction.customId.slice(prefix.length);
+
+  if (sessionId === 'default') {
+    return replyWithEmbed(interaction, {
+      color: 0xFFA500,
+      title: 'Cannot Delete Default',
+      description: 'The default session cannot be deleted.',
+    });
+  }
+
+  const deleted = deleteSession(interaction.user.id, sessionId);
+  if (!deleted) {
+    return replyWithEmbed(interaction, {
+      color: 0xFF0000,
+      title: 'Session Not Found',
+      description: `No session with ID **${sessionId}** was found.`,
+    });
+  }
+
+  return updateSessionSettingsView(interaction, 'default', `Deleted session ID ${sessionId}.`);
+}
+
+async function handleSessionConversationDownload(interaction) {
+  const prefix = 'session-download-conversation-';
+  const sessionId = interaction.customId.slice(prefix.length);
+  const details = getSessionDetails(interaction.user.id, sessionId);
+
+  if (!details) {
+    return replyWithEmbed(interaction, {
+      color: 0xFF0000,
+      title: 'Session Not Found',
+      description: `No session with ID **${sessionId}** was found.`,
+    });
+  }
+
+  const history = getHistory(details.historyId);
+  if (!history.length) {
+    return replyWithEmbed(interaction, {
+      color: 0xFF0000,
+      title: 'No History Found',
+      description: `No conversation history found for session **${details.sessionName}** (ID: ${sessionId}).`,
+    });
+  }
+
+  return sendSavedContentToUser(interaction, buildSessionConversationPayload(history, details, sessionId));
+}
+
+async function handleSessionHistoryClear(interaction) {
+  const prefix = 'session-clear-history-';
+  const sessionId = interaction.customId.slice(prefix.length);
+  const details = getSessionDetails(interaction.user.id, sessionId);
+
+  if (!details) {
+    return replyWithEmbed(interaction, {
+      color: 0xFF0000,
+      title: 'Session Not Found',
+      description: `No session with ID **${sessionId}** was found.`,
+    });
+  }
+
+  clearChatHistoryFor(details.historyId);
+  await persistStateChange();
+
+  return updateSessionSettingsView(
+    interaction,
+    sessionId,
+    `Cleared history for **${details.sessionName}** (ID: ${sessionId}).`,
+  );
 }
 
 // --- Server admin button handlers ---
@@ -315,7 +452,7 @@ async function downloadServerConversation(interaction) {
   return sendSavedContentToUser(interaction, {
     text: serializeConversationHistory(history),
     fileBaseName: 'server_conversation_history',
-    title: 'Message Content Downloaded',
+    title: 'Server Conversation Downloaded',
     description: 'Here is the content of the conversation.',
     successTitle: 'Content Sent',
     successDescription: 'The conversation content has been sent to your DMs.',
@@ -405,7 +542,7 @@ async function downloadChannelConversation(interaction) {
   return sendSavedContentToUser(interaction, {
     text: serializeConversationHistory(history),
     fileBaseName: 'channel_conversation_history',
-    title: 'Message Content Downloaded',
+    title: 'Channel Conversation Downloaded',
     description: 'Here is the content of the channel conversation.',
     successTitle: 'Content Sent',
     successDescription: 'The conversation content has been sent to your DMs.',
@@ -448,6 +585,12 @@ export async function handleButtonInteraction(interaction) {
     'remove-personality': handleRemovePersonalityCommand,
     'toggle-response-mode': toggleUserResponsePreference,
     'toggle-gemini-tool-': toggleUserGeminiTool,
+    'session-settings': showSessionManager,
+    'open-create-session-modal': showCreateSessionModal,
+    'open-rename-session-modal-': showRenameSessionModal,
+    'session-download-conversation-': handleSessionConversationDownload,
+    'session-clear-history-': handleSessionHistoryClear,
+    'delete-session-': handleDeleteSession,
     'download-conversation': downloadConversation,
     download_message: downloadMessage,
     'general-settings': updateGeneralSettingsView,

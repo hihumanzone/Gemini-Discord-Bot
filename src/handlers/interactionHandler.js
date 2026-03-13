@@ -6,6 +6,7 @@
 import { handleCommandInteraction } from './commandHandler.js';
 import { handleButtonInteraction } from './buttonHandler.js';
 import { handleModalSubmit } from './modalHandler.js';
+import { handleSelectMenuInteraction } from './selectMenuHandler.js';
 
 export async function handleInteraction(interaction) {
   try {
@@ -16,6 +17,11 @@ export async function handleInteraction(interaction) {
 
     if (interaction.isButton()) {
       await handleButtonInteraction(interaction);
+      return;
+    }
+
+    if (interaction.isStringSelectMenu()) {
+      await handleSelectMenuInteraction(interaction);
       return;
     }
 

@@ -525,61 +525,150 @@ export function removeBlacklistedUser(guildId, userId) {
   state.blacklistedUsers[guildId].splice(index, 1);
   return true;
 }
-export function getUserSessions(userId) {
-  if (!state.userSessions[userId]) {
-    state.userSessions[userId] = {
-      activeSessionId: 'default',
-      sessions: {
-        'default': 'Default Session'
-      }
-    };
+
+const DEFAULT_SESSION_ID = 'default';
+const DEFAULT_SESSION_NAME = 'Default Session';
+const MAX_SESSION_NAME_LENGTH = 80;
+const SESSION_ID_PATTERN = /^[a-z0-9_-]{1,40}$/;
+
+function normalizeSessionName(name) {
+  return (name || '').trim().slice(0, MAX_SESSION_NAME_LENGTH);
+}
+
+function createDefaultSessionState() {
+  return {
+    activeSessionId: DEFAULT_SESSION_ID,
+    sessions: {
+      [DEFAULT_SESSION_ID]: { name: DEFAULT_SESSION_NAME },
+    },
+  };
+}
+
+function normalizeSessionEntry(entry) {
+  if (typeof entry === 'string' && entry.trim()) {
+    return { name: entry.trim() };
   }
+
+  if (entry && typeof entry === 'object' && typeof entry.name === 'string' && entry.name.trim()) {
+    return { name: entry.name.trim() };
+  }
+
+  return null;
+}
+
+function normalizeUserSessionState(userId) {
+  const existing = state.userSessions[userId];
+
+  if (!existing || typeof existing !== 'object') {
+    state.userSessions[userId] = createDefaultSessionState();
+    return state.userSessions[userId];
+  }
+
+  const normalizedSessions = {};
+  if (existing.sessions && typeof existing.sessions === 'object') {
+    for (const [sessionId, entry] of Object.entries(existing.sessions)) {
+      if (!sessionId || typeof sessionId !== 'string') {
+        continue;
+      }
+
+      const normalized = normalizeSessionEntry(entry);
+      if (normalized) {
+        normalizedSessions[sessionId] = normalized;
+      }
+    }
+  }
+
+  if (!normalizedSessions[DEFAULT_SESSION_ID]) {
+    normalizedSessions[DEFAULT_SESSION_ID] = { name: DEFAULT_SESSION_NAME };
+  }
+
+  const activeSessionId =
+    typeof existing.activeSessionId === 'string' && normalizedSessions[existing.activeSessionId]
+      ? existing.activeSessionId
+      : DEFAULT_SESSION_ID;
+
+  state.userSessions[userId] = {
+    activeSessionId,
+    sessions: normalizedSessions,
+  };
+
   return state.userSessions[userId];
+}
+
+export function getUserSessions(userId) {
+  return normalizeUserSessionState(userId);
+}
+
+export function getUserSessionHistoryId(userId, sessionId) {
+  return sessionId === DEFAULT_SESSION_ID ? userId : `${userId}_${sessionId}`;
+}
+
+export function getActiveSessionHistoryId(userId) {
+  const userState = getUserSessions(userId);
+  return getUserSessionHistoryId(userId, userState.activeSessionId);
 }
 
 export function setActiveSession(userId, sessionId) {
   const userState = getUserSessions(userId);
-  if (userState.sessions[sessionId]) {
-    userState.activeSessionId = sessionId;
-    saveStateToFile();
-    return true;
+
+  if (!userState.sessions[sessionId]) {
+    return false;
   }
-  return false;
+
+  userState.activeSessionId = sessionId;
+  saveStateToFile();
+  return true;
 }
 
 export function createSession(userId, sessionId, sessionName) {
   const userState = getUserSessions(userId);
-  if (!userState.sessions[sessionId]) {
-    userState.sessions[sessionId] = sessionName;
-    saveStateToFile();
-    return true;
+  const normalizedName = normalizeSessionName(sessionName);
+
+  if (!SESSION_ID_PATTERN.test(sessionId) || !normalizedName) {
+    return false;
   }
-  return false;
+
+  if (userState.sessions[sessionId]) {
+    return false;
+  }
+
+  userState.sessions[sessionId] = { name: normalizedName };
+  saveStateToFile();
+  return true;
 }
 
 export function renameSession(userId, sessionId, newName) {
   const userState = getUserSessions(userId);
-  if (userState.sessions[sessionId]) {
-    userState.sessions[sessionId] = newName;
-    saveStateToFile();
-    return true;
+  const normalizedName = normalizeSessionName(newName);
+
+  if (!userState.sessions[sessionId] || sessionId === DEFAULT_SESSION_ID || !normalizedName) {
+    return false;
   }
-  return false;
+
+  userState.sessions[sessionId].name = normalizedName;
+  saveStateToFile();
+  return true;
 }
 
 export function deleteSession(userId, sessionId) {
-  const userState = getUserSessions(userId);
-  if (userState.sessions[sessionId] && sessionId !== 'default') {
-    delete userState.sessions[sessionId];
-    if (userState.activeSessionId === sessionId) {
-      userState.activeSessionId = 'default';
-    }
-    saveStateToFile();
-    // Also delete history
-    delete state.chatHistories[`${userId}_${sessionId}`];
-    deletedChatHistories.add(`${userId}_${sessionId}`);
-    saveStateToFileImmediate();
-    return true;
+  if (sessionId === DEFAULT_SESSION_ID) {
+    return false;
   }
-  return false;
+
+  const userState = getUserSessions(userId);
+  if (!userState.sessions[sessionId]) {
+    return false;
+  }
+
+  const historyId = getUserSessionHistoryId(userId, sessionId);
+
+  delete userState.sessions[sessionId];
+  if (userState.activeSessionId === sessionId) {
+    userState.activeSessionId = DEFAULT_SESSION_ID;
+  }
+
+  delete state.chatHistories[historyId];
+  deletedChatHistories.add(historyId);
+  saveStateToFile();
+  return true;
 }

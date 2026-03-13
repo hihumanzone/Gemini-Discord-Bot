@@ -1,9 +1,9 @@
 import config from '../../config.js';
 import { DEFAULT_PERSONALITY } from '../constants.js';
 import {
+  getActiveSessionHistoryId,
   getChannelSettings,
   getUserResponsePreference,
-  getUserSessions,
   state,
 } from '../state/botState.js';
 
@@ -127,9 +127,7 @@ export function resolveHistoryId(message) {
   const channelId = message.channel.id;
   const userId = message.author.id;
   const channelHistoryEnabled = getChannelSettings(channelId).channelWideChatHistory;
-  
-  const userSessionId = getUserSessions(userId).activeSessionId;
-  const userHistoryId = userSessionId === 'default' ? userId : `${userId}_${userSessionId}`;
+  const userHistoryId = getActiveSessionHistoryId(userId);
 
   if (!guildId) {
     return userHistoryId;

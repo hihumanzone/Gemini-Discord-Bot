@@ -101,7 +101,16 @@ export function buildButtonRows(buttonConfigs = []) {
   return rows;
 }
 
-export function buildTextModal({ modalId, title, inputId, label, placeholder, minLength = 10, maxLength = 4000 }) {
+export function buildTextModal({
+  modalId,
+  title,
+  inputId,
+  label,
+  placeholder,
+  value,
+  minLength = 10,
+  maxLength = 4000,
+}) {
   const input = new TextInputBuilder()
     .setCustomId(inputId)
     .setLabel(label)
@@ -109,6 +118,10 @@ export function buildTextModal({ modalId, title, inputId, label, placeholder, mi
     .setPlaceholder(placeholder)
     .setMinLength(minLength)
     .setMaxLength(maxLength);
+
+  if (typeof value === 'string') {
+    input.setValue(value);
+  }
 
   return new ModalBuilder()
     .setCustomId(modalId)

@@ -70,6 +70,23 @@ function cleanSandboxLinks(text) {
   return text.replace(SANDBOX_LINK_RE, '📎 $1');
 }
 
+function toDeleteHistoryRef(historyId, authorId) {
+  if (!historyId || !authorId) {
+    return null;
+  }
+
+  if (historyId === authorId) {
+    return 'u:default';
+  }
+
+  if (historyId.startsWith(`${authorId}_`)) {
+    const sessionId = historyId.slice(authorId.length + 1);
+    return sessionId ? `u:${sessionId}` : 'u:default';
+  }
+
+  return null;
+}
+
 // --- Embed & response builders ---
 
 function shouldShowGroundingMetadata(message) {
@@ -155,7 +172,7 @@ function buildResponseEmbed(botMessage, responseText, originalMessage, grounding
 
 // --- Text file fallback ---
 
-async function sendAsTextFile(text, originalMessage, relatedMessageId) {
+async function sendAsTextFile(text, originalMessage, relatedMessageId, historyId) {
   const filename = `response-${Date.now()}.txt`;
   const filePath = path.join(TEMP_DIR, filename);
 
@@ -167,7 +184,7 @@ async function sendAsTextFile(text, originalMessage, relatedMessageId) {
     });
 
     await addSettingsButton(response);
-    await addDeleteButton(response, relatedMessageId);
+    await addDeleteButton(response, relatedMessageId, historyId);
   } catch (error) {
     console.error('An error occurred while sending a text file response:', error);
   } finally {
@@ -247,15 +264,22 @@ async function persistConversation(historyId, messageId, parts, responseText) {
 
 // --- Post-stream response finalization ---
 
-async function handleLargeOrFinalResponse(botMessage, originalMessage, responseText, isLargeResponse, filesMessageId = null) {
+async function handleLargeOrFinalResponse(
+  botMessage,
+  originalMessage,
+  responseText,
+  isLargeResponse,
+  historyId,
+  filesMessageId = null,
+) {
   let updatedMessage = await clearMessageActionRows(botMessage);
   updatedMessage = await addSettingsButton(updatedMessage);
 
   const deleteTargetId = filesMessageId ? `${updatedMessage.id},${filesMessageId}` : updatedMessage.id;
 
   if (isLargeResponse) {
-    await sendAsTextFile(responseText, originalMessage, botMessage.id);
-    updatedMessage = await addDeleteButton(updatedMessage, deleteTargetId);
+    await sendAsTextFile(responseText, originalMessage, botMessage.id, historyId);
+    updatedMessage = await addDeleteButton(updatedMessage, deleteTargetId, historyId);
     return updatedMessage;
   }
 
@@ -268,13 +292,13 @@ async function handleLargeOrFinalResponse(botMessage, originalMessage, responseT
   }
 
   updatedMessage = await addDownloadButton(updatedMessage);
-  updatedMessage = await addDeleteButton(updatedMessage, deleteTargetId);
+  updatedMessage = await addDeleteButton(updatedMessage, deleteTargetId, historyId);
   return updatedMessage;
 }
 
 // --- Code-execution file delivery ---
 
-async function sendCodeExecutionFiles(inlineDataFiles, originalMessage) {
+async function sendCodeExecutionFiles(inlineDataFiles, originalMessage, historyId) {
   if (inlineDataFiles.length === 0) return null;
 
   const tempPaths = [];
@@ -307,7 +331,7 @@ async function sendCodeExecutionFiles(inlineDataFiles, originalMessage) {
     }));
 
     let updated = await addSettingsButton(filesMessage);
-    updated = await addDeleteButton(updated, updated.id);
+    updated = await addDeleteButton(updated, updated.id, historyId);
     return updated;
   } catch (error) {
     console.error('Failed to send code execution files:', error);
@@ -332,6 +356,8 @@ async function sendCodeExecutionFiles(inlineDataFiles, originalMessage) {
  * @param {import('discord.js').Message} options.originalMessage - The user's original message.
  */
 export async function streamModelResponse({ initialBotMessage, chat, parts, originalMessage }) {
+  const historyId = resolveHistoryId(originalMessage);
+  const deleteHistoryRef = toDeleteHistoryRef(historyId, originalMessage.author.id);
   const responsePreference = getResponsePreference(originalMessage);
   const maxCharacterLimit = responsePreference === 'Embedded' ? EMBED_RESPONSE_LIMIT : PLAIN_RESPONSE_LIMIT;
   let botMessage = await ensureInitialBotMessage(initialBotMessage, originalMessage);
@@ -450,11 +476,18 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
 
         let filesMessage = null;
         if (inlineDataFiles.length > 0) {
-          filesMessage = await sendCodeExecutionFiles(inlineDataFiles, originalMessage);
+          filesMessage = await sendCodeExecutionFiles(inlineDataFiles, originalMessage, deleteHistoryRef);
         }
 
-        botMessage = await handleLargeOrFinalResponse(botMessage, originalMessage, finalResponse, isLargeResponse, filesMessage?.id);
-        await persistConversation(resolveHistoryId(originalMessage), botMessage.id, parts, finalResponse);
+        botMessage = await handleLargeOrFinalResponse(
+          botMessage,
+          originalMessage,
+          finalResponse,
+          isLargeResponse,
+          deleteHistoryRef,
+          filesMessage?.id,
+        );
+        await persistConversation(historyId, botMessage.id, parts, finalResponse);
         finalized = true;
         collector.stop();
         return;
@@ -466,7 +499,7 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
           remainingAttempts: attempts,
           userId: originalMessage.author.id,
           channelId: originalMessage.channel?.id,
-          historyId: resolveHistoryId(originalMessage),
+          historyId,
         }), error);
 
         if (attempts <= 0 || wasStopped()) {
