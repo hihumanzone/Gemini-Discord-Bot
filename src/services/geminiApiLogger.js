@@ -9,13 +9,15 @@ const GEMINI_API_HOSTNAMES = new Set(['generativelanguage.googleapis.com']);
 const FETCH_PATCH_FLAG = Symbol.for('gemini-discord-bot.fetch-logger-installed');
 const sessionStartedAt = new Date();
 const sessionId = `${sessionStartedAt.toISOString().replace(/[.:]/g, '-')}-pid-${process.pid}`;
-const sessionLogFilePath = path.join(LOGS_DIR, `gemini-api-session-${sessionId}.jsonl`);
+const sessionLogFilePath = path.join(LOGS_DIR, `gemini-api-session-${sessionId}.json`);
 
 let writeChain = Promise.resolve();
 
 function ensureLogsDirectory() {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
-  fs.closeSync(fs.openSync(sessionLogFilePath, 'a'));
+  if (!fs.existsSync(sessionLogFilePath)) {
+    fs.writeFileSync(sessionLogFilePath, '[]\n');
+  }
 }
 
 function sanitizeUrl(url) {
@@ -125,6 +127,42 @@ function safeParseJson(rawText) {
   }
 }
 
+function parseRawContentToJson(content) {
+  if (typeof content !== 'string' || !content) {
+    return content;
+  }
+
+  const parsed = safeParseJson(content);
+  if (parsed !== null) {
+    return parsed;
+  }
+
+  if (content.includes('data:')) {
+    const lines = content.split('\n');
+    const chunks = [];
+    let hasData = false;
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const jsonStr = line.slice(6).trim();
+        if (jsonStr) {
+          const chunkParsed = safeParseJson(jsonStr);
+          if (chunkParsed !== null) {
+            chunks.push(chunkParsed);
+            hasData = true;
+          }
+        }
+      }
+    }
+
+    if (hasData) {
+      return chunks;
+    }
+  }
+
+  return content;
+}
+
 function buildMetadata(url, method) {
   const parsedUrl = sanitizeUrl(url);
 
@@ -149,7 +187,30 @@ function serializeError(error) {
 
 function queueLogEntry(entry) {
   writeChain = writeChain
-    .then(() => fsPromises.appendFile(sessionLogFilePath, `${JSON.stringify(entry)}\n`, 'utf8'))
+    .then(async () => {
+      try {
+        let content = await fsPromises.readFile(sessionLogFilePath, 'utf8');
+        content = content.trim();
+
+        const entryStr = JSON.stringify(entry, null, 2);
+        const indentedEntry = entryStr.split('\n').map((line) => `  ${line}`).join('\n');
+
+        if (content === '[]') {
+          content = `[\n${indentedEntry}\n]\n`;
+        } else if (content.endsWith(']')) {
+          content = content.slice(0, -1) + `,\n${indentedEntry}\n]\n`;
+        } else {
+          content = `[\n${indentedEntry}\n]\n`;
+        }
+
+        await fsPromises.writeFile(sessionLogFilePath, content, 'utf8');
+      } catch (err) {
+        // Fallback for missing file or unreadable
+        const entryStr = JSON.stringify(entry, null, 2);
+        const indentedEntry = entryStr.split('\n').map((line) => `  ${line}`).join('\n');
+        await fsPromises.writeFile(sessionLogFilePath, `[\n${indentedEntry}\n]\n`, 'utf8');
+      }
+    })
     .catch((error) => {
       console.error('Failed to write Gemini API log entry:', error);
     });
@@ -194,7 +255,7 @@ export function initializeGeminiApiLogging() {
         timestamp: startedAt.toISOString(),
         metadata: requestMetadata,
         requestPayload: safeParseJson(requestBody) ?? requestBody,
-        rawRequestBody: requestBody,
+        rawRequestBody: parseRawContentToJson(requestBody),
       });
 
       void response.clone().text()
@@ -207,7 +268,7 @@ export function initializeGeminiApiLogging() {
           status: response.status,
           statusText: response.statusText,
           ok: response.ok,
-          rawResponse,
+          rawResponse: parseRawContentToJson(rawResponse),
           responseJson: safeParseJson(rawResponse),
         }))
         .catch((error) => queueLogEntry({
@@ -233,7 +294,7 @@ export function initializeGeminiApiLogging() {
         durationMs: Date.now() - startedAtMs,
         metadata: requestMetadata,
         requestPayload: safeParseJson(requestBody) ?? requestBody,
-        rawRequestBody: requestBody,
+        rawRequestBody: parseRawContentToJson(requestBody),
         error: serializeError(error),
       });
 

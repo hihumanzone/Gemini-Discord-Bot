@@ -96,7 +96,7 @@ async function syncChatHistoriesToDisk() {
     if (!history) return Promise.resolve();
     return fs.writeFile(
       path.join(CHAT_HISTORIES_DIR, `${historyId}.json`),
-      JSON.stringify(history),
+      JSON.stringify(history, null, 2),
       'utf-8',
     );
   });
@@ -126,7 +126,7 @@ async function executeSave() {
 
     const serializableState = getSerializableState();
     const fileWrites = Object.entries(FILE_PATHS).map(([key, filePath]) =>
-      fs.writeFile(filePath, JSON.stringify(serializableState[key]), 'utf-8'),
+      fs.writeFile(filePath, JSON.stringify(serializableState[key], null, 2), 'utf-8'),
     );
 
     await Promise.all(fileWrites);
