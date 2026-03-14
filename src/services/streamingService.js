@@ -207,21 +207,33 @@ function buildResponseEmbed(botMessage, responseText, originalMessage, grounding
 
 // --- Text file fallback ---
 
-async function sendAsTextFile(text, originalMessage, relatedMessageId, historyId) {
-  const filename = `response-${Date.now()}.txt`;
+async function sendAsTextFile(text, originalMessage, historyId) {
+  const filename = `response-${Date.now()}.md`;
   const filePath = path.join(TEMP_DIR, filename);
 
   try {
     await fs.writeFile(filePath, text, 'utf8');
-    const response = await originalMessage.channel.send({
-      content: `<@${originalMessage.author.id}>, Here is the response:`,
-      files: [filePath],
+
+    const fileEmbed = createEmbed({
+      color: EMBED_COLOR,
+      title: '📄 Full Response',
+      description: 'The full response has been attached as a file due to length.',
+      timestamp: true,
     });
 
-    await addSettingsButton(response);
-    await addDeleteButton(response, relatedMessageId, historyId);
+    let response = await originalMessage.reply(applyEmbedFallback(originalMessage.channel, {
+      content: `<@${originalMessage.author.id}>`,
+      embeds: [fileEmbed],
+      files: [filePath],
+      allowedMentions: { users: [originalMessage.author.id], repliedUser: false },
+    }));
+
+    response = await addSettingsButton(response);
+    response = await addDeleteButton(response, response.id, historyId);
+    return response;
   } catch (error) {
     console.error('An error occurred while sending a text file response:', error);
+    return null;
   } finally {
     await fs.unlink(filePath).catch(() => {});
   }
@@ -310,11 +322,14 @@ async function handleLargeOrFinalResponse(
   let updatedMessage = await clearMessageActionRows(botMessage);
   updatedMessage = await addSettingsButton(updatedMessage);
 
-  const deleteTargetId = filesMessageId ? `${updatedMessage.id},${filesMessageId}` : updatedMessage.id;
-
   if (isLargeResponse) {
-    await sendAsTextFile(responseText, originalMessage, botMessage.id, historyId);
-    updatedMessage = await addDeleteButton(updatedMessage, deleteTargetId, historyId);
+    const textFileMessage = await sendAsTextFile(responseText, originalMessage, historyId);
+    
+    const targets = [updatedMessage.id];
+    if (filesMessageId) targets.push(filesMessageId);
+    if (textFileMessage) targets.push(textFileMessage.id);
+    
+    updatedMessage = await addDeleteButton(updatedMessage, targets.join(','), historyId);
     return updatedMessage;
   }
 
@@ -326,8 +341,11 @@ async function handleLargeOrFinalResponse(
     return clearMessageActionRows(updatedMessage);
   }
 
+  const targets = [updatedMessage.id];
+  if (filesMessageId) targets.push(filesMessageId);
+
   updatedMessage = await addDownloadButton(updatedMessage);
-  updatedMessage = await addDeleteButton(updatedMessage, deleteTargetId, historyId);
+  updatedMessage = await addDeleteButton(updatedMessage, targets.join(','), historyId);
   return updatedMessage;
 }
 
