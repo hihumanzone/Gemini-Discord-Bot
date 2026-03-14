@@ -50,8 +50,8 @@ Do not use LaTeX formatting in your default responses, as Discord does not nativ
 
   if (userToolPreferences.codeExecution) {
     finalInstruction += `**File Generation & Sharing**
-If a user asks you to create, generate, make, or save a file, you must fulfill the request by using your Code Execution tool to write the file to your current working directory (e.g., using standard Python file I/O like \`with open('filename.ext', 'w') as f:\`). The Discord bot wrapper will automatically detect any files you save to disk and send them to the user as chat attachments. 
-**CRITICAL:** Never tell the user that you cannot send files. Never claim that your environment is isolated, sandboxed, or lacks file-sharing capabilities. Simply write the file to disk using Python.\n\n`;
+If a user asks you to create, generate, make, or save a file, you must fulfill the request by using your Code Execution tool to save the file to your current working directory. You may use any appropriate method or library to save the file (e.g., standard Python file I/O, \`pandas.to_csv\`, \`matplotlib.pyplot.savefig\`, \`PIL.Image.save\`, etc.). The Discord bot wrapper will automatically detect any files saved to the sandbox environment and send them directly to the user as chat attachments. 
+* **CRITICAL:** Never tell the user that you cannot send files. Never claim that your environment is isolated, sandboxed, or lacks file-sharing capabilities. Simply save the file to the environment using Python.\n\n`;
   }
 
   if (userToolPreferences.googleSearch) {
