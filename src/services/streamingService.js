@@ -56,7 +56,7 @@ const MIME_TO_EXTENSION = {
   'video/mp4': '.mp4',
 };
 
-const SANDBOX_LINK_RE = /\[([^\]]+)\]\(sandbox:\/[^)]+\)/g;
+const SANDBOX_LINK_RE = /\[([^\]]+)\]\(sandbox:\/([^)]+)\)/g;
 
 function getFileExtension(mimeType) {
   return MIME_TO_EXTENSION[mimeType] || `.${mimeType.split('/').pop()}`;
@@ -64,7 +64,7 @@ function getFileExtension(mimeType) {
 
 function extractSandboxFilenames(text, extraExtensions = []) {
   if (!text) return [];
-  const sandboxLinks = [...text.matchAll(SANDBOX_LINK_RE)].map((m) => m[1]);
+  const sandboxLinks = [...text.matchAll(SANDBOX_LINK_RE)].map((m) => m[2]);
 
   const commonExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'wav', 'mp3', 'ogg', 'csv', 'txt', 'json', 'pdf', 'html', 'md', 'xml', 'js', 'py', 'sh', 'cpp', 'rs', 'java', 'c', 'cs'];
   const allExtensions = [...new Set([...commonExtensions, ...extraExtensions])];
@@ -81,11 +81,11 @@ function extractSandboxFilenames(text, extraExtensions = []) {
 }
 
 function cleanSandboxLinks(text, actualFileNames = []) {
-  return text.replace(SANDBOX_LINK_RE, (match, filename) => {
+  return text.replace(SANDBOX_LINK_RE, (match, display, filename) => {
     if (actualFileNames.includes(filename)) {
-      return `📎 **${filename}**`;
+      return display === filename ? `📎 **${filename}**` : `📎 **${display} (${filename})**`;
     }
-    return `~~${filename}~~ *(File not generated)*`;
+    return `~~${display}~~ *(File not generated)*`;
   });
 }
 
