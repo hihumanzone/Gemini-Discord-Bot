@@ -44,7 +44,20 @@ export function serializeConversationHistory(history) {
   return history
     .map((entry) => {
       const role = entry.role === 'user' ? '[User]' : '[Model]';
-      const content = entry.parts.map((part) => part.text).filter(Boolean).join('\n');
+      const content = entry.parts
+        .map((part) => {
+          if (part.text) return part.text;
+          if (part.executableCode) {
+            const lang = (part.executableCode.language || '').toLowerCase().replace('language_unspecified', '');
+            return `\n\`\`\`${lang}\n${part.executableCode.code}\n\`\`\`\n`;
+          }
+          if (part.codeExecutionResult && part.codeExecutionResult.output) {
+            return `\n**Output:**\n\`\`\`\n${part.codeExecutionResult.output}\`\`\`\n`;
+          }
+          return '';
+        })
+        .filter(Boolean)
+        .join('\n');
       return `${role}:\n${content}\n\n`;
     })
     .join('');

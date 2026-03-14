@@ -70,6 +70,14 @@ function cleanSandboxLinks(text) {
   return text.replace(SANDBOX_LINK_RE, '📎 $1');
 }
 
+function clonePart(part) {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(part);
+  }
+
+  return JSON.parse(JSON.stringify(part));
+}
+
 function toDeleteHistoryRef(historyId, authorId) {
   if (!historyId || !authorId) {
     return null;
@@ -89,21 +97,27 @@ function toDeleteHistoryRef(historyId, authorId) {
 
 // --- Embed & response builders ---
 
+function truncateString(str, length = 1024) {
+  if (!str) return '';
+  return str.length > length ? str.slice(0, length - 3) + '...' : str;
+}
+
 function shouldShowGroundingMetadata(message) {
   return getResponsePreference(message) === 'Embedded';
 }
 
 function addGroundingMetadata(embed, groundingMetadata) {
   if (groundingMetadata.webSearchQueries?.length) {
+    let value = groundingMetadata.webSearchQueries.map((query) => `• ${query}`).join('\n');
     embed.addFields({
       name: '🔍 Search Queries',
-      value: groundingMetadata.webSearchQueries.map((query) => `• ${query}`).join('\n'),
+      value: truncateString(value) || 'No search queries',
       inline: false,
     });
   }
 
   if (groundingMetadata.groundingChunks?.length) {
-    const chunks = groundingMetadata.groundingChunks
+    let chunks = groundingMetadata.groundingChunks
       .slice(0, 5)
       .map((chunk, index) => {
         if (chunk.web) {
@@ -115,7 +129,7 @@ function addGroundingMetadata(embed, groundingMetadata) {
 
     embed.addFields({
       name: '📚 Sources',
-      value: chunks,
+      value: truncateString(chunks) || 'No sources provided',
       inline: false,
     });
   }
@@ -126,14 +140,16 @@ function addUrlContextMetadata(embed, urlContextMetadata) {
     return;
   }
 
+  let value = urlContextMetadata.url_metadata
+    .map((urlData) => {
+      const emoji = urlData.url_retrieval_status === 'URL_RETRIEVAL_STATUS_SUCCESS' ? '✔️' : '❌';
+      return `${emoji} ${urlData.retrieved_url}`;
+    })
+    .join('\n');
+
   embed.addFields({
     name: '🔗 URL Context',
-    value: urlContextMetadata.url_metadata
-      .map((urlData) => {
-        const emoji = urlData.url_retrieval_status === 'URL_RETRIEVAL_STATUS_SUCCESS' ? '✔️' : '❌';
-        return `${emoji} ${urlData.retrieved_url}`;
-      })
-      .join('\n'),
+    value: truncateString(value) || 'No URL context',
     inline: false,
   });
 }
@@ -252,11 +268,11 @@ function createCollector(message, originalMessage) {
 
 // --- Conversation persistence ---
 
-async function persistConversation(historyId, messageId, parts, responseText) {
+async function persistConversation(historyId, messageId, parts, assistantParts) {
   await chatHistoryLock.runExclusive(async () => {
     updateChatHistory(historyId, [
       { role: 'user', content: parts },
-      { role: 'assistant', content: [{ text: responseText }] },
+      { role: 'assistant', content: assistantParts },
     ], messageId);
     await saveStateToFile();
   });
@@ -395,6 +411,7 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
         let finalResponse = '';
         isLargeResponse = false; // reset for each attempt
         const inlineDataFiles = [];
+        const rawAssistantParts = [];
 
         for await (const chunk of stream) {
           if (wasStopped()) {
@@ -405,6 +422,26 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
 
           const rawParts = chunk.candidates?.[0]?.content?.parts || [];
           for (const part of rawParts) {
+            // Keep the model's original part structure for future turns.
+            if (part.text !== undefined) {
+              const lastPart = rawAssistantParts[rawAssistantParts.length - 1];
+              if (lastPart && lastPart.text !== undefined) {
+                lastPart.text += part.text;
+                // Copy any other properties like thoughtSignature that might be in this chunk
+                for (const key of Object.keys(part)) {
+                  if (key !== 'text' && lastPart[key] === undefined) {
+                    lastPart[key] = typeof part[key] === 'object' && part[key] !== null 
+                      ? clonePart({ [key]: part[key] })[key] 
+                      : part[key];
+                  }
+                }
+              } else {
+                rawAssistantParts.push(clonePart(part));
+              }
+            } else {
+              rawAssistantParts.push(clonePart(part));
+            }
+
             if (part.thought) continue;
 
             if (part.text) {
@@ -497,7 +534,11 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
           deleteHistoryRef,
           filesMessage?.id,
         );
-        await persistConversation(historyId, botMessage.id, parts, finalResponse);
+        const assistantPartsForHistory = rawAssistantParts.length > 0
+          ? rawAssistantParts
+          : [{ text: finalResponse }];
+
+        await persistConversation(historyId, botMessage.id, parts, assistantPartsForHistory);
         finalized = true;
         collector.stop();
         return;
