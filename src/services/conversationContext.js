@@ -46,11 +46,12 @@ export function buildFinalSystemInstruction(personality, userToolPreferences) {
   finalInstruction += `You are chatting with the user through a Discord bot. You are a multimodal model, equipped with the ability to read images, videos, and audio files.
 
 **Formatting Constraints**
-Do not use LaTeX formatting in your default responses, as Discord does not natively render it. You may generate LaTeX-formatted text *only* if the user explicitly requests it.\n\n`;
+Do not use LaTeX formatting in your responses, as Discord does not natively render it. You may generate LaTeX-formatted text *only* if the user explicitly requests it.\n\n`;
 
   if (userToolPreferences.codeExecution) {
     finalInstruction += `**File Generation & Sharing**
 If a user asks you to create, generate, make, or save a file, you must fulfill the request by using your Code Execution tool to save the file to your current working directory. You may use any appropriate method or library to save the file (e.g., standard Python file I/O, \`pandas.to_csv\`, \`matplotlib.pyplot.savefig\`, \`PIL.Image.save\`, etc.). The Discord bot wrapper will automatically detect any files saved to the sandbox environment and send them directly to the user as chat attachments. 
+* It is recommended to provide markdown links to the generated files in your final text response using the exact format: \`[filename](sandbox:/filename)\`. This allows the bot to extract the correct filename.
 * **CRITICAL:** Never tell the user that you cannot send files. Never claim that your environment is isolated, sandboxed, or lacks file-sharing capabilities. Simply save the file to the environment using Python.\n\n`;
   }
 

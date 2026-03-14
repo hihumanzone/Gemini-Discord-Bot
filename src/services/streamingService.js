@@ -62,12 +62,31 @@ function getFileExtension(mimeType) {
   return MIME_TO_EXTENSION[mimeType] || `.${mimeType.split('/').pop()}`;
 }
 
-function extractSandboxFilenames(text) {
-  return [...text.matchAll(SANDBOX_LINK_RE)].map((m) => m[1]);
+function extractSandboxFilenames(text, extraExtensions = []) {
+  if (!text) return [];
+  const sandboxLinks = [...text.matchAll(SANDBOX_LINK_RE)].map((m) => m[1]);
+
+  const commonExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'wav', 'mp3', 'ogg', 'csv', 'txt', 'json', 'pdf', 'html', 'md', 'xml', 'js', 'py', 'sh', 'cpp', 'rs', 'java', 'c', 'cs'];
+  const allExtensions = [...new Set([...commonExtensions, ...extraExtensions])];
+  const extGroup = allExtensions.join('|');
+  const fallbackRe = new RegExp(`[a-zA-Z0-9_\\-\\.]+\\.(?:${extGroup})\\b`, 'gi');
+  
+  const standardMatches = [...text.matchAll(fallbackRe)].map((m) => m[0]);
+
+  // Aggressively capture files with arbitrary extensions if explicitly quoted or backticked
+  const quotedRe = /['"`]([a-zA-Z0-9_\-\.]+\.[a-zA-Z0-9]{1,10})['"`]/g;
+  const quotedMatches = [...text.matchAll(quotedRe)].map((m) => m[1]);
+
+  return [...new Set([...sandboxLinks, ...quotedMatches, ...standardMatches])];
 }
 
-function cleanSandboxLinks(text) {
-  return text.replace(SANDBOX_LINK_RE, '📎 $1');
+function cleanSandboxLinks(text, actualFileNames = []) {
+  return text.replace(SANDBOX_LINK_RE, (match, filename) => {
+    if (actualFileNames.includes(filename)) {
+      return `📎 **${filename}**`;
+    }
+    return `~~${filename}~~ *(File not generated)*`;
+  });
 }
 
 function clonePart(part) {
@@ -501,12 +520,42 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
           }
         }
 
+        // Determine dynamically what extensions the generated files inherently have
+        const activeExtensions = inlineDataFiles
+          .map(f => getFileExtension(f.mimeType).replace(/^\./, '').split('+')[0])
+          .filter(ext => ext && /^[a-z0-9]+$/i.test(ext));
+
         // Assign sandbox filenames to inline data files before cleaning links
-        const sandboxFilenames = extractSandboxFilenames(finalResponse);
+        const sandboxFilenames = extractSandboxFilenames(finalResponse, activeExtensions);
+
+        const actualNames = [];
+        const availableCandidates = [...sandboxFilenames];
+
         for (let i = 0; i < inlineDataFiles.length; i++) {
-          inlineDataFiles[i].name = sandboxFilenames[i] || null;
+          const file = inlineDataFiles[i];
+          const defaultExt = getFileExtension(file.mimeType).toLowerCase();
+          
+          let matchIdx = availableCandidates.findIndex(c => c.toLowerCase().endsWith(defaultExt));
+          
+          // Fallback to generically accepting popular text extensions if MIME is text/plain
+          if (matchIdx === -1 && file.mimeType.startsWith('text/')) {
+            matchIdx = availableCandidates.findIndex(c => c.match(/\.(txt|csv|json|md|py|js|html|xml|sh|cpp|rs|java|c|cs)$/i));
+          }
+          
+          if (matchIdx === -1 && availableCandidates.length > 0) {
+            matchIdx = 0;
+          }
+          
+          if (matchIdx !== -1) {
+            file.name = availableCandidates[matchIdx];
+            actualNames.push(file.name);
+            availableCandidates.splice(matchIdx, 1);
+          } else {
+            file.name = null;
+          }
         }
-        finalResponse = cleanSandboxLinks(finalResponse);
+
+        finalResponse = cleanSandboxLinks(finalResponse, actualNames);
 
         if (updateTimeout) {
           clearTimeout(updateTimeout);
