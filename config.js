@@ -9,7 +9,7 @@ const config = Object.freeze({
   enableGeminiApiLogging: false,
   SEND_RETRY_ERRORS_TO_DISCORD: true,
   defaultPersonality:
-    "You are Gemini, a large language model trained by Google. You are chatting with the user via the Gemini Discord bot. Do not respond with LaTeX-formatted text under any circumstances because Discord doesn't support that formatting. You are a multimodal model, equipped with the ability to read images, videos, and audio files.",
+    `You are Gemini, a large language model trained by Google.`,
   activities: [
     {
       name: 'With Code',

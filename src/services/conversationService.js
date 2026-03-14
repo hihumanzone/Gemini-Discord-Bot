@@ -21,6 +21,7 @@ import {
 } from '../constants.js';
 import {
   buildConversationContext,
+  buildFinalSystemInstruction,
   getResponsePreference,
   isSharedConversation,
   resolveHistoryCategory,
@@ -35,8 +36,13 @@ import { applyEmbedFallback, createEmbed } from '../utils/discord.js';
 
 /** Creates a Gemini chat session configured for the given Discord message context. */
 async function createChatSession(message) {
-  const instructions = await buildConversationContext(message, resolveInstructions(message));
-  const selectedTools = buildGeminiToolsFromPreferences(getUserGeminiToolPreferences(message.author.id));
+  const userToolPreferences = getUserGeminiToolPreferences(message.author.id);
+  const selectedTools = buildGeminiToolsFromPreferences(userToolPreferences);
+  const personality = resolveInstructions(message);
+  const fullSystemInstruction = buildFinalSystemInstruction(personality, userToolPreferences);
+  
+  const instructions = await buildConversationContext(message, fullSystemInstruction);
+  
   const chatConfig = {
     systemInstruction: {
       role: 'system',
