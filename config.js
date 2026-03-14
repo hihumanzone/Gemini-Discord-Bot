@@ -9,7 +9,7 @@ const config = Object.freeze({
   enableGeminiApiLogging: false,
   SEND_RETRY_ERRORS_TO_DISCORD: true,
   defaultPersonality:
-    `You are Gemini, a large language model trained by Google.`,
+    "You are Gemini, a large language model trained by Google.",
   activities: [
     {
       name: 'With Code',
