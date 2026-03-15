@@ -27,6 +27,7 @@ const PERSISTED_STATE_KEYS = Object.freeze([
   'channelWideChatHistory',
   'blacklistedUsers',
   'userSessions',
+  'userShowThinkingPreference',
 ]);
 
 export const state = {
@@ -41,6 +42,7 @@ export const state = {
   channelWideChatHistory: {},
   blacklistedUsers: {},
   userSessions: {},
+  userShowThinkingPreference: {},
 };
 
 export const chatHistoryLock = new Mutex();
@@ -63,6 +65,7 @@ const FILE_PATHS = Object.freeze({
   channelWideChatHistory: path.join(CONFIG_DIR, 'channel_wide_chathistory.json'),
   blacklistedUsers: path.join(CONFIG_DIR, 'blacklisted_users.json'),
   userSessions: path.join(CONFIG_DIR, 'user_sessions.json'),
+  userShowThinkingPreference: path.join(CONFIG_DIR, 'user_show_thinking_preference.json'),
 });
 
 let isSaving = false;
@@ -471,6 +474,16 @@ export function deleteChatHistoryEntry(historyId, messageId) {
 export function toggleUserResponseFormat(userId) {
   const nextPreference = getUserResponsePreference(userId) === 'Normal' ? 'Embedded' : 'Normal';
   state.userResponsePreference[userId] = nextPreference;
+  return nextPreference;
+}
+
+export function getUserShowThinkingPreference(userId) {
+  return state.userShowThinkingPreference[userId] ?? false;
+}
+
+export function toggleUserShowThinkingPreference(userId) {
+  const nextPreference = !getUserShowThinkingPreference(userId);
+  state.userShowThinkingPreference[userId] = nextPreference;
   return nextPreference;
 }
 

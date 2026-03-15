@@ -13,6 +13,7 @@ import { TEMP_DIR } from '../core/paths.js';
 import { activeRequests } from '../core/runtime.js';
 import {
   chatHistoryLock,
+  getUserShowThinkingPreference,
   saveStateToFile,
   state,
   updateChatHistory,
@@ -318,12 +319,18 @@ async function handleLargeOrFinalResponse(
   isLargeResponse,
   historyId,
   filesMessageId = null,
+  thinkingText = null,
 ) {
   let updatedMessage = await clearMessageActionRows(botMessage);
   updatedMessage = await addSettingsButton(updatedMessage);
 
   if (isLargeResponse) {
-    const textFileMessage = await sendAsTextFile(responseText, originalMessage, historyId);
+    let finalizedFullText = responseText;
+    if (thinkingText?.trim()) {
+      finalizedFullText = `[THINKING PROCESS]\n${thinkingText.trim()}\n\n[RESPONSE]\n${finalizedFullText}`;
+    }
+
+    const textFileMessage = await sendAsTextFile(finalizedFullText, originalMessage, historyId);
     
     const targets = [updatedMessage.id];
     if (filesMessageId) targets.push(filesMessageId);
@@ -419,6 +426,7 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
   let groundingMetadata = null;
   let urlContextMetadata = null;
   let bufferedText = '';
+  let bufferedThinkingText = '';
   let updateTimeout = null;
   let isLargeResponse = false;
 
@@ -427,12 +435,18 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
       return;
     }
 
-    if (!bufferedText.trim()) {
+    let currentResponse = bufferedText;
+
+    if (bufferedThinkingText.trim()) {
+      currentResponse = `> *Thinking...*\n> ${bufferedThinkingText.trim().replace(/\n/g, '\n> ')}\n\n${currentResponse}`;
+    }
+
+    if (!currentResponse.trim()) {
       botMessage.edit({ content: '...' }).catch(() => {});
     } else if (responsePreference === 'Embedded') {
-      buildResponseEmbed(botMessage, bufferedText, originalMessage, groundingMetadata, urlContextMetadata).catch(() => {});
+      buildResponseEmbed(botMessage, currentResponse, originalMessage, groundingMetadata, urlContextMetadata).catch(() => {});
     } else {
-      botMessage.edit({ content: bufferedText, embeds: [] }).catch(() => {});
+      botMessage.edit({ content: currentResponse, embeds: [] }).catch(() => {});
     }
 
     clearTimeout(updateTimeout);
@@ -479,7 +493,12 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
               rawAssistantParts.push(clonePart(part));
             }
 
-            if (part.thought) continue;
+            if (part.thought) {
+              if (getUserShowThinkingPreference(originalMessage.author.id)) {
+                bufferedThinkingText += part.thought;
+              }
+              continue;
+            }
 
             if (part.text) {
               chunkText += part.text;
@@ -518,7 +537,9 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
             urlContextMetadata = chunk.candidates[0].url_context_metadata;
           }
 
-          if (finalResponse.length > maxCharacterLimit) {
+          const currentFullLength = finalResponse.length + (bufferedThinkingText ? bufferedThinkingText.length + 20 : 0);
+
+          if (currentFullLength > maxCharacterLimit) {
             if (!isLargeResponse) {
               isLargeResponse = true;
               if (updateTimeout) {
@@ -581,10 +602,15 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
         }
 
         if (!isLargeResponse) {
+          let finalizedFullText = finalResponse;
+          if (bufferedThinkingText.trim()) {
+            finalizedFullText = `> *Thinking...*\n> ${bufferedThinkingText.trim().replace(/\n/g, '\n> ')}\n\n${finalizedFullText}`;
+          }
+
           if (responsePreference === 'Embedded') {
-            await buildResponseEmbed(botMessage, finalResponse, originalMessage, groundingMetadata, urlContextMetadata);
-          } else if (finalResponse.trim()) {
-            await botMessage.edit({ content: finalResponse, embeds: [] }).catch(() => {});
+            await buildResponseEmbed(botMessage, finalizedFullText, originalMessage, groundingMetadata, urlContextMetadata);
+          } else if (finalizedFullText.trim()) {
+            await botMessage.edit({ content: finalizedFullText, embeds: [] }).catch(() => {});
           }
         }
 
@@ -600,6 +626,7 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
           isLargeResponse,
           deleteHistoryRef,
           filesMessage?.id,
+          bufferedThinkingText,
         );
         const assistantPartsForHistory = rawAssistantParts.length > 0
           ? rawAssistantParts

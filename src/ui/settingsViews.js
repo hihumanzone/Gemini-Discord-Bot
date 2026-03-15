@@ -11,6 +11,7 @@ import {
   getServerSettings,
   getUserGeminiToolPreferences,
   getUserResponsePreference,
+  getUserShowThinkingPreference,
   getUserSessions,
   isChannelUserActive,
   isUserBlacklisted,
@@ -112,6 +113,7 @@ export async function updateGeneralSettingsView(interaction) {
   const userId = interaction.user.id;
   const alwaysRespondEnabled = isChannelUserActive(channelId, userId);
   const responseMode = getUserResponsePreference(userId);
+  const showThinking = getUserShowThinkingPreference(userId);
   const toolPreferences = getUserGeminiToolPreferences(userId);
 
   const buttonConfigs = [
@@ -126,6 +128,12 @@ export async function updateGeneralSettingsView(interaction) {
       label: `Toggle Response Mode: ${responseMode}`,
       emoji: '📝',
       style: ButtonStyle.Secondary,
+    },
+    {
+      customId: 'toggle-show-thinking',
+      label: `Show Thinking: ${showThinking ? 'ON' : 'OFF'}`,
+      emoji: '🧠',
+      style: showThinking ? ButtonStyle.Success : ButtonStyle.Danger,
     },
     {
       customId: 'session-settings',

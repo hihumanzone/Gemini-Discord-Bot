@@ -22,6 +22,7 @@ import {
   toggleServerResponseStyle,
   toggleServerSetting,
   toggleUserResponseFormat,
+  toggleUserShowThinkingPreference,
 } from '../state/botState.js';
 import { serializeConversationHistory } from '../services/textSharingService.js';
 import {
@@ -139,6 +140,12 @@ async function alwaysRespond(interaction) {
   }
 
   toggleChannelUserActive(interaction.channelId, interaction.user.id);
+  await persistStateChange();
+  return updateGeneralSettingsView(interaction);
+}
+
+async function toggleShowThinkingPreference(interaction) {
+  toggleUserShowThinkingPreference(interaction.user.id);
   await persistStateChange();
   return updateGeneralSettingsView(interaction);
 }
@@ -584,6 +591,7 @@ export async function handleButtonInteraction(interaction) {
     'custom-personality': handleCustomPersonalityCommand,
     'remove-personality': handleRemovePersonalityCommand,
     'toggle-response-mode': toggleUserResponsePreference,
+    'toggle-show-thinking': toggleShowThinkingPreference,
     'toggle-gemini-tool-': toggleUserGeminiTool,
     'session-settings': showSessionManager,
     'open-create-session-modal': showCreateSessionModal,
