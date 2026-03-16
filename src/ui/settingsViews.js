@@ -518,7 +518,7 @@ export async function showChannelDashboard(interaction) {
 
   return interaction.reply(applyEmbedFallback(interaction.channel, {
     embeds: [createStatusEmbed({
-      variant: 'info',
+      variant: 'primary',
       title: 'Channel Settings',
       description:
         `**Channel Controls for #${channelName}**\n`
@@ -535,7 +535,7 @@ export async function updateChannelSettingsView(interaction) {
 
   return interaction.update(applyEmbedFallback(interaction.channel, {
     embeds: [createStatusEmbed({
-      variant: 'info',
+      variant: 'primary',
       title: 'Channel Settings',
       description:
         `**Channel Controls for #${channelName}**\n`
