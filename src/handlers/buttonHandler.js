@@ -362,52 +362,20 @@ async function handleSessionHistoryClear(interaction) {
 
 // --- Server admin button handlers ---
 
-async function toggleServerWideChatHistory(interaction) {
-  if (!(await ensureGuildInteraction(interaction))) {
-    return;
-  }
+/**
+ * Creates a handler that toggles a server-level boolean setting and refreshes the view.
+ * @param {string} settingName - The key in serverSettings to toggle.
+ */
+function createServerSettingToggle(settingName) {
+  return async (interaction) => {
+    if (!(await ensureGuildInteraction(interaction))) {
+      return;
+    }
 
-  const guildId = interaction.guild.id;
-  toggleServerSetting(guildId, 'serverChatHistory');
-  await persistStateChange();
-
-  return updateServerSettingsView(interaction);
-}
-
-async function toggleServerPersonality(interaction) {
-  if (!(await ensureGuildInteraction(interaction))) {
-    return;
-  }
-
-  const guildId = interaction.guild.id;
-  toggleServerSetting(guildId, 'customServerPersonality');
-  await persistStateChange();
-
-  return updateServerSettingsView(interaction);
-}
-
-async function toggleServerResponsePreference(interaction) {
-  if (!(await ensureGuildInteraction(interaction))) {
-    return;
-  }
-
-  const guildId = interaction.guild.id;
-  toggleServerSetting(guildId, 'serverResponsePreference');
-  await persistStateChange();
-
-  return updateServerSettingsView(interaction);
-}
-
-async function toggleSettingSaveButton(interaction) {
-  if (!(await ensureGuildInteraction(interaction))) {
-    return;
-  }
-
-  const guildId = interaction.guild.id;
-  toggleServerSetting(guildId, 'settingsSaveButton');
-  await persistStateChange();
-
-  return updateServerSettingsView(interaction);
+    toggleServerSetting(interaction.guild.id, settingName);
+    await persistStateChange();
+    return updateServerSettingsView(interaction);
+  };
 }
 
 async function serverPersonality(interaction) {
@@ -571,15 +539,16 @@ export async function handleButtonInteraction(interaction) {
       return;
     }
 
-    const buttonHandlers = {
-      'server-chat-history': toggleServerWideChatHistory,
+    // Exact-match handlers: O(1) lookup for buttons with fixed customIds
+    const exactHandlers = {
+      'server-chat-history': createServerSettingToggle('serverChatHistory'),
       'clear-server': clearServerChatHistory,
-      'settings-save-buttons': toggleSettingSaveButton,
+      'settings-save-buttons': createServerSettingToggle('settingsSaveButton'),
       'custom-server-personality': serverPersonality,
-      'toggle-server-personality': toggleServerPersonality,
+      'toggle-server-personality': createServerSettingToggle('customServerPersonality'),
       'download-server-conversation': downloadServerConversation,
       'response-server-mode': toggleServerPreference,
-      'toggle-response-server-mode': toggleServerResponsePreference,
+      'toggle-response-server-mode': createServerSettingToggle('serverResponsePreference'),
       'channel-always-respond': toggleChannelAlwaysRespond,
       'channel-chat-history': toggleChannelChatHistory,
       'toggle-channel-personality': toggleChannelPersonality,
@@ -593,20 +562,30 @@ export async function handleButtonInteraction(interaction) {
       'custom-personality': handleCustomPersonalityCommand,
       'remove-personality': handleRemovePersonalityCommand,
       'toggle-response-mode': toggleUserResponsePreference,
-      'toggle-gemini-tool-': toggleUserGeminiTool,
       'session-settings': showSessionManager,
       'open-create-session-modal': showCreateSessionModal,
-      'open-rename-session-modal-': showRenameSessionModal,
-      'session-download-conversation-': handleSessionConversationDownload,
-      'session-clear-history-': handleSessionHistoryClear,
-      'delete-session-': handleDeleteSession,
       'download-conversation': downloadConversation,
       download_message: downloadMessage,
       'general-settings': updateGeneralSettingsView,
     };
 
-    for (const [key, handler] of Object.entries(buttonHandlers)) {
-      if (interaction.customId.startsWith(key)) {
+    const exactHandler = exactHandlers[interaction.customId];
+    if (exactHandler) {
+      await exactHandler(interaction);
+      return;
+    }
+
+    // Prefix-match handlers: only for buttons whose customIds carry dynamic suffixes
+    const prefixHandlers = [
+      ['toggle-gemini-tool-', toggleUserGeminiTool],
+      ['open-rename-session-modal-', showRenameSessionModal],
+      ['session-download-conversation-', handleSessionConversationDownload],
+      ['session-clear-history-', handleSessionHistoryClear],
+      ['delete-session-', handleDeleteSession],
+    ];
+
+    for (const [prefix, handler] of prefixHandlers) {
+      if (interaction.customId.startsWith(prefix)) {
         await handler(interaction);
         return;
       }

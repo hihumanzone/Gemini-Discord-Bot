@@ -3,15 +3,15 @@ import {
   getUserSessionHistoryId,
   getUserSessions,
 } from '../state/botState.js';
+import {
+  DEFAULT_SESSION_ID,
+  MAX_SESSION_NAME_LENGTH,
+  normalizeSessionName,
+} from '../utils/sessionConstants.js';
 
-export const MAX_SESSION_NAME_LENGTH = 80;
+export { MAX_SESSION_NAME_LENGTH, normalizeSessionName };
 
-const DEFAULT_SESSION_ID = 'default';
 const DELETE_MESSAGE_ID_PATTERN = /^\d{16,24}$/;
-
-export function normalizeSessionName(name) {
-  return (name || '').trim().slice(0, MAX_SESSION_NAME_LENGTH);
-}
 
 export function toSessionId(name) {
   const normalized = normalizeSessionName(name).toLowerCase();
