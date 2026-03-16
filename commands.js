@@ -1,11 +1,15 @@
-import { PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
+import {
+  InteractionContextType,
+  PermissionFlagsBits,
+  SlashCommandBuilder,
+} from 'discord.js';
 
 function createAdminGuildCommand(name, description) {
   return new SlashCommandBuilder()
     .setName(name)
     .setDescription(description)
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .setDMPermission(false);
+    .setContexts(InteractionContextType.Guild);
 }
 
 export const commands = Object.freeze([

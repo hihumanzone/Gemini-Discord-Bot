@@ -10,6 +10,7 @@ import {
 import { WORK_IN_DMS } from '../constants.js';
 import { handleTextMessage } from '../services/conversationService.js';
 import { applyEmbedFallback, createEmbed } from '../utils/discord.js';
+import { logError } from '../utils/errorHandler.js';
 
 function shouldRespondToMessage(message) {
   const isDirectMessage = message.channel.type === ChannelType.DM;
@@ -23,23 +24,37 @@ function shouldRespondToMessage(message) {
 }
 
 async function replyBlacklisted(message) {
-  return message.reply(applyEmbedFallback(message.channel, {
-    embeds: [createEmbed({
-      color: 0xFF0000,
-      title: 'Blacklisted',
-      description: 'You are blacklisted and cannot use this bot.',
-    })],
-  }));
+  try {
+    return await message.reply(applyEmbedFallback(message.channel, {
+      embeds: [createEmbed({
+        color: 0xFF0000,
+        title: 'Blacklisted',
+        description: 'You are blacklisted and cannot use this bot.',
+      })],
+    }));
+  } catch (error) {
+    logError('ReplyBlacklisted', error, {
+      messageId: message.id,
+      userId: message.author?.id,
+    });
+  }
 }
 
 async function replyRequestInProgress(message) {
-  return message.reply(applyEmbedFallback(message.channel, {
-    embeds: [createEmbed({
-      color: 0xFFFF00,
-      title: 'Request In Progress',
-      description: 'Please wait until your previous action is complete.',
-    })],
-  }));
+  try {
+    return await message.reply(applyEmbedFallback(message.channel, {
+      embeds: [createEmbed({
+        color: 0xFFFF00,
+        title: 'Request In Progress',
+        description: 'Please wait until your previous action is complete.',
+      })],
+    }));
+  } catch (error) {
+    logError('ReplyRequestInProgress', error, {
+      messageId: message.id,
+      userId: message.author?.id,
+    });
+  }
 }
 
 export async function handleMessageCreate(message) {
@@ -68,7 +83,12 @@ export async function handleMessageCreate(message) {
     activeRequests.add(message.author.id);
     await handleTextMessage(message);
   } catch (error) {
+    logError('MessageHandler', error, {
+      messageId: message.id,
+      userId: message.author?.id,
+      guildId: message.guild?.id,
+    });
+  } finally {
     activeRequests.delete(message.author.id);
-    console.error('Error processing the message:', error);
   }
 }

@@ -1,4 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
+import { logError } from '../utils/errorHandler.js';
 
 const STOP_GENERATING_BUTTON_ID = 'stopGenerating';
 const MAX_CUSTOM_ID_LENGTH = 100;
@@ -57,7 +58,7 @@ async function appendButton(message, button) {
     actionRow.addComponents(button);
     return await latestMessage.edit({ components: actionRows });
   } catch (error) {
-    console.error('Failed to append message button:', error);
+    logError('MessageActionsAppendButton', error, { messageId: message?.id });
     return message;
   }
 }
@@ -67,7 +68,7 @@ export async function clearMessageActionRows(message) {
     const latestMessage = await resolveLatestMessage(message);
     return await latestMessage.edit({ components: [] });
   } catch (error) {
-    console.error('Failed to clear message action rows:', error);
+    logError('MessageActionsClearRows', error, { messageId: message?.id });
     return message;
   }
 }
@@ -80,7 +81,7 @@ export async function removeStopGeneratingButton(message) {
     });
     return await latestMessage.edit({ components: actionRows });
   } catch (error) {
-    console.error('Failed to remove stop generating button:', error);
+    logError('MessageActionsRemoveStopButton', error, { messageId: message?.id });
     return message;
   }
 }

@@ -6,6 +6,7 @@
 import axios from 'axios';
 
 import { EXTERNAL_TEXT_SHARE_URL, TEXT_FILE_TTL_MINUTES } from '../constants.js';
+import { logServiceError } from '../utils/errorHandler.js';
 
 /**
  * Uploads text to the external sharing service and returns the resulting URL string.
@@ -21,7 +22,7 @@ async function uploadText(text) {
 
     return `\nURL: ${EXTERNAL_TEXT_SHARE_URL}/t/${response.data.tid}`;
   } catch (error) {
-    console.error('Failed to upload text:', error);
+    logServiceError('TextShare', error, { operation: 'uploadText' });
     return '\nURL Error :(';
   }
 }

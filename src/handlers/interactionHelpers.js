@@ -16,6 +16,7 @@ import {
   isUserBlacklisted,
 } from '../state/botState.js';
 import { createSharedTextLink } from '../services/textSharingService.js';
+import { logError } from '../utils/errorHandler.js';
 import {
   createEmbed,
   ensureAdministrator,
@@ -131,12 +132,11 @@ export async function sendSavedContentToUser(
   },
 ) {
   const filePath = path.join(TEMP_DIR, `${fileBaseName}_${interaction.id}.txt`);
+  const fileName = `${fileBaseName}.txt`;
 
   try {
     await fs.writeFile(filePath, text, 'utf8');
-    const file = new AttachmentBuilder(filePath, {
-      name: `${fileBaseName}.txt`,
-    });
+    const file = new AttachmentBuilder(filePath, { name: fileName });
     const sharedTextLink = await createSharedTextLink(text);
     const savedContentEmbed = createSavedContentEmbed(title, description, sharedTextLink);
 
@@ -161,7 +161,10 @@ export async function sendSavedContentToUser(
         description: successDescription,
       });
     } catch (error) {
-      console.error('Failed to send DM:', error);
+      logError('SendSavedContentToUserDM', error, {
+        userId: interaction.user?.id,
+        interactionId: interaction.id,
+      });
       await interaction.reply({
         content: failureDescription,
         embeds: [savedContentEmbed],
@@ -170,6 +173,12 @@ export async function sendSavedContentToUser(
       });
     }
   } finally {
-    await fs.unlink(filePath).catch(() => {});
+    try {
+      await fs.unlink(filePath);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') {
+        logError('SendSavedContentToUserCleanup', error, { filePath });
+      }
+    }
   }
 }

@@ -49,6 +49,7 @@ import {
   replyWithEmbed,
   safeDeleteMessage,
 } from '../utils/discord.js';
+import { replyWithError, logError } from '../utils/errorHandler.js';
 import {
   ensureInteractionNotBlacklisted,
   getClearMemoryDisabledReason,
@@ -101,7 +102,11 @@ async function handleDeleteMessageInteraction(interaction, messageIdStr) {
       return;
     }
   } catch {
-    // Ignore failed reference lookups and fall through to the access denied reply.
+    logError('DeleteMessageReferenceLookup', 'Failed to resolve referenced message for delete permission check.', {
+      interactionId: interaction.id,
+      userId,
+      targetMessageId: primaryId,
+    });
   }
 
   await replyWithEmbed(interaction, {
@@ -461,6 +466,10 @@ async function downloadServerConversation(interaction) {
 }
 
 async function toggleServerPreference(interaction) {
+  if (!(await ensureGuildInteraction(interaction))) {
+    return;
+  }
+
   toggleServerResponseStyle(interaction.guild.id);
   await persistStateChange();
 
@@ -552,54 +561,62 @@ async function downloadChannelConversation(interaction) {
 
 /** Routes a button interaction to its handler based on customId. */
 export async function handleButtonInteraction(interaction) {
-  if (!(await ensureInteractionNotBlacklisted(interaction))) {
-    return;
-  }
-
-  if (interaction.customId.startsWith('delete_message-')) {
-    const messageId = interaction.customId.replace('delete_message-', '');
-    await handleDeleteMessageInteraction(interaction, messageId);
-    return;
-  }
-
-  const buttonHandlers = {
-    'server-chat-history': toggleServerWideChatHistory,
-    'clear-server': clearServerChatHistory,
-    'settings-save-buttons': toggleSettingSaveButton,
-    'custom-server-personality': serverPersonality,
-    'toggle-server-personality': toggleServerPersonality,
-    'download-server-conversation': downloadServerConversation,
-    'response-server-mode': toggleServerPreference,
-    'toggle-response-server-mode': toggleServerResponsePreference,
-    'channel-always-respond': toggleChannelAlwaysRespond,
-    'channel-chat-history': toggleChannelChatHistory,
-    'toggle-channel-personality': toggleChannelPersonality,
-    'clear-channel-history': clearChannelChatHistory,
-    'channel-custom-personality': channelPersonality,
-    'channel-download-conversation': downloadChannelConversation,
-    settings: showSettings,
-    back_to_main_settings: (btnInteraction) => showSettings(btnInteraction, true),
-    'clear-memory': handleClearMemoryButton,
-    'always-respond': alwaysRespond,
-    'custom-personality': handleCustomPersonalityCommand,
-    'remove-personality': handleRemovePersonalityCommand,
-    'toggle-response-mode': toggleUserResponsePreference,
-    'toggle-gemini-tool-': toggleUserGeminiTool,
-    'session-settings': showSessionManager,
-    'open-create-session-modal': showCreateSessionModal,
-    'open-rename-session-modal-': showRenameSessionModal,
-    'session-download-conversation-': handleSessionConversationDownload,
-    'session-clear-history-': handleSessionHistoryClear,
-    'delete-session-': handleDeleteSession,
-    'download-conversation': downloadConversation,
-    download_message: downloadMessage,
-    'general-settings': updateGeneralSettingsView,
-  };
-
-  for (const [key, handler] of Object.entries(buttonHandlers)) {
-    if (interaction.customId.startsWith(key)) {
-      await handler(interaction);
+  try {
+    if (!(await ensureInteractionNotBlacklisted(interaction))) {
       return;
     }
+
+    if (interaction.customId.startsWith('delete_message-')) {
+      const messageId = interaction.customId.replace('delete_message-', '');
+      await handleDeleteMessageInteraction(interaction, messageId);
+      return;
+    }
+
+    const buttonHandlers = {
+      'server-chat-history': toggleServerWideChatHistory,
+      'clear-server': clearServerChatHistory,
+      'settings-save-buttons': toggleSettingSaveButton,
+      'custom-server-personality': serverPersonality,
+      'toggle-server-personality': toggleServerPersonality,
+      'download-server-conversation': downloadServerConversation,
+      'response-server-mode': toggleServerPreference,
+      'toggle-response-server-mode': toggleServerResponsePreference,
+      'channel-always-respond': toggleChannelAlwaysRespond,
+      'channel-chat-history': toggleChannelChatHistory,
+      'toggle-channel-personality': toggleChannelPersonality,
+      'clear-channel-history': clearChannelChatHistory,
+      'channel-custom-personality': channelPersonality,
+      'channel-download-conversation': downloadChannelConversation,
+      settings: showSettings,
+      back_to_main_settings: (btnInteraction) => showSettings(btnInteraction, true),
+      'clear-memory': handleClearMemoryButton,
+      'always-respond': alwaysRespond,
+      'custom-personality': handleCustomPersonalityCommand,
+      'remove-personality': handleRemovePersonalityCommand,
+      'toggle-response-mode': toggleUserResponsePreference,
+      'toggle-gemini-tool-': toggleUserGeminiTool,
+      'session-settings': showSessionManager,
+      'open-create-session-modal': showCreateSessionModal,
+      'open-rename-session-modal-': showRenameSessionModal,
+      'session-download-conversation-': handleSessionConversationDownload,
+      'session-clear-history-': handleSessionHistoryClear,
+      'delete-session-': handleDeleteSession,
+      'download-conversation': downloadConversation,
+      download_message: downloadMessage,
+      'general-settings': updateGeneralSettingsView,
+    };
+
+    for (const [key, handler] of Object.entries(buttonHandlers)) {
+      if (interaction.customId.startsWith(key)) {
+        await handler(interaction);
+        return;
+      }
+    }
+  } catch (error) {
+    logError('ButtonHandler', error, {
+      buttonCustomId: interaction.customId,
+      userId: interaction.user?.id,
+    });
+    await replyWithError(interaction, 'Button Error', 'An error occurred while processing this button action.');
   }
 }

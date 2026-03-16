@@ -7,6 +7,7 @@ import { handleCommandInteraction } from './commandHandler.js';
 import { handleButtonInteraction } from './buttonHandler.js';
 import { handleModalSubmit } from './modalHandler.js';
 import { handleSelectMenuInteraction } from './selectMenuHandler.js';
+import { handleInteractionError } from '../utils/errorHandler.js';
 
 export async function handleInteraction(interaction) {
   try {
@@ -29,6 +30,6 @@ export async function handleInteraction(interaction) {
       await handleModalSubmit(interaction);
     }
   } catch (error) {
-    console.error('Error handling interaction:', error);
+    await handleInteractionError('Interaction', error, interaction);
   }
 }

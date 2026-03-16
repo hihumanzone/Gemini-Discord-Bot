@@ -8,6 +8,7 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
+import { logServiceError } from '../utils/errorHandler.js';
 
 import { TEMP_DIR } from '../core/paths.js';
 import { activeRequests } from '../core/runtime.js';
@@ -34,7 +35,7 @@ import {
   clearMessageActionRows,
   removeStopGeneratingButton,
 } from '../ui/messageActions.js';
-import { applyEmbedFallback, canSendEmbeds, createEmbed } from '../utils/discord.js';
+import { applyEmbedFallback, createEmbed } from '../utils/discord.js';
 import { buildRetryErrorEmbed, formatGeminiErrorForConsole } from '../utils/errorFormatter.js';
 
 // --- Mime type to file extension mapping ---
@@ -86,6 +87,13 @@ function cleanSandboxLinks(text, actualFileNames = []) {
       return display === filename ? `📎 **${filename}**` : `📎 **${display} (${filename})**`;
     }
     return `~~${display}~~ *(File not generated)*`;
+  });
+}
+
+function logStreamingOperationError(operation, error, metadata = {}) {
+  logServiceError('StreamingService', error, {
+    operation,
+    ...metadata,
   });
 }
 
@@ -232,10 +240,19 @@ async function sendAsTextFile(text, originalMessage, historyId) {
     response = await addDeleteButton(response, response.id, historyId);
     return response;
   } catch (error) {
-    console.error('An error occurred while sending a text file response:', error);
+    logStreamingOperationError('sendAsTextFile', error, {
+      messageId: originalMessage.id,
+      historyId,
+    });
     return null;
   } finally {
-    await fs.unlink(filePath).catch(() => {});
+    try {
+      await fs.unlink(filePath);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') {
+        logStreamingOperationError('sendAsTextFileCleanup', error, { filePath });
+      }
+    }
   }
 }
 
@@ -248,15 +265,26 @@ function createStopButtonRow() {
 }
 
 async function ensureInitialBotMessage(initialBotMessage, originalMessage) {
-  if (initialBotMessage) {
-    await initialBotMessage.edit({ components: [createStopButtonRow()] }).catch(() => {});
-    return initialBotMessage;
-  }
+  try {
+    if (initialBotMessage) {
+      try {
+        await initialBotMessage.edit({ components: [createStopButtonRow()] });
+      } catch (error) {
+        logStreamingOperationError('refreshStopButton', error, {
+          messageId: initialBotMessage.id,
+        });
+      }
+      return initialBotMessage;
+    }
 
-  return originalMessage.reply({
-    content: 'Let me think..',
-    components: [createStopButtonRow()],
-  });
+    return await originalMessage.reply({
+      content: 'Let me think..',
+      components: [createStopButtonRow()],
+    });
+  } catch (error) {
+    logServiceError('StreamingService', error, { operation: 'ensureInitialBotMessage' });
+    throw error;
+  }
 }
 
 function createCollector(message, originalMessage) {
@@ -277,7 +305,11 @@ function createCollector(message, originalMessage) {
           description: 'Response generation stopped by the user.',
         })],
         flags: MessageFlags.Ephemeral,
-      }).catch(() => {});
+      }).catch((error) => {
+        logStreamingOperationError('collectorStopReply', error, {
+          interactionId: interaction.id,
+        });
+      });
       return;
     }
 
@@ -288,7 +320,11 @@ function createCollector(message, originalMessage) {
         description: "It's not for you.",
       })],
       flags: MessageFlags.Ephemeral,
-    }).catch(() => {});
+    }).catch((error) => {
+      logStreamingOperationError('collectorAccessDeniedReply', error, {
+        interactionId: interaction.id,
+      });
+    });
   });
 
   return {
@@ -317,7 +353,7 @@ async function handleLargeOrFinalResponse(
   responseText,
   isLargeResponse,
   historyId,
-  filesMessageId = null,
+  extraMessageIds = [],
 ) {
   let updatedMessage = await clearMessageActionRows(botMessage);
   updatedMessage = await addSettingsButton(updatedMessage);
@@ -325,8 +361,7 @@ async function handleLargeOrFinalResponse(
   if (isLargeResponse) {
     const textFileMessage = await sendAsTextFile(responseText, originalMessage, historyId);
     
-    const targets = [updatedMessage.id];
-    if (filesMessageId) targets.push(filesMessageId);
+    const targets = [updatedMessage.id, ...extraMessageIds];
     if (textFileMessage) targets.push(textFileMessage.id);
     
     updatedMessage = await addDeleteButton(updatedMessage, targets.join(','), historyId);
@@ -341,12 +376,60 @@ async function handleLargeOrFinalResponse(
     return clearMessageActionRows(updatedMessage);
   }
 
-  const targets = [updatedMessage.id];
-  if (filesMessageId) targets.push(filesMessageId);
+  const targets = [updatedMessage.id, ...extraMessageIds];
 
   updatedMessage = await addDownloadButton(updatedMessage);
   updatedMessage = await addDeleteButton(updatedMessage, targets.join(','), historyId);
   return updatedMessage;
+}
+
+function formatUnsupportedAttachmentsList(unsupportedAttachments) {
+  const MAX_DISPLAY = 15;
+  const list = unsupportedAttachments
+    .slice(0, MAX_DISPLAY)
+    .map((attachment, index) => {
+      const displayName = attachment.name || `attachment-${index + 1}`;
+      return `• \`${displayName}\``;
+    });
+
+  if (unsupportedAttachments.length > MAX_DISPLAY) {
+    const remaining = unsupportedAttachments.length - MAX_DISPLAY;
+    list.push(`\n*...and ${remaining} more.*`);
+  }
+
+  return list.join('\n');
+}
+
+async function sendUnsupportedAttachmentsWarning(unsupportedAttachments, originalMessage, historyId) {
+  if (!unsupportedAttachments.length) {
+    return null;
+  }
+
+  try {
+    const warningEmbed = createEmbed({
+      color: 0xFFA500,
+      title: '⚠️ Unsupported Attachments Skipped',
+      description: [
+        'These files could not be processed and were skipped:',
+        '',
+        formatUnsupportedAttachmentsList(unsupportedAttachments),
+      ].join('\n'),
+      timestamp: true,
+    });
+
+    const warningMessage = await originalMessage.reply(applyEmbedFallback(originalMessage.channel, {
+      content: `<@${originalMessage.author.id}>`,
+      embeds: [warningEmbed],
+      allowedMentions: { users: [originalMessage.author.id], repliedUser: false },
+    }));
+
+    let updated = await addSettingsButton(warningMessage);
+    updated = await addDeleteButton(updated, updated.id, historyId);
+    return updated;
+  } catch (error) {
+    logServiceError('StreamingService', error, { operation: 'sendUnsupportedAttachmentsWarning' });
+    return null;
+  }
 }
 
 // --- Code-execution file delivery ---
@@ -387,11 +470,17 @@ async function sendCodeExecutionFiles(inlineDataFiles, originalMessage, historyI
     updated = await addDeleteButton(updated, updated.id, historyId);
     return updated;
   } catch (error) {
-    console.error('Failed to send code execution files:', error);
+    logServiceError('StreamingService', error, { operation: 'sendCodeExecutionFiles' });
     return null;
   } finally {
     for (const tempPath of tempPaths) {
-      await fs.unlink(tempPath).catch(() => {});
+      try {
+        await fs.unlink(tempPath);
+      } catch (error) {
+        if (error?.code !== 'ENOENT') {
+          logStreamingOperationError('sendCodeExecutionFilesCleanup', error, { tempPath });
+        }
+      }
     }
   }
 }
@@ -407,8 +496,15 @@ async function sendCodeExecutionFiles(inlineDataFiles, originalMessage, historyI
  * @param {Object} options.chat - The Gemini chat session.
  * @param {Array} options.parts - The prompt parts to send.
  * @param {import('discord.js').Message} options.originalMessage - The user's original message.
+ * @param {import('discord.js').Attachment[]} [options.unsupportedAttachments] - Optional array of skipped attachments.
  */
-export async function streamModelResponse({ initialBotMessage, chat, parts, originalMessage }) {
+export async function streamModelResponse({
+  initialBotMessage,
+  chat,
+  parts,
+  originalMessage,
+  unsupportedAttachments = [],
+}) {
   const historyId = resolveHistoryId(originalMessage);
   const deleteHistoryRef = toDeleteHistoryRef(historyId, originalMessage.author.id);
   const responsePreference = getResponsePreference(originalMessage);
@@ -428,11 +524,17 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
     }
 
     if (!bufferedText.trim()) {
-      botMessage.edit({ content: '...' }).catch(() => {});
+      botMessage.edit({ content: '...' }).catch((error) => {
+        logStreamingOperationError('flushBufferedTextPlaceholder', error, { messageId: botMessage.id });
+      });
     } else if (responsePreference === 'Embedded') {
-      buildResponseEmbed(botMessage, bufferedText, originalMessage, groundingMetadata, urlContextMetadata).catch(() => {});
+      buildResponseEmbed(botMessage, bufferedText, originalMessage, groundingMetadata, urlContextMetadata).catch((error) => {
+        logStreamingOperationError('flushBufferedTextEmbed', error, { messageId: botMessage.id });
+      });
     } else {
-      botMessage.edit({ content: bufferedText, embeds: [] }).catch(() => {});
+      botMessage.edit({ content: bufferedText, embeds: [] }).catch((error) => {
+        logStreamingOperationError('flushBufferedTextPlain', error, { messageId: botMessage.id });
+      });
     }
 
     clearTimeout(updateTimeout);
@@ -584,7 +686,9 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
           if (responsePreference === 'Embedded') {
             await buildResponseEmbed(botMessage, finalResponse, originalMessage, groundingMetadata, urlContextMetadata);
           } else if (finalResponse.trim()) {
-            await botMessage.edit({ content: finalResponse, embeds: [] }).catch(() => {});
+            await botMessage.edit({ content: finalResponse, embeds: [] }).catch((error) => {
+              logStreamingOperationError('finalPlainEdit', error, { messageId: botMessage.id });
+            });
           }
         }
 
@@ -593,13 +697,24 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
           filesMessage = await sendCodeExecutionFiles(inlineDataFiles, originalMessage, deleteHistoryRef);
         }
 
+        const unsupportedWarningMessage = await sendUnsupportedAttachmentsWarning(
+          unsupportedAttachments,
+          originalMessage,
+          deleteHistoryRef,
+        );
+
+        const extraMessageIds = [
+          filesMessage?.id,
+          unsupportedWarningMessage?.id,
+        ].filter(Boolean);
+
         botMessage = await handleLargeOrFinalResponse(
           botMessage,
           originalMessage,
           finalResponse,
           isLargeResponse,
           deleteHistoryRef,
-          filesMessage?.id,
+          extraMessageIds,
         );
         const assistantPartsForHistory = rawAssistantParts.length > 0
           ? rawAssistantParts
@@ -650,7 +765,13 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
             embeds: [buildRetryErrorEmbed(error, { isFinal: false })],
           }));
 
-          setTimeout(() => retryMessage.delete().catch(() => {}), 5_000);
+          setTimeout(() => {
+            retryMessage.delete().catch((error) => {
+              logStreamingOperationError('deleteRetryMessage', error, {
+                messageId: retryMessage.id,
+              });
+            });
+          }, 5_000);
         }
       }
     }
@@ -661,6 +782,6 @@ export async function streamModelResponse({ initialBotMessage, chat, parts, orig
     } else if (wasStopped()) {
       await clearMessageActionRows(botMessage);
     }
-    activeRequests.delete(originalMessage.author.id);
+
   }
 }

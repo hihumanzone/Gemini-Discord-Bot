@@ -19,6 +19,7 @@ import {
   SAFETY_SETTINGS,
   SEND_RETRY_ERRORS_TO_DISCORD,
 } from '../constants.js';
+import { logServiceError } from '../utils/errorHandler.js';
 import {
   buildConversationContext,
   buildFinalSystemInstruction,
@@ -29,42 +30,57 @@ import {
   resolveInstructions,
   tagPartsWithUser,
 } from './conversationContext.js';
-import { extractFileText, hasSupportedAttachments, processPromptAndMediaAttachments } from './attachmentService.js';
+import {
+  extractFileText,
+  getUnsupportedAttachments,
+  hasSupportedAttachments,
+  processPromptAndMediaAttachments,
+} from './attachmentService.js';
 import { streamModelResponse } from './streamingService.js';
 import { addSettingsButton } from '../ui/messageActions.js';
 import { applyEmbedFallback, createEmbed } from '../utils/discord.js';
 
 /** Creates a Gemini chat session configured for the given Discord message context. */
 async function createChatSession(message) {
-  const userToolPreferences = getUserGeminiToolPreferences(message.author.id);
-  const selectedTools = buildGeminiToolsFromPreferences(userToolPreferences);
-  const personality = resolveInstructions(message);
-  const fullSystemInstruction = buildFinalSystemInstruction(personality, userToolPreferences);
-  
-  const instructions = await buildConversationContext(message, fullSystemInstruction);
-  
-  const chatConfig = {
-    systemInstruction: {
-      role: 'system',
-      parts: [{ text: instructions }],
-    },
-    ...GENERATION_CONFIG,
-    safetySettings: SAFETY_SETTINGS,
-  };
+  try {
+    const userToolPreferences = getUserGeminiToolPreferences(message.author.id);
+    const selectedTools = buildGeminiToolsFromPreferences(userToolPreferences);
+    const personality = resolveInstructions(message);
+    const fullSystemInstruction = buildFinalSystemInstruction(personality, userToolPreferences);
 
-  if (selectedTools.length > 0) {
-    chatConfig.tools = selectedTools;
+    const instructions = await buildConversationContext(message, fullSystemInstruction);
+
+    const chatConfig = {
+      systemInstruction: {
+        role: 'system',
+        parts: [{ text: instructions }],
+      },
+      ...GENERATION_CONFIG,
+      safetySettings: SAFETY_SETTINGS,
+    };
+
+    if (selectedTools.length > 0) {
+      chatConfig.tools = selectedTools;
+    }
+
+    const historyId = resolveHistoryId(message);
+    const category = resolveHistoryCategory(message);
+    const limit = config.chatHistoryLimits[category];
+
+    return await genAI.chats.create({
+      model: MODEL,
+      config: chatConfig,
+      history: getHistory(historyId, limit),
+    });
+  } catch (error) {
+    logServiceError('Gemini', error, {
+      operation: 'createChatSession',
+      userId: message.author?.id,
+      channelId: message.channel?.id,
+      guildId: message.guild?.id,
+    });
+    throw error;
   }
-
-  const historyId = resolveHistoryId(message);
-  const category = resolveHistoryCategory(message);
-  const limit = config.chatHistoryLimits[category];
-
-  return genAI.chats.create({
-    model: MODEL,
-    config: chatConfig,
-    history: getHistory(historyId, limit),
-  });
 }
 
 function createProcessingEmbed(textAttachmentStatus = '[🔁]', mediaAttachmentStatus = '[🔁]', finalText = '') {
@@ -118,11 +134,15 @@ function getMentionPattern(clientUserId) {
  * Strips the bot mention, extracts attachments, and streams a Gemini response.
  */
 export async function handleTextMessage(message) {
-  const mentionPattern = getMentionPattern(message.client.user.id);
-  let messageContent = message.content.replace(mentionPattern, '').trim();
+  const clientUserId = message.client?.user?.id;
+  const mentionPattern = clientUserId ? getMentionPattern(clientUserId) : null;
+  let messageContent = mentionPattern
+    ? message.content.replace(mentionPattern, '').trim()
+    : message.content.trim();
+  const unsupportedAttachments = getUnsupportedAttachments(message);
 
   if (!messageContent && !(message.attachments.size > 0 && hasSupportedAttachments(message))) {
-    activeRequests.delete(message.author.id);
+
     const response = await message.reply(applyEmbedFallback(message.channel, { embeds: [createEmptyMessageEmbed()] }));
     await addSettingsButton(response);
     return;
@@ -152,22 +172,50 @@ export async function handleTextMessage(message) {
       parts = await processPromptAndMediaAttachments(messageContent, message);
     }
   } catch (error) {
-    activeRequests.delete(message.author.id);
+
     stopTyping();
-    console.error('Error initializing message:', error);
+    logServiceError('ConversationService', error, {
+      operation: 'initializeMessage',
+      messageId: message.id,
+      userId: message.author?.id,
+    });
     return;
   }
 
-  stopTyping();
+  try {
+    stopTyping();
 
-  if (isSharedConversation(message)) {
-    parts = tagPartsWithUser(parts, message);
+    if (isSharedConversation(message)) {
+      parts = tagPartsWithUser(parts, message);
+    }
+
+    await streamModelResponse({
+      initialBotMessage: processingMessage,
+      chat: await createChatSession(message),
+      parts,
+      originalMessage: message,
+      unsupportedAttachments,
+    });
+  } catch (error) {
+
+    logServiceError('StreamingService', error, {
+      operation: 'streamModelResponse',
+      messageId: message.id,
+      userId: message.author?.id,
+    });
+    try {
+      const errorEmbed = createEmbed({
+        color: 0xFF0000,
+        title: 'Error',
+        description: 'An unexpected error occurred while processing your request.',
+      });
+      if (processingMessage) {
+        await processingMessage.edit({ embeds: [errorEmbed] });
+      } else {
+        await message.reply({ embeds: [errorEmbed] });
+      }
+    } catch (replyError) {
+      logServiceError('StreamingService', replyError, { operation: 'errorReply' });
+    }
   }
-
-  await streamModelResponse({
-    initialBotMessage: processingMessage,
-    chat: await createChatSession(message),
-    parts,
-    originalMessage: message,
-  });
 }

@@ -11,8 +11,6 @@ import {
   clearChatHistoryFor,
   getTimeUntilNextReset,
   removeBlacklistedUser,
-  saveStateToFile,
-  state,
 } from '../state/botState.js';
 import { getActiveSessionDetails } from '../services/sessionService.js';
 import {
@@ -23,8 +21,11 @@ import {
 import { addSettingsButton } from '../ui/messageActions.js';
 import { showDashboard, showChannelDashboard, showSettings } from '../ui/settingsViews.js';
 import { createEmbed, replyWithEmbed } from '../utils/discord.js';
+import { replyWithError, logError } from '../utils/errorHandler.js';
 import {
+  ensureInteractionNotBlacklisted,
   getClearMemoryDisabledReason,
+  persistStateChange,
   requireGuildAdmin,
   replyFeatureDisabled,
 } from './interactionHelpers.js';
@@ -49,7 +50,7 @@ async function handleClearMemoryCommand(interaction) {
   const activeSession = getActiveSessionDetails(interaction.user.id);
 
   clearChatHistoryFor(activeSession.historyId);
-  await saveStateToFile();
+  await persistStateChange();
 
   return replyWithEmbed(interaction, {
     color: 0x00FF00,
@@ -96,7 +97,10 @@ async function handleStatusCommand(interaction) {
         })],
       });
     } catch (error) {
-      console.error('Error updating status message:', error);
+      logError('StatusCommandUpdate', error, {
+        userId: interaction.user?.id,
+        interactionId: interaction.id,
+      });
       clearInterval(intervalId);
     }
   };
@@ -108,16 +112,24 @@ async function handleStatusCommand(interaction) {
     intervalId = setInterval(updateReply, STATUS_REFRESH_INTERVAL_MS);
     setTimeout(() => clearInterval(intervalId), STATUS_LIFETIME_MS);
   } catch (error) {
-    console.error('Error in handleStatusCommand:', error);
-    await interaction.editReply({
+    logError('StatusCommand', error, {
+      userId: interaction.user?.id,
+      interactionId: interaction.id,
+    });
+
+    if (interaction.replied || interaction.deferred) {
+      await interaction.editReply({
+        content: 'An error occurred while fetching system status.',
+        embeds: [],
+        components: [],
+      });
+      return;
+    }
+
+    await interaction.reply({
       content: 'An error occurred while fetching system status.',
       embeds: [],
-      components: [],
-    }).catch(async () => {
-      await interaction.reply({
-        content: 'An error occurred while fetching system status.',
-        flags: MessageFlags.Ephemeral,
-      }).catch(() => {});
+      flags: MessageFlags.Ephemeral,
     });
   }
 }
@@ -131,7 +143,7 @@ async function handleBlacklistCommand(interaction) {
   const guildId = interaction.guild.id;
 
   if (addBlacklistedUser(guildId, userId)) {
-    await saveStateToFile();
+    await persistStateChange();
     return replyWithEmbed(interaction, {
       color: 0x00FF00,
       title: 'User Blocked',
@@ -157,7 +169,7 @@ async function handleWhitelistCommand(interaction) {
   const guildId = interaction.guild.id;
 
   if (removeBlacklistedUser(guildId, userId)) {
-    await saveStateToFile();
+    await persistStateChange();
     return replyWithEmbed(interaction, {
       color: 0x00FF00,
       title: 'User Unblocked',
@@ -176,32 +188,46 @@ async function handleWhitelistCommand(interaction) {
 
 /** Routes a chat-input command interaction to its handler. */
 export async function handleCommandInteraction(interaction) {
-  const handlers = {
-    unblock: handleWhitelistCommand,
-    block: handleBlacklistCommand,
-    clear_memory: handleClearMemoryCommand,
-    settings: showSettings,
-    server_settings: async (cmd) => {
-      if (!(await requireGuildAdmin(cmd))) {
-        return;
-      }
-      return showDashboard(cmd);
-    },
-    channel_settings: async (cmd) => {
-      if (!(await requireGuildAdmin(cmd))) {
-        return;
-      }
-      return showChannelDashboard(cmd);
-    },
-    status: handleStatusCommand,
-  };
+  try {
+    if (!(await ensureInteractionNotBlacklisted(interaction))) {
+      return;
+    }
 
-  const handler = handlers[interaction.commandName];
-  if (handler) {
-    await handler(interaction);
-    return;
+    const handlers = {
+      unblock: handleWhitelistCommand,
+      block: handleBlacklistCommand,
+      clear_memory: handleClearMemoryCommand,
+      settings: showSettings,
+      server_settings: async (cmd) => {
+        if (!(await requireGuildAdmin(cmd))) {
+          return;
+        }
+        return showDashboard(cmd);
+      },
+      channel_settings: async (cmd) => {
+        if (!(await requireGuildAdmin(cmd))) {
+          return;
+        }
+        return showChannelDashboard(cmd);
+      },
+      status: handleStatusCommand,
+    };
+
+    const handler = handlers[interaction.commandName];
+    if (handler) {
+      await handler(interaction);
+      return;
+    }
+
+    logError('Command', `Unknown command: ${interaction.commandName}`, {
+      commandName: interaction.commandName,
+    });
+  } catch (error) {
+    logError('CommandHandler', error, {
+      commandName: interaction.commandName,
+      userId: interaction.user?.id,
+    });
+    await replyWithError(interaction, 'Command Error', 'An error occurred while running this command.');
   }
-
-  console.warn(`Unknown command: ${interaction.commandName}`);
 }
 

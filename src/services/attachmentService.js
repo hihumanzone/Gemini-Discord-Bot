@@ -5,12 +5,30 @@ import path from 'path';
 import axios from 'axios';
 import { createPartFromUri } from '@google/genai';
 import { getTextExtractor } from 'office-text-extractor';
+import ffmpeg from 'fluent-ffmpeg';
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 import { genAI } from '../core/runtime.js';
 import { TEMP_DIR } from '../core/paths.js';
 import { TEXT_ATTACHMENT_EXTENSIONS, VIDEO_POLL_INTERVAL_MS } from '../constants.js';
+import { logServiceError } from '../utils/errorHandler.js';
 
 let cachedTextExtractor = null;
+const UPLOADABLE_MIME_TYPES = new Set([
+  'text/html',
+  'text/css',
+  'text/plain',
+  'text/xml',
+  'text/csv',
+  'text/rtf',
+  'text/javascript',
+  'application/json',
+  'application/pdf',
+  'application/x-pdf',
+]);
+
 function getOrCreateTextExtractor() {
   if (!cachedTextExtractor) {
     cachedTextExtractor = getTextExtractor();
@@ -18,36 +36,61 @@ function getOrCreateTextExtractor() {
   return cachedTextExtractor;
 }
 
+function getCleanMimeType(contentType) {
+  return (contentType || '').toLowerCase().split(';')[0].trim();
+}
+
 function isMediaAttachment(attachment) {
-  const contentType = (attachment.contentType || '').toLowerCase();
+  const contentType = getCleanMimeType(attachment.contentType);
 
   return (
-    (contentType.startsWith('image/') && contentType !== 'image/gif') ||
+    (contentType.startsWith('image/') && !contentType.includes('svg')) ||
     contentType.startsWith('audio/') ||
     contentType.startsWith('video/') ||
-    contentType.startsWith('application/pdf') ||
-    contentType.startsWith('application/x-pdf')
+    UPLOADABLE_MIME_TYPES.has(contentType)
   );
 }
 
+function isTextAttachment(attachment) {
+  const extension = path.extname(attachment.name || '').toLowerCase();
+  return TEXT_ATTACHMENT_EXTENSIONS.has(extension);
+}
+
+function isSupportedAttachment(attachment) {
+  return isMediaAttachment(attachment) || isTextAttachment(attachment);
+}
+
 function sanitizeFileName(fileName = 'attachment') {
-  return fileName.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '');
+  const sanitized = fileName
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return sanitized || 'attachment';
 }
 
 async function downloadFile(url, filePath) {
-  const writer = createWriteStream(filePath);
-  const response = await axios({
-    url,
-    method: 'GET',
-    responseType: 'stream',
-  });
+  try {
+    const writer = createWriteStream(filePath);
+    const response = await axios({
+      url,
+      method: 'GET',
+      responseType: 'stream',
+    });
 
-  response.data.pipe(writer);
+    response.data.pipe(writer);
 
-  return new Promise((resolve, reject) => {
-    writer.on('finish', resolve);
-    writer.on('error', reject);
-  });
+    return await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+  } catch (error) {
+    logServiceError('Attachment', error, {
+      operation: 'downloadFile',
+      url,
+    });
+    throw error;
+  }
 }
 
 async function waitForFileProcessing(fileName, displayName) {
@@ -63,18 +106,50 @@ async function waitForFileProcessing(fileName, displayName) {
   }
 }
 
+async function convertGifToVideo(inputPath, outputPath) {
+  return new Promise((resolve, reject) => {
+    ffmpeg(inputPath)
+      .outputOptions([
+        '-c:v libx264',
+        '-preset ultrafast', // Maximizes encoding speed
+        '-crf 35',           // Lowers quality to save time and output size (acceptable range 28-35 when quality drops are fine)
+        '-r 15',             // Caps framerate to 15 FPS to process fewer frames
+        '-movflags faststart',
+        '-pix_fmt yuv420p',
+        '-vf scale=trunc(iw/2)*2:trunc(ih/2)*2',
+      ])
+      .toFormat('mp4')
+      .on('end', () => resolve(outputPath))
+      .on('error', (err) => reject(err))
+      .save(outputPath);
+  });
+}
+
 async function buildAttachmentPart(attachment, authorId) {
-  const sanitizedFileName = sanitizeFileName(attachment.name);
-  const tempFileName = `${authorId}-${attachment.id}-${sanitizedFileName}`;
-  const tempFilePath = path.join(TEMP_DIR, tempFileName);
+  let sanitizedFileName = sanitizeFileName(attachment.name);
+  let tempFileName = `${authorId}-${attachment.id}-${sanitizedFileName}`;
+  let tempFilePath = path.join(TEMP_DIR, tempFileName);
+  let finalMimeType = getCleanMimeType(attachment.contentType);
+  let convertedFilePath = null;
 
   try {
     await downloadFile(attachment.url, tempFilePath);
 
+    if (finalMimeType === 'image/gif') {
+      convertedFilePath = `${tempFilePath}.mp4`;
+      await convertGifToVideo(tempFilePath, convertedFilePath);
+      tempFilePath = convertedFilePath;
+      finalMimeType = 'video/mp4';
+      sanitizedFileName = sanitizedFileName.replace(/\.gif$/i, '.mp4');
+      if (!sanitizedFileName.endsWith('.mp4')) {
+        sanitizedFileName += '.mp4';
+      }
+    }
+
     const uploadResult = await genAI.files.upload({
       file: tempFilePath,
       config: {
-        mimeType: attachment.contentType,
+        mimeType: finalMimeType,
         displayName: sanitizedFileName,
       },
     });
@@ -83,30 +158,39 @@ async function buildAttachmentPart(attachment, authorId) {
       throw new Error('Unable to extract file name from upload result.');
     }
 
-    if ((attachment.contentType || '').startsWith('video/')) {
+    if (finalMimeType.startsWith('video/')) {
       await waitForFileProcessing(uploadResult.name, sanitizedFileName);
     }
 
     return createPartFromUri(uploadResult.uri, uploadResult.mimeType);
   } catch (error) {
-    console.error(`Error processing attachment ${sanitizedFileName}:`, error);
+    logServiceError('Attachment', error, {
+      operation: 'buildAttachmentPart',
+      attachment: sanitizedFileName,
+    });
     return null;
   } finally {
     try {
-      await fs.unlink(tempFilePath);
-    } catch (unlinkError) {
-      if (unlinkError.code !== 'ENOENT') {
-        console.error(`Error deleting temporary file ${tempFilePath}:`, unlinkError);
+      await fs.unlink(path.join(TEMP_DIR, tempFileName)).catch((e) => {
+        if (e.code !== 'ENOENT') logServiceError('FileSystem', e, { operation: 'unlink', file: tempFileName });
+      });
+      if (convertedFilePath) {
+        await fs.unlink(convertedFilePath).catch((e) => {
+          if (e.code !== 'ENOENT') logServiceError('FileSystem', e, { operation: 'unlink', file: convertedFilePath });
+        });
       }
+    } catch (unlinkError) {
+      logServiceError('FileSystem', unlinkError, { operation: 'cleanup' });
     }
   }
 }
 
 export function hasSupportedAttachments(message) {
-  return message.attachments.some((attachment) => {
-    const extension = path.extname(attachment.name || '').toLowerCase();
-    return isMediaAttachment(attachment) || TEXT_ATTACHMENT_EXTENSIONS.has(extension);
-  });
+  return message.attachments.some(isSupportedAttachment);
+}
+
+export function getUnsupportedAttachments(message) {
+  return Array.from(message.attachments.values()).filter((attachment) => !isSupportedAttachment(attachment));
 }
 
 export async function processPromptAndMediaAttachments(prompt, message) {
@@ -143,17 +227,24 @@ export async function extractFileText(message, messageContent) {
   let prompt = messageContent;
 
   for (const attachment of message.attachments.values()) {
-    const extension = path.extname(attachment.name || '').toLowerCase();
-
-    if (!TEXT_ATTACHMENT_EXTENSIONS.has(extension)) {
+    if (isMediaAttachment(attachment)) {
       continue;
     }
+
+    if (!isTextAttachment(attachment)) {
+      continue;
+    }
+
+    const extension = path.extname(attachment.name || '').toLowerCase();
 
     try {
       const fileContent = await downloadAndReadFile(attachment.url, extension);
       prompt += `\n\n[\`${attachment.name}\` File Content]:\n\`\`\`\n${fileContent}\n\`\`\``;
     } catch (error) {
-      console.error(`Error reading file ${attachment.name}:`, error);
+      logServiceError('Attachment', error, {
+        operation: 'extractFileText',
+        attachmentName: attachment.name,
+      });
     }
   }
 

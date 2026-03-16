@@ -91,6 +91,7 @@ export const TEXT_ATTACHMENT_EXTENSIONS = new Set([
   '.txt',
   '.docx',
   '.pptx',
+  '.svg',
 ]);
 
 export const EMBED_RESPONSE_LIMIT = 3_900;

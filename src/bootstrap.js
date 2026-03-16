@@ -1,15 +1,22 @@
-import { REST, Routes } from 'discord.js';
+import { Events, REST, Routes } from 'discord.js';
 
 import { client, token } from './core/runtime.js';
 import { commands } from '../commands.js';
 import { PRESENCE_ACTIVITIES, PRESENCE_ROTATION_INTERVAL_MS } from './constants.js';
 import { handleInteraction } from './handlers/interactionHandler.js';
 import { handleMessageCreate } from './handlers/messageHandler.js';
+import {
+  logDiscordError,
+  logShardError,
+  logError,
+  logUnhandledRejection,
+  logUncaughtException,
+} from './utils/errorHandler.js';
 
 export function registerBotHandlers() {
   let activityIndex = 0;
 
-  client.once('clientReady', async () => {
+  client.once(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user.tag}!`);
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -24,23 +31,37 @@ export function registerBotHandlers() {
     }
 
     if (PRESENCE_ACTIVITIES.length > 0) {
-      client.user.setPresence({
-        activities: [PRESENCE_ACTIVITIES[activityIndex]],
-        status: 'idle',
-      });
+      try {
+        client.user.setPresence({
+          activities: [PRESENCE_ACTIVITIES[activityIndex]],
+          status: 'idle',
+        });
+      } catch (error) {
+        console.error('Failed to set initial presence:', error);
+      }
 
       if (PRESENCE_ACTIVITIES.length > 1) {
         setInterval(() => {
-          activityIndex = (activityIndex + 1) % PRESENCE_ACTIVITIES.length;
-          client.user.setPresence({
-            activities: [PRESENCE_ACTIVITIES[activityIndex]],
-            status: 'idle',
-          });
+          try {
+            activityIndex = (activityIndex + 1) % PRESENCE_ACTIVITIES.length;
+            client.user.setPresence({
+              activities: [PRESENCE_ACTIVITIES[activityIndex]],
+              status: 'idle',
+            });
+          } catch (error) {
+            console.error('Failed to rotate presence:', error);
+          }
         }, PRESENCE_ROTATION_INTERVAL_MS);
       }
     }
   });
 
-  client.on('messageCreate', handleMessageCreate);
-  client.on('interactionCreate', handleInteraction);
+  client.on(Events.Error, logDiscordError);
+  client.on(Events.ShardError, logShardError);
+  client.on(Events.Warn, (message) => logError('Discord', message));
+  process.on('unhandledRejection', logUnhandledRejection);
+  process.on('uncaughtException', logUncaughtException);
+
+  client.on(Events.MessageCreate, handleMessageCreate);
+  client.on(Events.InteractionCreate, handleInteraction);
 }
