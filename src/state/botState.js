@@ -15,6 +15,13 @@ import {
   normalizeGeminiToolPreferences,
 } from '../constants.js';
 import { Mutex } from './mutex.js';
+import {
+  DEFAULT_SESSION_ID,
+  DEFAULT_SESSION_NAME,
+  MAX_SESSION_NAME_LENGTH,
+  SESSION_ID_PATTERN,
+  normalizeSessionName,
+} from '../utils/sessionConstants.js';
 
 const PERSISTED_STATE_KEYS = Object.freeze([
   'activeUsersInChannels',
@@ -524,15 +531,6 @@ export function removeBlacklistedUser(guildId, userId) {
 
   state.blacklistedUsers[guildId].splice(index, 1);
   return true;
-}
-
-const DEFAULT_SESSION_ID = 'default';
-const DEFAULT_SESSION_NAME = 'Default Session';
-const MAX_SESSION_NAME_LENGTH = 80;
-const SESSION_ID_PATTERN = /^[a-z0-9_-]{1,40}$/;
-
-function normalizeSessionName(name) {
-  return (name || '').trim().slice(0, MAX_SESSION_NAME_LENGTH);
 }
 
 function createDefaultSessionState() {

@@ -36,6 +36,7 @@ import {
 } from '../ui/messageActions.js';
 import { applyEmbedFallback, createEmbed, createStatusEmbed } from '../utils/discord.js';
 import { buildRetryErrorEmbed, formatGeminiErrorForConsole } from '../utils/errorFormatter.js';
+import { toDeleteHistoryRef } from '../utils/historyRef.js';
 
 // --- Mime type to file extension mapping ---
 
@@ -102,23 +103,6 @@ function clonePart(part) {
   }
 
   return JSON.parse(JSON.stringify(part));
-}
-
-function toDeleteHistoryRef(historyId, authorId) {
-  if (!historyId || !authorId) {
-    return null;
-  }
-
-  if (historyId === authorId) {
-    return 'u:default';
-  }
-
-  if (historyId.startsWith(`${authorId}_`)) {
-    const sessionId = historyId.slice(authorId.length + 1);
-    return sessionId ? `u:${sessionId}` : 'u:default';
-  }
-
-  return null;
 }
 
 // --- Embed & response builders ---

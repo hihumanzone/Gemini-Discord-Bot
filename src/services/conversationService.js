@@ -39,23 +39,7 @@ import {
 import { streamModelResponse } from './streamingService.js';
 import { addDeleteButton, addSettingsButton } from '../ui/messageActions.js';
 import { applyEmbedFallback, createStatusEmbed } from '../utils/discord.js';
-
-function toDeleteHistoryRef(historyId, authorId) {
-  if (!historyId || !authorId) {
-    return null;
-  }
-
-  if (historyId === authorId) {
-    return 'u:default';
-  }
-
-  if (historyId.startsWith(`${authorId}_`)) {
-    const sessionId = historyId.slice(authorId.length + 1);
-    return sessionId ? `u:${sessionId}` : 'u:default';
-  }
-
-  return null;
-}
+import { toDeleteHistoryRef } from '../utils/historyRef.js';
 
 function formatUnsupportedAttachmentsList(unsupportedAttachments) {
   const MAX_DISPLAY = 15;
