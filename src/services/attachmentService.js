@@ -5,10 +5,8 @@ import path from 'path';
 import axios from 'axios';
 import { createPartFromUri } from '@google/genai';
 import { getTextExtractor } from 'office-text-extractor';
-import ffmpeg from 'fluent-ffmpeg';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+import { spawn } from 'child_process';
+import ffmpegPath from 'ffmpeg-static';
 
 import { genAI } from '../core/runtime.js';
 import { TEMP_DIR } from '../core/paths.js';
@@ -106,22 +104,54 @@ async function waitForFileProcessing(fileName, displayName) {
   }
 }
 
-async function convertGifToVideo(inputPath, outputPath) {
+function convertGifToVideo(inputPath, outputPath, options = {}) {
+  const {
+    fps = 2,
+    width = 240,
+    crf = 42,
+    threads = 1,
+    preset = 'ultrafast'
+  } = options;
+
   return new Promise((resolve, reject) => {
-    ffmpeg(inputPath)
-      .outputOptions([
-        '-c:v libx264',
-        '-preset ultrafast', // Maximizes encoding speed
-        '-crf 35',           // Lowers quality to save time and output size (acceptable range 28-35 when quality drops are fine)
-        '-r 15',             // Caps framerate to 15 FPS to process fewer frames
-        '-movflags faststart',
-        '-pix_fmt yuv420p',
-        '-vf scale=trunc(iw/2)*2:trunc(ih/2)*2',
-      ])
-      .toFormat('mp4')
-      .on('end', () => resolve(outputPath))
-      .on('error', (err) => reject(err))
-      .save(outputPath);
+    const args = [
+      '-y',
+      '-i', inputPath,
+
+      '-an',
+      '-sn',
+      '-dn',
+
+      '-vf', `fps=${fps},scale=${width}:-2:flags=fast_bilinear`,
+
+      '-c:v', 'libx264',
+      '-preset', preset,
+      '-crf', String(crf),
+      '-pix_fmt', 'yuv420p',
+      '-threads', String(threads),
+
+      outputPath
+    ];
+
+    const proc = spawn(ffmpegPath, args, {
+      stdio: ['ignore', 'ignore', 'pipe']
+    });
+
+    let stderr = '';
+
+    proc.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    proc.on('error', reject);
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        resolve(outputPath);
+      } else {
+        reject(new Error(`ffmpeg failed (${code})\n${stderr}`));
+      }
+    });
   });
 }
 

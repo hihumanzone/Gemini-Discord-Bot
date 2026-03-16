@@ -1,12 +1,11 @@
 {
   "type": "module",
   "dependencies": {
-    "@ffmpeg-installer/ffmpeg": "*",
+    "ffmpeg-static": "*",
     "@google/genai": "*",
     "axios": "*",
     "discord.js": "14.25.1",
     "dotenv": "*",
-    "fluent-ffmpeg": "*",
     "fs": "*",
     "node-os-utils": "*",
     "office-text-extractor": "*",
