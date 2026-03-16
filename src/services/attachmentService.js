@@ -4,7 +4,7 @@ import path from 'path';
 
 import axios from 'axios';
 import { createPartFromUri } from '@google/genai';
-import { getTextExtractor } from 'office-text-extractor';
+import officeParser from 'officeparser';
 import { spawn } from 'child_process';
 import ffmpegPath from 'ffmpeg-static';
 
@@ -13,7 +13,6 @@ import { TEMP_DIR } from '../core/paths.js';
 import { TEXT_ATTACHMENT_EXTENSIONS, VIDEO_POLL_INTERVAL_MS } from '../constants.js';
 import { logServiceError } from '../utils/errorHandler.js';
 
-let cachedTextExtractor = null;
 const UPLOADABLE_MIME_TYPES = new Set([
   'text/html',
   'text/css',
@@ -26,13 +25,6 @@ const UPLOADABLE_MIME_TYPES = new Set([
   'application/pdf',
   'application/x-pdf',
 ]);
-
-function getOrCreateTextExtractor() {
-  if (!cachedTextExtractor) {
-    cachedTextExtractor = getTextExtractor();
-  }
-  return cachedTextExtractor;
-}
 
 function getCleanMimeType(contentType) {
   return (contentType || '').toLowerCase().split(';')[0].trim();
@@ -225,7 +217,7 @@ export function getUnsupportedAttachments(message) {
 
 export async function processPromptAndMediaAttachments(prompt, message) {
   const attachments = Array.from(message.attachments.values());
-  const parts = [{ text: prompt }];
+  const parts = [{ text: prompt.trim() }];
   const validAttachments = attachments.filter(isMediaAttachment);
 
   if (!validAttachments.length) {
@@ -239,15 +231,20 @@ export async function processPromptAndMediaAttachments(prompt, message) {
   return [...parts, ...attachmentParts.filter(Boolean)];
 }
 
-async function downloadAndReadFile(url, extension) {
-  if (extension === '.pptx' || extension === '.docx') {
-    const extractor = getOrCreateTextExtractor();
-    return extractor.extractText({ input: url, type: 'url' });
-  }
+const OFFICE_PARSEABLE_EXTENSIONS = new Set([
+  '.docx', '.pptx', '.xlsx', '.odt', '.odp', '.ods', '.rtf'
+]);
 
+async function downloadAndReadFile(url, extension) {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to download ${response.statusText}`);
+  }
+
+  if (OFFICE_PARSEABLE_EXTENSIONS.has(extension)) {
+    const fileBuffer = Buffer.from(await response.arrayBuffer());
+    const ast = await officeParser.parseOffice(fileBuffer);
+    return ast.toText();
   }
 
   return response.text();

@@ -91,6 +91,11 @@ export const TEXT_ATTACHMENT_EXTENSIONS = new Set([
   '.txt',
   '.docx',
   '.pptx',
+  '.xlsx',
+  '.odt',
+  '.odp',
+  '.ods',
+  '.rtf',
   '.svg',
 ]);
 
