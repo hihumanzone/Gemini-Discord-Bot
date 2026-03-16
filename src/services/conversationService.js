@@ -5,7 +5,7 @@
  */
 
 import config from '../../config.js';
-import { activeRequests, genAI } from '../core/runtime.js';
+import { genAI } from '../core/runtime.js';
 import {
   getHistory,
   getUserGeminiToolPreferences,
@@ -37,8 +37,77 @@ import {
   processPromptAndMediaAttachments,
 } from './attachmentService.js';
 import { streamModelResponse } from './streamingService.js';
-import { addSettingsButton } from '../ui/messageActions.js';
+import { addDeleteButton, addSettingsButton } from '../ui/messageActions.js';
 import { applyEmbedFallback, createStatusEmbed } from '../utils/discord.js';
+
+function toDeleteHistoryRef(historyId, authorId) {
+  if (!historyId || !authorId) {
+    return null;
+  }
+
+  if (historyId === authorId) {
+    return 'u:default';
+  }
+
+  if (historyId.startsWith(`${authorId}_`)) {
+    const sessionId = historyId.slice(authorId.length + 1);
+    return sessionId ? `u:${sessionId}` : 'u:default';
+  }
+
+  return null;
+}
+
+function formatUnsupportedAttachmentsList(unsupportedAttachments) {
+  const MAX_DISPLAY = 15;
+  const list = unsupportedAttachments
+    .slice(0, MAX_DISPLAY)
+    .map((attachment, index) => {
+      const displayName = attachment.name || `attachment-${index + 1}`;
+      return `• \`${displayName}\``;
+    });
+
+  if (unsupportedAttachments.length > MAX_DISPLAY) {
+    const remaining = unsupportedAttachments.length - MAX_DISPLAY;
+    list.push(`\n*...and ${remaining} more.*`);
+  }
+
+  return list.join('\n');
+}
+
+async function sendUnsupportedAttachmentsWarning(unsupportedAttachments, message, deleteHistoryRef) {
+  if (!unsupportedAttachments.length) {
+    return null;
+  }
+
+  try {
+    const warningEmbed = createStatusEmbed({
+      variant: 'warning',
+      title: 'Unsupported Attachments Skipped',
+      description: [
+        'These files could not be processed and were skipped:',
+        '',
+        formatUnsupportedAttachmentsList(unsupportedAttachments),
+      ].join('\n'),
+    });
+
+    const warningMessage = await message.reply(applyEmbedFallback(message.channel, {
+      content: `<@${message.author.id}>`,
+      embeds: [warningEmbed],
+      allowedMentions: { users: [message.author.id], repliedUser: false },
+    }));
+
+    let updatedWarningMessage = await addSettingsButton(warningMessage);
+    updatedWarningMessage = await addDeleteButton(updatedWarningMessage, updatedWarningMessage.id, deleteHistoryRef);
+    return updatedWarningMessage;
+  } catch (error) {
+    logServiceError('ConversationService', error, {
+      operation: 'sendUnsupportedAttachmentsWarning',
+      messageId: message.id,
+      userId: message.author?.id,
+    });
+    return null;
+  }
+}
 
 /** Creates a Gemini chat session configured for the given Discord message context. */
 async function createChatSession(message) {
@@ -141,6 +210,8 @@ function getMentionPattern(clientUserId) {
  */
 export async function handleTextMessage(message) {
   const clientUserId = message.client?.user?.id;
+  const historyId = resolveHistoryId(message);
+  const deleteHistoryRef = toDeleteHistoryRef(historyId, message.author.id);
   const mentionPattern = clientUserId ? getMentionPattern(clientUserId) : null;
   let messageContent = mentionPattern
     ? message.content.replace(mentionPattern, '').trim()
@@ -157,6 +228,7 @@ export async function handleTextMessage(message) {
   const stopTyping = createTypingHeartbeat(message.channel);
   let processingMessage = null;
   let parts;
+  let unsupportedWarningMessageId = null;
 
   try {
     if (SEND_RETRY_ERRORS_TO_DISCORD) {
@@ -170,12 +242,16 @@ export async function handleTextMessage(message) {
       }));
 
       parts = await processPromptAndMediaAttachments(messageContent, message);
+      const warningMessage = await sendUnsupportedAttachmentsWarning(unsupportedAttachments, message, deleteHistoryRef);
+      unsupportedWarningMessageId = warningMessage?.id || null;
       await processingMessage.edit(applyEmbedFallback(message.channel, {
         embeds: [createProcessingEmbed('[☑️]', '[☑️]', '**All checks complete.** Waiting for generation...')],
       }));
     } else {
       messageContent = await extractFileText(message, messageContent);
       parts = await processPromptAndMediaAttachments(messageContent, message);
+      const warningMessage = await sendUnsupportedAttachmentsWarning(unsupportedAttachments, message, deleteHistoryRef);
+      unsupportedWarningMessageId = warningMessage?.id || null;
     }
   } catch (error) {
 
@@ -185,6 +261,23 @@ export async function handleTextMessage(message) {
       messageId: message.id,
       userId: message.author?.id,
     });
+
+    if (processingMessage) {
+      try {
+        const errorEmbed = createStatusEmbed({
+          variant: 'error',
+          title: 'Request Failed',
+          description: 'An unexpected error occurred while preparing your request.',
+        });
+
+        await processingMessage.edit(applyEmbedFallback(message.channel, { embeds: [errorEmbed] }));
+        processingMessage = await addSettingsButton(processingMessage);
+        await addDeleteButton(processingMessage, processingMessage.id, deleteHistoryRef);
+      } catch (replyError) {
+        logServiceError('ConversationService', replyError, { operation: 'initializeMessageErrorReply' });
+      }
+    }
+
     return;
   }
 
@@ -200,7 +293,7 @@ export async function handleTextMessage(message) {
       chat: await createChatSession(message),
       parts,
       originalMessage: message,
-      unsupportedAttachments,
+      extraMessageIds: unsupportedWarningMessageId ? [unsupportedWarningMessageId] : [],
     });
   } catch (error) {
 
@@ -217,8 +310,12 @@ export async function handleTextMessage(message) {
       });
       if (processingMessage) {
         await processingMessage.edit(applyEmbedFallback(message.channel, { embeds: [errorEmbed] }));
+        processingMessage = await addSettingsButton(processingMessage);
+        await addDeleteButton(processingMessage, processingMessage.id, deleteHistoryRef);
       } else {
-        await message.reply(applyEmbedFallback(message.channel, { embeds: [errorEmbed] }));
+        let errorMessage = await message.reply(applyEmbedFallback(message.channel, { embeds: [errorEmbed] }));
+        errorMessage = await addSettingsButton(errorMessage);
+        await addDeleteButton(errorMessage, errorMessage.id, deleteHistoryRef);
       }
     } catch (replyError) {
       logServiceError('StreamingService', replyError, { operation: 'errorReply' });

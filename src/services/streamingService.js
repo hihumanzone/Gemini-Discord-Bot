@@ -11,7 +11,6 @@ import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Messag
 import { logServiceError } from '../utils/errorHandler.js';
 
 import { TEMP_DIR } from '../core/paths.js';
-import { activeRequests } from '../core/runtime.js';
 import {
   chatHistoryLock,
   saveStateToFile,
@@ -386,54 +385,6 @@ async function handleLargeOrFinalResponse(
   return updatedMessage;
 }
 
-function formatUnsupportedAttachmentsList(unsupportedAttachments) {
-  const MAX_DISPLAY = 15;
-  const list = unsupportedAttachments
-    .slice(0, MAX_DISPLAY)
-    .map((attachment, index) => {
-      const displayName = attachment.name || `attachment-${index + 1}`;
-      return `• \`${displayName}\``;
-    });
-
-  if (unsupportedAttachments.length > MAX_DISPLAY) {
-    const remaining = unsupportedAttachments.length - MAX_DISPLAY;
-    list.push(`\n*...and ${remaining} more.*`);
-  }
-
-  return list.join('\n');
-}
-
-async function sendUnsupportedAttachmentsWarning(unsupportedAttachments, originalMessage, historyId) {
-  if (!unsupportedAttachments.length) {
-    return null;
-  }
-
-  try {
-    const warningEmbed = createStatusEmbed({
-      variant: 'warning',
-      title: 'Unsupported Attachments Skipped',
-      description: [
-        'These files could not be processed and were skipped:',
-        '',
-        formatUnsupportedAttachmentsList(unsupportedAttachments),
-      ].join('\n'),
-    });
-
-    const warningMessage = await originalMessage.reply(applyEmbedFallback(originalMessage.channel, {
-      content: `<@${originalMessage.author.id}>`,
-      embeds: [warningEmbed],
-      allowedMentions: { users: [originalMessage.author.id], repliedUser: false },
-    }));
-
-    let updated = await addSettingsButton(warningMessage);
-    updated = await addDeleteButton(updated, updated.id, historyId);
-    return updated;
-  } catch (error) {
-    logServiceError('StreamingService', error, { operation: 'sendUnsupportedAttachmentsWarning' });
-    return null;
-  }
-}
-
 // --- Code-execution file delivery ---
 
 async function sendCodeExecutionFiles(inlineDataFiles, originalMessage, historyId) {
@@ -497,14 +448,14 @@ async function sendCodeExecutionFiles(inlineDataFiles, originalMessage, historyI
  * @param {Object} options.chat - The Gemini chat session.
  * @param {Array} options.parts - The prompt parts to send.
  * @param {import('discord.js').Message} options.originalMessage - The user's original message.
- * @param {import('discord.js').Attachment[]} [options.unsupportedAttachments] - Optional array of skipped attachments.
+ * @param {string[]} [options.extraMessageIds] - Optional related message IDs to bind to parent delete controls.
  */
 export async function streamModelResponse({
   initialBotMessage,
   chat,
   parts,
   originalMessage,
-  unsupportedAttachments = [],
+  extraMessageIds = [],
 }) {
   const historyId = resolveHistoryId(originalMessage);
   const deleteHistoryRef = toDeleteHistoryRef(historyId, originalMessage.author.id);
@@ -710,15 +661,9 @@ export async function streamModelResponse({
           filesMessage = await sendCodeExecutionFiles(inlineDataFiles, originalMessage, deleteHistoryRef);
         }
 
-        const unsupportedWarningMessage = await sendUnsupportedAttachmentsWarning(
-          unsupportedAttachments,
-          originalMessage,
-          deleteHistoryRef,
-        );
-
-        const extraMessageIds = [
+        const linkedMessageIds = [
           filesMessage?.id,
-          unsupportedWarningMessage?.id,
+          ...extraMessageIds,
         ].filter(Boolean);
 
         botMessage = await handleLargeOrFinalResponse(
@@ -727,7 +672,7 @@ export async function streamModelResponse({
           normalizedFinalResponse,
           isLargeResponse,
           deleteHistoryRef,
-          extraMessageIds,
+          linkedMessageIds,
         );
         const assistantPartsForHistory = rawAssistantParts.length > 0
           ? rawAssistantParts
@@ -762,9 +707,22 @@ export async function streamModelResponse({
               content: `<@${originalMessage.author.id}>`,
               embeds: [embed],
             }));
-            await addSettingsButton(errorMessage);
+
+            const linkedMessageIds = [
+              botMessage.id,
+              ...extraMessageIds,
+            ].filter(Boolean);
+
+            let updatedErrorMessage = await addSettingsButton(errorMessage);
+            updatedErrorMessage = await addDeleteButton(
+              updatedErrorMessage,
+              [updatedErrorMessage.id, ...linkedMessageIds].join(','),
+              deleteHistoryRef,
+            );
+
             botMessage = await clearMessageActionRows(botMessage);
             botMessage = await addSettingsButton(botMessage);
+            botMessage = await addDeleteButton(botMessage, [botMessage.id, updatedErrorMessage.id, ...extraMessageIds].join(','), deleteHistoryRef);
             finalized = true;
           }
 
