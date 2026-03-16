@@ -35,7 +35,7 @@ import {
   clearMessageActionRows,
   removeStopGeneratingButton,
 } from '../ui/messageActions.js';
-import { applyEmbedFallback, createEmbed } from '../utils/discord.js';
+import { applyEmbedFallback, createEmbed, createStatusEmbed } from '../utils/discord.js';
 import { buildRetryErrorEmbed, formatGeminiErrorForConsole } from '../utils/errorFormatter.js';
 
 // --- Mime type to file extension mapping ---
@@ -208,7 +208,7 @@ function buildResponseEmbed(botMessage, responseText, originalMessage, grounding
   }
 
   return botMessage.edit(applyEmbedFallback(originalMessage.channel, {
-    content: ' ',
+    content: null,
     embeds: [embed],
   }));
 }
@@ -222,11 +222,10 @@ async function sendAsTextFile(text, originalMessage, historyId) {
   try {
     await fs.writeFile(filePath, text, 'utf8');
 
-    const fileEmbed = createEmbed({
-      color: EMBED_COLOR,
-      title: '📄 Full Response',
-      description: 'The full response has been attached as a file due to length.',
-      timestamp: true,
+    const fileEmbed = createStatusEmbed({
+      variant: 'info',
+      title: 'Full Response Attached',
+      description: 'The response was longer than Discord message limits, so it has been attached as a file.',
     });
 
     let response = await originalMessage.reply(applyEmbedFallback(originalMessage.channel, {
@@ -277,10 +276,14 @@ async function ensureInitialBotMessage(initialBotMessage, originalMessage) {
       return initialBotMessage;
     }
 
-    return await originalMessage.reply({
-      content: 'Let me think..',
+    return await originalMessage.reply(applyEmbedFallback(originalMessage.channel, {
+      embeds: [createStatusEmbed({
+        variant: 'info',
+        title: 'Generating Response',
+        description: 'Working on your request now. You can stop generation at any time.',
+      })],
       components: [createStopButtonRow()],
-    });
+    }));
   } catch (error) {
     logServiceError('StreamingService', error, { operation: 'ensureInitialBotMessage' });
     throw error;
@@ -298,14 +301,14 @@ function createCollector(message, originalMessage) {
   collector.on('collect', async (interaction) => {
     if (interaction.user.id === originalMessage.author.id) {
       stopped = true;
-      await interaction.reply({
-        embeds: [createEmbed({
-          color: 0xFFA500,
+      await interaction.reply(applyEmbedFallback(interaction.channel, {
+        embeds: [createStatusEmbed({
+          variant: 'warning',
           title: 'Response Stopped',
           description: 'Response generation stopped by the user.',
         })],
         flags: MessageFlags.Ephemeral,
-      }).catch((error) => {
+      })).catch((error) => {
         logStreamingOperationError('collectorStopReply', error, {
           interactionId: interaction.id,
         });
@@ -313,14 +316,14 @@ function createCollector(message, originalMessage) {
       return;
     }
 
-    await interaction.reply({
-      embeds: [createEmbed({
-        color: 0xFF0000,
+    await interaction.reply(applyEmbedFallback(interaction.channel, {
+      embeds: [createStatusEmbed({
+        variant: 'error',
         title: 'Access Denied',
         description: "It's not for you.",
       })],
       flags: MessageFlags.Ephemeral,
-    }).catch((error) => {
+    })).catch((error) => {
       logStreamingOperationError('collectorAccessDeniedReply', error, {
         interactionId: interaction.id,
       });
@@ -406,15 +409,14 @@ async function sendUnsupportedAttachmentsWarning(unsupportedAttachments, origina
   }
 
   try {
-    const warningEmbed = createEmbed({
-      color: 0xFFA500,
-      title: '⚠️ Unsupported Attachments Skipped',
+    const warningEmbed = createStatusEmbed({
+      variant: 'warning',
+      title: 'Unsupported Attachments Skipped',
       description: [
         'These files could not be processed and were skipped:',
         '',
         formatUnsupportedAttachmentsList(unsupportedAttachments),
       ].join('\n'),
-      timestamp: true,
     });
 
     const warningMessage = await originalMessage.reply(applyEmbedFallback(originalMessage.channel, {
@@ -450,13 +452,12 @@ async function sendCodeExecutionFiles(inlineDataFiles, originalMessage, historyI
       attachments.push(new AttachmentBuilder(tempPath, { name: filename }));
     }
 
-    const filesEmbed = createEmbed({
-      color: EMBED_COLOR,
-      title: '📎 Generated Files',
+    const filesEmbed = createStatusEmbed({
+      variant: 'primary',
+      title: 'Generated Files',
       description: inlineDataFiles
         .map(({ name: fname, mimeType }, idx) => `**${idx + 1}.** ${fname || `generated_${idx + 1}${getFileExtension(mimeType)}`}`)
         .join('\n'),
-      timestamp: true,
     });
 
     const filesMessage = await originalMessage.reply(applyEmbedFallback(originalMessage.channel, {
@@ -524,7 +525,13 @@ export async function streamModelResponse({
     }
 
     if (!bufferedText.trim()) {
-      botMessage.edit({ content: '...' }).catch((error) => {
+      botMessage.edit(applyEmbedFallback(originalMessage.channel, {
+        embeds: [createStatusEmbed({
+          variant: 'muted',
+          title: 'Generating Response',
+          description: 'Still working on this response...',
+        })],
+      })).catch((error) => {
         logStreamingOperationError('flushBufferedTextPlaceholder', error, { messageId: botMessage.id });
       });
     } else if (responsePreference === 'Embedded') {
@@ -628,10 +635,10 @@ export async function streamModelResponse({
                 updateTimeout = null;
               }
               await botMessage.edit(applyEmbedFallback(originalMessage.channel, {
-                embeds: [createEmbed({
-                  color: 0xFFFF00,
+                embeds: [createStatusEmbed({
+                  variant: 'warning',
                   title: 'Response Overflow',
-                  description: 'The response got too large, will be sent as a text file once it is completed.',
+                  description: 'This response is too long for a Discord message and will be delivered as an attached file.',
                 })],
               }));
             }
@@ -676,6 +683,12 @@ export async function streamModelResponse({
         }
 
         finalResponse = cleanSandboxLinks(finalResponse, actualNames);
+        const fallbackFinalResponse = inlineDataFiles.length > 0
+          ? 'No text response was returned, but generated files are attached below.'
+          : 'No response text was returned this time. Please try again.';
+        const normalizedFinalResponse = finalResponse.trim()
+          ? finalResponse
+          : fallbackFinalResponse;
 
         if (updateTimeout) {
           clearTimeout(updateTimeout);
@@ -684,9 +697,9 @@ export async function streamModelResponse({
 
         if (!isLargeResponse) {
           if (responsePreference === 'Embedded') {
-            await buildResponseEmbed(botMessage, finalResponse, originalMessage, groundingMetadata, urlContextMetadata);
-          } else if (finalResponse.trim()) {
-            await botMessage.edit({ content: finalResponse, embeds: [] }).catch((error) => {
+            await buildResponseEmbed(botMessage, normalizedFinalResponse, originalMessage, groundingMetadata, urlContextMetadata);
+          } else {
+            await botMessage.edit({ content: normalizedFinalResponse, embeds: [] }).catch((error) => {
               logStreamingOperationError('finalPlainEdit', error, { messageId: botMessage.id });
             });
           }
@@ -711,14 +724,14 @@ export async function streamModelResponse({
         botMessage = await handleLargeOrFinalResponse(
           botMessage,
           originalMessage,
-          finalResponse,
+          normalizedFinalResponse,
           isLargeResponse,
           deleteHistoryRef,
           extraMessageIds,
         );
         const assistantPartsForHistory = rawAssistantParts.length > 0
           ? rawAssistantParts
-          : [{ text: finalResponse }];
+          : [{ text: normalizedFinalResponse }];
 
         await persistConversation(historyId, botMessage.id, parts, assistantPartsForHistory);
         finalized = true;
@@ -739,10 +752,10 @@ export async function streamModelResponse({
           if (!wasStopped()) {
             const embed = SEND_RETRY_ERRORS_TO_DISCORD
               ? buildRetryErrorEmbed(error, { isFinal: true })
-              : createEmbed({
-                  color: 0xFF0000,
+              : createStatusEmbed({
+                  variant: 'error',
                   title: 'Bot Overloaded',
-                  description: 'Something seems off, the bot might be overloaded! :(',
+                  description: 'The bot is currently overloaded or unavailable. Please try again shortly.',
                 });
 
             const errorMessage = await originalMessage.channel.send(applyEmbedFallback(originalMessage.channel, {

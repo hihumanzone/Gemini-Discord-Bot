@@ -11,8 +11,35 @@ import {
 
 import { EMBED_COLOR } from '../constants.js';
 
+export const EMBED_THEME = Object.freeze({
+  primary: EMBED_COLOR,
+  info: 0x3BA55D,
+  success: 0x2ECC71,
+  warning: 0xF1C40F,
+  error: 0xE74C3C,
+  muted: 0x95A5A6,
+});
+
+export const MESSAGE_VARIANTS = Object.freeze({
+  primary: Object.freeze({ color: EMBED_THEME.primary, icon: '🧠' }),
+  info: Object.freeze({ color: EMBED_THEME.info, icon: 'ℹ️' }),
+  success: Object.freeze({ color: EMBED_THEME.success, icon: '✅' }),
+  warning: Object.freeze({ color: EMBED_THEME.warning, icon: '⚠️' }),
+  error: Object.freeze({ color: EMBED_THEME.error, icon: '❌' }),
+  muted: Object.freeze({ color: EMBED_THEME.muted, icon: '•' }),
+});
+
+function formatVariantTitle(variant, title) {
+  const config = MESSAGE_VARIANTS[variant] || MESSAGE_VARIANTS.primary;
+  if (!title) {
+    return undefined;
+  }
+
+  return title.startsWith(config.icon) ? title : `${config.icon} ${title}`;
+}
+
 export function canSendEmbeds(channel) {
-  if (!channel.guild) return true;
+  if (!channel?.guild) return true;
   const me = channel.guild.members.me;
   if (!me) return true;
   const perms = channel.permissionsFor(me);
@@ -74,6 +101,28 @@ export function createEmbed({ color = EMBED_COLOR, title, description, fields, a
   return embed;
 }
 
+export function createStatusEmbed({
+  variant = 'primary',
+  title,
+  description,
+  fields,
+  author,
+  footer,
+  timestamp = true,
+}) {
+  const config = MESSAGE_VARIANTS[variant] || MESSAGE_VARIANTS.primary;
+
+  return createEmbed({
+    color: config.color,
+    title: formatVariantTitle(variant, title),
+    description,
+    fields,
+    author,
+    footer,
+    timestamp,
+  });
+}
+
 export function buildButtonRows(buttonConfigs = []) {
   const buttons = buttonConfigs.map(({ customId, label, emoji, style, disabled }) => {
     const button = new ButtonBuilder().setCustomId(customId).setStyle(style);
@@ -129,14 +178,32 @@ export function buildTextModal({
     .addComponents(new ActionRowBuilder().addComponents(input));
 }
 
-export async function replyWithEmbed(interaction, { color, title, description, fields, flags = MessageFlags.Ephemeral, components, files, content }) {
-  return interaction.reply({
+export async function replyWithEmbed(interaction, {
+  color,
+  variant = 'primary',
+  title,
+  description,
+  fields,
+  flags = MessageFlags.Ephemeral,
+  components,
+  files,
+  content,
+  timestamp,
+  footer,
+}) {
+  const embed = color === undefined
+    ? createStatusEmbed({ variant, title, description, fields, timestamp, footer })
+    : createEmbed({ color, title, description, fields, timestamp, footer });
+
+  const payload = {
     content,
-    embeds: [createEmbed({ color, title, description, fields })],
+    embeds: [embed],
     components,
     files,
     flags,
-  });
+  };
+
+  return interaction.reply(applyEmbedFallback(interaction.channel, payload));
 }
 
 export async function ensureGuildInteraction(interaction, description = 'This command can only be used in a server.') {
@@ -145,7 +212,7 @@ export async function ensureGuildInteraction(interaction, description = 'This co
   }
 
   await replyWithEmbed(interaction, {
-    color: 0xFF0000,
+    variant: 'error',
     title: 'Server Command Only',
     description,
   });
@@ -159,7 +226,7 @@ export async function ensureAdministrator(interaction, description = 'You need t
   }
 
   await replyWithEmbed(interaction, {
-    color: 0xFF0000,
+    variant: 'error',
     title: 'Admin Required',
     description,
   });

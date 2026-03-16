@@ -4,7 +4,7 @@
  */
 
 import { MessageFlags } from 'discord.js';
-import { createEmbed } from './discord.js';
+import { applyEmbedFallback, createStatusEmbed } from './discord.js';
 
 /**
  * Log an error with structured context.
@@ -31,8 +31,8 @@ export function logError(context, error, metadata = {}) {
  * @returns {Object} Embed payload
  */
 export function createErrorEmbed(title, description) {
-  return createEmbed({
-    color: 0xFF0000,
+  return createStatusEmbed({
+    variant: 'error',
     title,
     description,
   });
@@ -45,8 +45,8 @@ export function createErrorEmbed(title, description) {
  * @returns {Object} Embed payload
  */
 export function createWarningEmbed(title, description) {
-  return createEmbed({
-    color: 0xFFA500,
+  return createStatusEmbed({
+    variant: 'warning',
     title,
     description,
   });
@@ -61,10 +61,10 @@ export function createWarningEmbed(title, description) {
  */
 export async function replyWithError(interaction, title, description) {
   try {
-    const payload = {
+    const payload = applyEmbedFallback(interaction.channel, {
       embeds: [createErrorEmbed(title, description)],
       flags: MessageFlags.Ephemeral,
-    };
+    });
 
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp(payload);
@@ -88,10 +88,10 @@ export async function replyWithError(interaction, title, description) {
  */
 export async function replyWithWarning(interaction, title, description) {
   try {
-    const payload = {
+    const payload = applyEmbedFallback(interaction.channel, {
       embeds: [createWarningEmbed(title, description)],
       flags: MessageFlags.Ephemeral,
-    };
+    });
 
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp(payload);
@@ -115,9 +115,9 @@ export async function replyWithWarning(interaction, title, description) {
  */
 export async function replyMessageWithError(message, title, description) {
   try {
-    await message.reply({
+    await message.reply(applyEmbedFallback(message.channel, {
       embeds: [createErrorEmbed(title, description)],
-    });
+    }));
   } catch (error) {
     logError('replyMessageWithError', error, {
       messageId: message.id,

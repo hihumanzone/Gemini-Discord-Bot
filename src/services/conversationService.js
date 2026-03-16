@@ -38,7 +38,7 @@ import {
 } from './attachmentService.js';
 import { streamModelResponse } from './streamingService.js';
 import { addSettingsButton } from '../ui/messageActions.js';
-import { applyEmbedFallback, createEmbed } from '../utils/discord.js';
+import { applyEmbedFallback, createStatusEmbed } from '../utils/discord.js';
 
 /** Creates a Gemini chat session configured for the given Discord message context. */
 async function createChatSession(message) {
@@ -84,10 +84,16 @@ async function createChatSession(message) {
 }
 
 function createProcessingEmbed(textAttachmentStatus = '[🔁]', mediaAttachmentStatus = '[🔁]', finalText = '') {
-  return createEmbed({
-    color: 0x00FFFF,
+  return createStatusEmbed({
+    variant: 'info',
     title: 'Processing',
-    description: `Let me think...\n\n- ${textAttachmentStatus}: Text Attachment Check\n- ${mediaAttachmentStatus}: Media Attachment Check\n${finalText}`,
+    description: [
+      'Working on your request.',
+      '',
+      `- ${textAttachmentStatus} Text attachment check`,
+      `- ${mediaAttachmentStatus} Media attachment check`,
+      finalText,
+    ].filter(Boolean).join('\n'),
   });
 }
 
@@ -110,8 +116,8 @@ function createTypingHeartbeat(channel) {
 }
 
 function createEmptyMessageEmbed() {
-  return createEmbed({
-    color: 0x00FFFF,
+  return createStatusEmbed({
+    variant: 'warning',
     title: 'Empty Message',
     description: "It looks like you didn't say anything. What would you like to talk about?",
   });
@@ -165,7 +171,7 @@ export async function handleTextMessage(message) {
 
       parts = await processPromptAndMediaAttachments(messageContent, message);
       await processingMessage.edit(applyEmbedFallback(message.channel, {
-        embeds: [createProcessingEmbed('[☑️]', '[☑️]', '### All checks done. Waiting for the response...')],
+        embeds: [createProcessingEmbed('[☑️]', '[☑️]', '**All checks complete.** Waiting for generation...')],
       }));
     } else {
       messageContent = await extractFileText(message, messageContent);
@@ -204,15 +210,15 @@ export async function handleTextMessage(message) {
       userId: message.author?.id,
     });
     try {
-      const errorEmbed = createEmbed({
-        color: 0xFF0000,
-        title: 'Error',
+      const errorEmbed = createStatusEmbed({
+        variant: 'error',
+        title: 'Request Failed',
         description: 'An unexpected error occurred while processing your request.',
       });
       if (processingMessage) {
-        await processingMessage.edit({ embeds: [errorEmbed] });
+        await processingMessage.edit(applyEmbedFallback(message.channel, { embeds: [errorEmbed] }));
       } else {
-        await message.reply({ embeds: [errorEmbed] });
+        await message.reply(applyEmbedFallback(message.channel, { embeds: [errorEmbed] }));
       }
     } catch (replyError) {
       logServiceError('StreamingService', replyError, { operation: 'errorReply' });

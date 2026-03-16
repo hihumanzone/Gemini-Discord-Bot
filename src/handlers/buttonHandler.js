@@ -44,7 +44,6 @@ import {
   updateServerSettingsView,
 } from '../ui/settingsViews.js';
 import {
-  createEmbed,
   ensureGuildInteraction,
   replyWithEmbed,
   safeDeleteMessage,
@@ -68,7 +67,7 @@ async function handleDeleteMessageInteraction(interaction, messageIdStr) {
   const channel = interaction.channel;
   if (messageIds.length === 0) {
     return replyWithEmbed(interaction, {
-      color: 0xFF0000,
+      variant: 'error',
       title: 'Invalid Message Link',
       description: 'This delete button payload is invalid or expired.',
     });
@@ -110,7 +109,7 @@ async function handleDeleteMessageInteraction(interaction, messageIdStr) {
   }
 
   await replyWithEmbed(interaction, {
-    color: 0xFF0000,
+    variant: 'error',
     title: 'Not For You',
     description: 'This button is not meant for you.',
   });
@@ -128,7 +127,7 @@ async function handleClearMemoryButton(interaction) {
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
-    color: 0x00FF00,
+    variant: 'success',
     title: 'Chat History Cleared',
     description: `Cleared history for session **${activeSession.sessionName}** (ID: ${activeSession.sessionId}).`,
   });
@@ -137,7 +136,7 @@ async function handleClearMemoryButton(interaction) {
 async function alwaysRespond(interaction) {
   if (interaction.channel.type === ChannelType.DM) {
     return replyWithEmbed(interaction, {
-      color: 0xFF0000,
+      variant: 'error',
       title: 'Feature Disabled in DMs',
       description: 'This feature is disabled in direct messages.',
     });
@@ -167,7 +166,7 @@ async function handleRemovePersonalityCommand(interaction) {
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
-    color: 0x00FF00,
+    variant: 'success',
     title: 'Removed',
     description: 'Custom personality instructions removed!',
   });
@@ -179,7 +178,7 @@ async function downloadMessage(interaction) {
 
   if (!textContent) {
     return replyWithEmbed(interaction, {
-      color: 0xFF0000,
+      variant: 'error',
       title: 'Empty Message',
       description: 'The message is empty..?',
     });
@@ -202,7 +201,7 @@ async function downloadConversation(interaction) {
 
   if (!history.length) {
     return replyWithEmbed(interaction, {
-      color: 0xFF0000,
+      variant: 'error',
       title: 'No History Found',
       description: `No conversation history found for session **${activeSession.sessionName}** (ID: ${activeSession.sessionId}).`,
     });
@@ -232,7 +231,7 @@ async function toggleUserGeminiTool(interaction) {
 
   if (!(toolName in currentPreferences)) {
     return replyWithEmbed(interaction, {
-      color: 0xFF0000,
+      variant: 'error',
       title: 'Unknown Tool',
       description: 'That Gemini tool setting is not recognized.',
     });
@@ -257,7 +256,7 @@ async function showRenameSessionModal(interaction) {
 
   if (sessionId === 'default') {
     return replyWithEmbed(interaction, {
-      color: 0xFFA500,
+      variant: 'warning',
       title: 'Rename Not Allowed',
       description: 'The default session cannot be renamed.',
     });
@@ -268,7 +267,7 @@ async function showRenameSessionModal(interaction) {
 
   if (!currentSessionName) {
     return replyWithEmbed(interaction, {
-      color: 0xFF0000,
+      variant: 'error',
       title: 'Session Not Found',
       description: `No session with ID **${sessionId}** was found.`,
     });
@@ -295,7 +294,7 @@ async function handleDeleteSession(interaction) {
 
   if (sessionId === 'default') {
     return replyWithEmbed(interaction, {
-      color: 0xFFA500,
+      variant: 'warning',
       title: 'Cannot Delete Default',
       description: 'The default session cannot be deleted.',
     });
@@ -304,7 +303,7 @@ async function handleDeleteSession(interaction) {
   const deleted = deleteSession(interaction.user.id, sessionId);
   if (!deleted) {
     return replyWithEmbed(interaction, {
-      color: 0xFF0000,
+      variant: 'error',
       title: 'Session Not Found',
       description: `No session with ID **${sessionId}** was found.`,
     });
@@ -320,7 +319,7 @@ async function handleSessionConversationDownload(interaction) {
 
   if (!details) {
     return replyWithEmbed(interaction, {
-      color: 0xFF0000,
+      variant: 'error',
       title: 'Session Not Found',
       description: `No session with ID **${sessionId}** was found.`,
     });
@@ -329,7 +328,7 @@ async function handleSessionConversationDownload(interaction) {
   const history = getHistory(details.historyId);
   if (!history.length) {
     return replyWithEmbed(interaction, {
-      color: 0xFF0000,
+      variant: 'error',
       title: 'No History Found',
       description: `No conversation history found for session **${details.sessionName}** (ID: ${sessionId}).`,
     });
@@ -345,7 +344,7 @@ async function handleSessionHistoryClear(interaction) {
 
   if (!details) {
     return replyWithEmbed(interaction, {
-      color: 0xFF0000,
+      variant: 'error',
       title: 'Session Not Found',
       description: `No session with ID **${sessionId}** was found.`,
     });
@@ -424,7 +423,7 @@ async function clearServerChatHistory(interaction) {
   const settings = getServerSettings(guildId);
   if (!settings.serverChatHistory) {
     return replyWithEmbed(interaction, {
-      color: 0xFFA500,
+      variant: 'warning',
       title: 'Feature Disabled',
       description: 'Server-wide chat history is disabled for this server.',
     });
@@ -434,7 +433,7 @@ async function clearServerChatHistory(interaction) {
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
-    color: 0x00FF00,
+    variant: 'success',
     title: 'Chat History Cleared',
     description: 'Server-wide chat history cleared!',
   });
@@ -448,7 +447,7 @@ async function downloadServerConversation(interaction) {
   const history = getHistory(interaction.guild.id);
   if (!history.length) {
     return replyWithEmbed(interaction, {
-      color: 0xFF0000,
+      variant: 'error',
       title: 'No History Found',
       description: 'No server-wide conversation history found.',
     });
@@ -515,7 +514,7 @@ async function clearChannelChatHistory(interaction) {
   const channelId = interaction.channel.id;
   if (!getChannelSettings(channelId).channelWideChatHistory) {
     return replyWithEmbed(interaction, {
-      color: 0xFFA500,
+      variant: 'warning',
       title: 'Feature Disabled',
       description: 'Channel-wide chat history is not enabled for this channel.',
     });
@@ -525,7 +524,7 @@ async function clearChannelChatHistory(interaction) {
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
-    color: 0x00FF00,
+    variant: 'success',
     title: 'Chat History Cleared',
     description: 'Channel-wide chat history cleared!',
   });
@@ -542,7 +541,7 @@ async function downloadChannelConversation(interaction) {
   const history = getHistory(interaction.channel.id);
   if (!history.length) {
     return replyWithEmbed(interaction, {
-      color: 0xFF0000,
+      variant: 'error',
       title: 'No History Found',
       description: 'No channel-wide conversation history found.',
     });

@@ -18,7 +18,8 @@ import {
 import { createSharedTextLink } from '../services/textSharingService.js';
 import { logError } from '../utils/errorHandler.js';
 import {
-  createEmbed,
+  applyEmbedFallback,
+  createStatusEmbed,
   ensureAdministrator,
   ensureGuildInteraction,
   replyWithEmbed,
@@ -47,7 +48,7 @@ export async function requireGuildAdmin(interaction) {
  */
 export async function replyFeatureDisabled(interaction, description) {
   return replyWithEmbed(interaction, {
-    color: 0xFF5555,
+    variant: 'warning',
     title: 'Feature Disabled',
     description,
   });
@@ -96,7 +97,7 @@ export async function ensureInteractionNotBlacklisted(interaction) {
   }
 
   await replyWithEmbed(interaction, {
-    color: 0xFF0000,
+    variant: 'error',
     title: 'Blacklisted',
     description: 'You are blacklisted and cannot use this interaction.',
   });
@@ -108,10 +109,10 @@ export async function ensureInteractionNotBlacklisted(interaction) {
  * Creates an embed for saved/downloaded content with a shared text link.
  */
 export function createSavedContentEmbed(title, description, sharedTextLink) {
-  return createEmbed({
-    color: 0xFFFFFF,
+  return createStatusEmbed({
+    variant: 'primary',
     title,
-    description: `${description}\n${sharedTextLink}`,
+    description: `${description}\n\n${sharedTextLink}`,
   });
 }
 
@@ -156,7 +157,7 @@ export async function sendSavedContentToUser(
       });
 
       await replyWithEmbed(interaction, {
-        color: 0x00FF00,
+        variant: 'success',
         title: successTitle,
         description: successDescription,
       });
@@ -165,12 +166,18 @@ export async function sendSavedContentToUser(
         userId: interaction.user?.id,
         interactionId: interaction.id,
       });
-      await interaction.reply({
-        content: failureDescription,
-        embeds: [savedContentEmbed],
+      await interaction.reply(applyEmbedFallback(interaction.channel, {
+        embeds: [
+          createStatusEmbed({
+            variant: 'warning',
+            title: 'DM Delivery Failed',
+            description: failureDescription,
+          }),
+          savedContentEmbed,
+        ],
         files: [file],
         flags: MessageFlags.Ephemeral,
-      });
+      }));
     }
   } finally {
     try {

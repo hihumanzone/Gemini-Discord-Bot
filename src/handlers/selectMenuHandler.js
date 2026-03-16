@@ -18,7 +18,7 @@ export async function handleSelectMenuInteraction(interaction) {
 
     if (!switched) {
       await replyWithEmbed(interaction, {
-        color: 0xFF0000,
+        variant: 'error',
         title: 'Session Not Found',
         description: 'The selected session no longer exists.',
       });

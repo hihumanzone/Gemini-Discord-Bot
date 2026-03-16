@@ -17,7 +17,7 @@ import {
   state,
 } from '../state/botState.js';
 import { DISPLAY_PERSONALITY_BUTTONS } from '../constants.js';
-import { buildButtonRows, buildTextModal, createEmbed } from '../utils/discord.js';
+import { applyEmbedFallback, buildButtonRows, buildTextModal, createStatusEmbed } from '../utils/discord.js';
 
 const MAX_BUTTON_LABEL_LENGTH = 80;
 const MAX_EMBED_FIELD_VALUE_LENGTH = 1024;
@@ -51,14 +51,14 @@ const GEMINI_TOOL_BUTTONS = [
 export async function showSettings(interaction, edit = false) {
   if (interaction.guild) {
     if (isUserBlacklisted(interaction.guild.id, interaction.user.id)) {
-      return interaction.reply({
-        embeds: [createEmbed({
-          color: 0xFF0000,
+      return interaction.reply(applyEmbedFallback(interaction.channel, {
+          embeds: [createStatusEmbed({
+            variant: 'error',
           title: 'Blacklisted',
           description: 'You are blacklisted and cannot use this interaction.',
         })],
         flags: MessageFlags.Ephemeral,
-      });
+      }));
     }
   }
 
@@ -84,8 +84,8 @@ export async function showSettings(interaction, edit = false) {
   ]);
 
   const payload = {
-    embeds: [createEmbed({
-      color: 0x00FFFF,
+      embeds: [createStatusEmbed({
+        variant: 'primary',
       title: 'Control Center',
       description:
         'Manage your personal AI experience from one place.\n\n'
@@ -98,13 +98,13 @@ export async function showSettings(interaction, edit = false) {
   };
 
   if (edit) {
-    return interaction.update(payload);
+    return interaction.update(applyEmbedFallback(interaction.channel, payload));
   }
 
-  return interaction.reply({
+  return interaction.reply(applyEmbedFallback(interaction.channel, {
     ...payload,
     flags: MessageFlags.Ephemeral,
-  });
+  }));
 }
 
 export async function updateGeneralSettingsView(interaction) {
@@ -171,9 +171,9 @@ export async function updateGeneralSettingsView(interaction) {
     style: ButtonStyle.Secondary,
   });
 
-  return interaction.update({
-    embeds: [createEmbed({
-      color: 0x00FFFF,
+  return interaction.update(applyEmbedFallback(interaction.channel, {
+    embeds: [createStatusEmbed({
+      variant: 'primary',
       title: 'General Settings',
       description:
         '**Personal Behavior & Tools**\n'
@@ -182,7 +182,7 @@ export async function updateGeneralSettingsView(interaction) {
         + 'After changing Gemini tool toggles, clear your active session history so new settings take full effect.',
     })],
     components: buildButtonRows(buttonConfigs),
-  });
+  }));
 }
 
 function getServerSettingsButtonConfigs(guildId) {
@@ -241,9 +241,9 @@ function getServerSettingsButtonConfigs(guildId) {
 }
 
 export async function showDashboard(interaction) {
-  return interaction.reply({
-    embeds: [createEmbed({
-      color: 0xFFFFFF,
+  return interaction.reply(applyEmbedFallback(interaction.channel, {
+    embeds: [createStatusEmbed({
+      variant: 'primary',
       title: 'Server Settings',
       description:
         '**Server-wide Controls**\n'
@@ -251,20 +251,20 @@ export async function showDashboard(interaction) {
     })],
     components: buildButtonRows(getServerSettingsButtonConfigs(interaction.guild.id)),
     flags: MessageFlags.Ephemeral,
-  });
+  }));
 }
 
 export async function updateServerSettingsView(interaction) {
-  return interaction.update({
-    embeds: [createEmbed({
-      color: 0xFFFFFF,
+  return interaction.update(applyEmbedFallback(interaction.channel, {
+    embeds: [createStatusEmbed({
+      variant: 'primary',
       title: 'Server Settings',
       description:
         '**Server-wide Controls**\n'
         + 'Manage memory scope, response style, and admin-only behavior for this server.',
     })],
     components: buildButtonRows(getServerSettingsButtonConfigs(interaction.guild.id)),
-  });
+  }));
 }
 
 export function buildCustomPersonalityModal() {
@@ -411,8 +411,8 @@ export function buildSessionSettingsPayload(userId, selectedSessionId, actionSum
     : `Current Session: **${activeSession.name}** (ID: ${userState.activeSessionId})\nSelected Session: **${selectedSession.name}** (ID: ${resolvedSelectedSessionId})`;
 
   return {
-    embeds: [createEmbed({
-      color: 0x4B9CD3,
+    embeds: [createStatusEmbed({
+      variant: 'primary',
       title: 'Session Manager',
       description:
         `Manage independent conversation threads with dedicated history.\n\n`
@@ -429,9 +429,9 @@ export function buildSessionSettingsPayload(userId, selectedSessionId, actionSum
 export async function updateSessionSettingsView(interaction, selectedSessionId, actionSummary = null) {
   const payload = buildSessionSettingsPayload(interaction.user.id, selectedSessionId, actionSummary);
 
-  return interaction.update({
+  return interaction.update(applyEmbedFallback(interaction.channel, {
     ...payload,
-  });
+  }));
 }
 
 export function buildSessionCreateModal() {
@@ -516,9 +516,9 @@ export async function showChannelDashboard(interaction) {
   const channelId = interaction.channel.id;
   const channelName = interaction.channel.name || 'this channel';
 
-  return interaction.reply({
-    embeds: [createEmbed({
-      color: 0x5865F2,
+  return interaction.reply(applyEmbedFallback(interaction.channel, {
+    embeds: [createStatusEmbed({
+      variant: 'info',
       title: 'Channel Settings',
       description:
         `**Channel Controls for #${channelName}**\n`
@@ -526,23 +526,23 @@ export async function showChannelDashboard(interaction) {
     })],
     components: buildButtonRows(getChannelSettingsButtonConfigs(channelId)),
     flags: MessageFlags.Ephemeral,
-  });
+  }));
 }
 
 export async function updateChannelSettingsView(interaction) {
   const channelId = interaction.channel.id;
   const channelName = interaction.channel.name || 'this channel';
 
-  return interaction.update({
-    embeds: [createEmbed({
-      color: 0x5865F2,
+  return interaction.update(applyEmbedFallback(interaction.channel, {
+    embeds: [createStatusEmbed({
+      variant: 'info',
       title: 'Channel Settings',
       description:
         `**Channel Controls for #${channelName}**\n`
         + 'Configure channel-level memory and personality behavior.',
     })],
     components: buildButtonRows(getChannelSettingsButtonConfigs(channelId)),
-  });
+  }));
 }
 
 export function buildChannelPersonalityModal() {

@@ -11,7 +11,7 @@ import {
   setActiveSession,
   setCustomInstruction,
 } from '../state/botState.js';
-import { createEmbed, replyWithEmbed } from '../utils/discord.js';
+import { applyEmbedFallback, createStatusEmbed, replyWithEmbed } from '../utils/discord.js';
 import { buildSessionSettingsPayload } from '../ui/settingsViews.js';
 import { replyWithError, logError } from '../utils/errorHandler.js';
 import { persistStateChange } from './interactionHelpers.js';
@@ -23,10 +23,10 @@ import {
 
 async function replyAfterSessionRefreshFailure(interaction, embedPayload) {
   if (interaction.deferred || interaction.replied) {
-    return interaction.followUp({
-      embeds: [createEmbed(embedPayload)],
+    return interaction.followUp(applyEmbedFallback(interaction.channel, {
+      embeds: [createStatusEmbed(embedPayload)],
       flags: MessageFlags.Ephemeral,
-    });
+    }));
   }
 
   return replyWithEmbed(interaction, embedPayload);
@@ -37,7 +37,7 @@ async function refreshSessionManagerMessage(interaction, selectedSessionId, acti
 
   try {
     await interaction.deferUpdate();
-    await interaction.editReply(payload);
+    await interaction.editReply(applyEmbedFallback(interaction.channel, payload));
     return true;
   } catch (error) {
     logError('SessionManagerRefresh', error, {
@@ -56,7 +56,7 @@ export async function handleModalSubmit(interaction) {
 
       if (!sessionName) {
         return replyWithEmbed(interaction, {
-          color: 0xFF0000,
+          variant: 'error',
           title: 'Invalid Name',
           description: 'Session name cannot be empty.',
         });
@@ -68,7 +68,7 @@ export async function handleModalSubmit(interaction) {
       const created = createSession(interaction.user.id, sessionId, sessionName);
       if (!created) {
         return replyWithEmbed(interaction, {
-          color: 0xFF0000,
+          variant: 'error',
           title: 'Create Failed',
           description: 'A session with that ID already exists. Please try again.',
         });
@@ -86,7 +86,7 @@ export async function handleModalSubmit(interaction) {
       }
 
       return replyAfterSessionRefreshFailure(interaction, {
-        color: 0x00FF00,
+        variant: 'success',
         title: 'Session Created',
         description: `Created **${sessionName}** and switched to it.\nSession ID: \`${sessionId}\``,
       });
@@ -97,7 +97,7 @@ export async function handleModalSubmit(interaction) {
 
       if (sessionId === 'default') {
         return replyWithEmbed(interaction, {
-          color: 0xFFA500,
+          variant: 'warning',
           title: 'Rename Not Allowed',
           description: 'The default session cannot be renamed.',
         });
@@ -107,7 +107,7 @@ export async function handleModalSubmit(interaction) {
 
       if (!newName) {
         return replyWithEmbed(interaction, {
-          color: 0xFF0000,
+          variant: 'error',
           title: 'Invalid Name',
           description: 'New session name cannot be empty.',
         });
@@ -116,7 +116,7 @@ export async function handleModalSubmit(interaction) {
       const renamed = renameSession(interaction.user.id, sessionId, newName);
       if (!renamed) {
         return replyWithEmbed(interaction, {
-          color: 0xFF0000,
+          variant: 'error',
           title: 'Rename Failed',
           description: `Session ID \`${sessionId}\` was not found.`,
         });
@@ -132,7 +132,7 @@ export async function handleModalSubmit(interaction) {
       }
 
       return replyAfterSessionRefreshFailure(interaction, {
-        color: 0x00FF00,
+        variant: 'success',
         title: 'Session Renamed',
         description: `Session \`${sessionId}\` is now named **${newName}**.`,
       });
@@ -145,7 +145,7 @@ export async function handleModalSubmit(interaction) {
       );
       await persistStateChange();
       return replyWithEmbed(interaction, {
-        color: 0x00FF00,
+        variant: 'success',
         title: 'Success',
         description: 'Custom Personality Instructions Saved!',
       });
@@ -154,7 +154,7 @@ export async function handleModalSubmit(interaction) {
     if (interaction.customId === 'custom-server-personality-modal') {
       if (!interaction.guildId) {
         return replyWithEmbed(interaction, {
-          color: 0xFF0000,
+          variant: 'error',
           title: 'Server Command Only',
           description: 'This form can only be submitted from a server.',
         });
@@ -166,7 +166,7 @@ export async function handleModalSubmit(interaction) {
       );
       await persistStateChange();
       return replyWithEmbed(interaction, {
-        color: 0x00FF00,
+        variant: 'success',
         title: 'Success',
         description: 'Custom Server Personality Instructions Saved!',
       });
@@ -175,7 +175,7 @@ export async function handleModalSubmit(interaction) {
     if (interaction.customId === 'custom-channel-personality-modal') {
       if (!interaction.channelId) {
         return replyWithEmbed(interaction, {
-          color: 0xFF0000,
+          variant: 'error',
           title: 'Channel Not Found',
           description: 'This form requires a valid channel context.',
         });
@@ -187,7 +187,7 @@ export async function handleModalSubmit(interaction) {
       );
       await persistStateChange();
       return replyWithEmbed(interaction, {
-        color: 0x00FF00,
+        variant: 'success',
         title: 'Success',
         description: 'Custom Channel Personality Instructions Saved!',
       });

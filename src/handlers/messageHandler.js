@@ -9,7 +9,7 @@ import {
 } from '../state/botState.js';
 import { WORK_IN_DMS } from '../constants.js';
 import { handleTextMessage } from '../services/conversationService.js';
-import { applyEmbedFallback, createEmbed } from '../utils/discord.js';
+import { applyEmbedFallback, createStatusEmbed } from '../utils/discord.js';
 import { logError } from '../utils/errorHandler.js';
 
 function shouldRespondToMessage(message) {
@@ -26,8 +26,8 @@ function shouldRespondToMessage(message) {
 async function replyBlacklisted(message) {
   try {
     return await message.reply(applyEmbedFallback(message.channel, {
-      embeds: [createEmbed({
-        color: 0xFF0000,
+      embeds: [createStatusEmbed({
+        variant: 'error',
         title: 'Blacklisted',
         description: 'You are blacklisted and cannot use this bot.',
       })],
@@ -43,8 +43,8 @@ async function replyBlacklisted(message) {
 async function replyRequestInProgress(message) {
   try {
     return await message.reply(applyEmbedFallback(message.channel, {
-      embeds: [createEmbed({
-        color: 0xFFFF00,
+      embeds: [createStatusEmbed({
+        variant: 'warning',
         title: 'Request In Progress',
         description: 'Please wait until your previous action is complete.',
       })],

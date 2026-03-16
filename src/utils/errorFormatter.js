@@ -1,4 +1,4 @@
-import { createEmbed } from './discord.js';
+import { createStatusEmbed } from './discord.js';
 
 const RETRY_DELAY_PATTERN = /(\d+(?:\.\d+)?)s/i;
 const RETRY_IN_MESSAGE_PATTERN = /Please retry in\s+(\d+(?:\.\d+)?)s\.?/i;
@@ -373,8 +373,8 @@ export function buildRetryErrorEmbed(error, { isFinal }) {
 
   const nextStep = getSolutionAdvice({ status: parsed.status, isFinal, retryDelay: parsed.retryDelay });
 
-  return createEmbed({
-    color: isFinal ? 0xFF0000 : 0xFFFF00,
+  return createStatusEmbed({
+    variant: isFinal ? 'error' : 'warning',
     title: isFinal ? 'Generation Failed' : 'Retrying Request',
     description,
     fields: [

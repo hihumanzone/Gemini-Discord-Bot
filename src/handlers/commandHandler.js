@@ -14,13 +14,12 @@ import {
 } from '../state/botState.js';
 import { getActiveSessionDetails } from '../services/sessionService.js';
 import {
-  EMBED_COLOR,
   STATUS_LIFETIME_MS,
   STATUS_REFRESH_INTERVAL_MS,
 } from '../constants.js';
 import { addSettingsButton } from '../ui/messageActions.js';
 import { showDashboard, showChannelDashboard, showSettings } from '../ui/settingsViews.js';
-import { createEmbed, replyWithEmbed } from '../utils/discord.js';
+import { applyEmbedFallback, createStatusEmbed, replyWithEmbed } from '../utils/discord.js';
 import { replyWithError, logError } from '../utils/errorHandler.js';
 import {
   ensureInteractionNotBlacklisted,
@@ -53,7 +52,7 @@ async function handleClearMemoryCommand(interaction) {
   await persistStateChange();
 
   return replyWithEmbed(interaction, {
-    color: 0x00FF00,
+    variant: 'success',
     title: 'Chat History Cleared',
     description: `Cleared history for session **${activeSession.sessionName}** (ID: ${activeSession.sessionId}).`,
   });
@@ -72,9 +71,9 @@ async function handleStatusCommand(interaction) {
       const memoryInfo = getMonitorData(memoryResult, 'memory info');
       const cpuPercentage = getMonitorData(cpuResult, 'CPU usage');
 
-      await interaction.editReply({
-        embeds: [createEmbed({
-          color: EMBED_COLOR,
+      await interaction.editReply(applyEmbedFallback(interaction.channel, {
+        embeds: [createStatusEmbed({
+          variant: 'primary',
           title: 'System Information',
           fields: [
             {
@@ -93,9 +92,8 @@ async function handleStatusCommand(interaction) {
               inline: true,
             },
           ],
-          timestamp: true,
         })],
-      });
+      }));
     } catch (error) {
       logError('StatusCommandUpdate', error, {
         userId: interaction.user?.id,
@@ -118,17 +116,22 @@ async function handleStatusCommand(interaction) {
     });
 
     if (interaction.replied || interaction.deferred) {
-      await interaction.editReply({
-        content: 'An error occurred while fetching system status.',
-        embeds: [],
+      await interaction.editReply(applyEmbedFallback(interaction.channel, {
+        content: null,
+        embeds: [createStatusEmbed({
+          variant: 'error',
+          title: 'Status Request Failed',
+          description: 'An error occurred while fetching system status.',
+        })],
         components: [],
-      });
+      }));
       return;
     }
 
-    await interaction.reply({
-      content: 'An error occurred while fetching system status.',
-      embeds: [],
+    await replyWithEmbed(interaction, {
+      variant: 'error',
+      title: 'Status Request Failed',
+      description: 'An error occurred while fetching system status.',
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -145,7 +148,7 @@ async function handleBlacklistCommand(interaction) {
   if (addBlacklistedUser(guildId, userId)) {
     await persistStateChange();
     return replyWithEmbed(interaction, {
-      color: 0x00FF00,
+      variant: 'success',
       title: 'User Blocked',
       description: `<@${userId}> has been blocked.`,
       flags: undefined,
@@ -153,7 +156,7 @@ async function handleBlacklistCommand(interaction) {
   }
 
   return replyWithEmbed(interaction, {
-    color: 0xFFA500,
+    variant: 'warning',
     title: 'User Already Blocked',
     description: `<@${userId}> is already blocked.`,
     flags: undefined,
@@ -171,7 +174,7 @@ async function handleWhitelistCommand(interaction) {
   if (removeBlacklistedUser(guildId, userId)) {
     await persistStateChange();
     return replyWithEmbed(interaction, {
-      color: 0x00FF00,
+      variant: 'success',
       title: 'User Unblocked',
       description: `<@${userId}> has been removed from the block list.`,
       flags: undefined,
@@ -179,7 +182,7 @@ async function handleWhitelistCommand(interaction) {
   }
 
   return replyWithEmbed(interaction, {
-    color: 0xFFA500,
+    variant: 'warning',
     title: 'User Not Found',
     description: `<@${userId}> is not in the block list.`,
     flags: undefined,
