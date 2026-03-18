@@ -14,6 +14,7 @@ AI Discord bot powered by Google Gemini with streaming responses, multimodal inp
 - Supports per-user sessions plus optional channel-wide or server-wide shared memory
 - Lets users toggle Gemini tools (Google Search, URL Context, Code Execution)
 - Provides admin controls for moderation and server/channel behavior
+- Includes **Nano Banana** mode for advanced image generation and editing capabilities
 - Exports message content and full conversation history as shareable links
 
 ## Quick Start
@@ -116,7 +117,8 @@ Slash commands are auto-registered when the bot starts.
 
 Core defaults live in `config.js`:
 
-- Model: `gemini-flash-lite-latest`
+- Default Model: `gemini-flash-lite-latest`
+- Nano Banana Model: `gemini-2.5-flash-image`
 - Max generation attempts: `3`
 - Default response mode: `Embedded`
 - Tool defaults: Google Search = on, URL Context = on, Code Execution = off
