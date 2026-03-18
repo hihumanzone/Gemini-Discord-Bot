@@ -7,10 +7,11 @@ import { ChannelType } from 'discord.js';
 
 import {
   clearChatHistoryFor,
-  deleteSession,
   clearCustomInstruction,
   deleteChatHistoryEntry,
+  deleteSession,
   getChannelSettings,
+  getCustomInstruction,
   getHistory,
   getServerSettings,
   getUserGeminiToolPreferences,
@@ -22,6 +23,9 @@ import {
   toggleServerResponseStyle,
   toggleServerSetting,
   toggleUserResponseFormat,
+  toggleNanoBananaModeState,
+  toggleNanoBananaGoogleSearch,
+  toggleNanoBananaImageSearch,
 } from '../state/botState.js';
 import { serializeConversationHistory } from '../services/textSharingService.js';
 import {
@@ -40,6 +44,8 @@ import {
   showSettings,
   updateChannelSettingsView,
   updateGeneralSettingsView,
+  updateGeminiToolsSettingsView,
+  updatePersonalitySettingsView,
   updateSessionSettingsView,
   updateServerSettingsView,
 } from '../ui/settingsViews.js';
@@ -172,6 +178,27 @@ async function handleRemovePersonalityCommand(interaction) {
   });
 }
 
+async function downloadPersonality(interaction) {
+  const instructions = getCustomInstruction(interaction.user.id);
+  if (!instructions) {
+    return replyWithEmbed(interaction, {
+      variant: 'error',
+      title: 'No Personality Found',
+      description: 'You do not have a custom personality set.',
+    });
+  }
+
+  return sendSavedContentToUser(interaction, {
+    text: instructions,
+    fileBaseName: 'personal_personality',
+    title: 'Personality Downloaded',
+    description: 'Here are your personal personality instructions.',
+    successTitle: 'Content Sent',
+    successDescription: 'Your personality instructions have been sent to your DMs.',
+    failureDescription: 'Failed to send the instructions to your DMs. The saved content is attached below instead.',
+  });
+}
+
 async function downloadMessage(interaction) {
   const sourceMessage = interaction.message;
   const textContent = sourceMessage.content || sourceMessage.embeds[0]?.description;
@@ -224,6 +251,24 @@ async function toggleUserResponsePreference(interaction) {
   return updateGeneralSettingsView(interaction);
 }
 
+async function toggleNanoBananaMode(interaction) {
+  toggleNanoBananaModeState(interaction.user.id);
+  await persistStateChange();
+  return showSettings(interaction, true);
+}
+
+async function handleNBGoogleSearch(interaction) {
+  toggleNanoBananaGoogleSearch(interaction.user.id);
+  await persistStateChange();
+  return updateGeminiToolsSettingsView(interaction);
+}
+
+async function handleNBImageSearch(interaction) {
+  toggleNanoBananaImageSearch(interaction.user.id);
+  await persistStateChange();
+  return updateGeminiToolsSettingsView(interaction);
+}
+
 async function toggleUserGeminiTool(interaction) {
   const prefix = 'toggle-gemini-tool-';
   const toolName = interaction.customId.slice(prefix.length);
@@ -239,7 +284,7 @@ async function toggleUserGeminiTool(interaction) {
 
   setUserGeminiToolPreference(interaction.user.id, toolName, !currentPreferences[toolName]);
   await persistStateChange();
-  return updateGeneralSettingsView(interaction);
+  return updateGeminiToolsSettingsView(interaction);
 }
 
 async function showSessionManager(interaction) {
@@ -382,6 +427,31 @@ async function serverPersonality(interaction) {
   return interaction.showModal(buildServerPersonalityModal());
 }
 
+async function downloadServerPersonality(interaction) {
+  if (!(await ensureGuildInteraction(interaction))) {
+    return;
+  }
+
+  const instructions = getCustomInstruction(interaction.guild.id);
+  if (!instructions) {
+    return replyWithEmbed(interaction, {
+      variant: 'error',
+      title: 'No Personality Found',
+      description: 'This server does not have a custom server personality set.',
+    });
+  }
+
+  return sendSavedContentToUser(interaction, {
+    text: instructions,
+    fileBaseName: 'server_personality',
+    title: 'Server Personality Downloaded',
+    description: 'Here are the server-wide personality instructions.',
+    successTitle: 'Content Sent',
+    successDescription: 'The server personality instructions have been sent to your DMs.',
+    failureDescription: 'Failed to send the instructions to your DMs. The saved content is attached below instead.',
+  });
+}
+
 async function clearServerChatHistory(interaction) {
   if (!(await ensureGuildInteraction(interaction))) {
     return;
@@ -503,6 +573,29 @@ async function channelPersonality(interaction) {
   return interaction.showModal(buildChannelPersonalityModal());
 }
 
+async function downloadChannelPersonality(interaction) {
+  if (!(await requireGuildAdmin(interaction))) return;
+
+  const instructions = getCustomInstruction(interaction.channel.id);
+  if (!instructions) {
+    return replyWithEmbed(interaction, {
+      variant: 'error',
+      title: 'No Personality Found',
+      description: 'This channel does not have a custom channel personality set.',
+    });
+  }
+
+  return sendSavedContentToUser(interaction, {
+    text: instructions,
+    fileBaseName: 'channel_personality',
+    title: 'Channel Personality Downloaded',
+    description: 'Here are the channel-wide personality instructions.',
+    successTitle: 'Content Sent',
+    successDescription: 'The channel personality instructions have been sent to your DMs.',
+    failureDescription: 'Failed to send the instructions to your DMs. The saved content is attached below instead.',
+  });
+}
+
 async function downloadChannelConversation(interaction) {
   if (!(await requireGuildAdmin(interaction))) return;
 
@@ -560,13 +653,21 @@ export async function handleButtonInteraction(interaction) {
       'clear-memory': handleClearMemoryButton,
       'always-respond': alwaysRespond,
       'custom-personality': handleCustomPersonalityCommand,
+      'download-personality': downloadPersonality,
+      'download-server-personality': downloadServerPersonality,
+      'download-channel-personality': downloadChannelPersonality,
       'remove-personality': handleRemovePersonalityCommand,
       'toggle-response-mode': toggleUserResponsePreference,
+      'toggle-nano-banana': toggleNanoBananaMode,
+      'toggle-nb-google-search': handleNBGoogleSearch,
+      'toggle-nb-image-search': handleNBImageSearch,
       'session-settings': showSessionManager,
       'open-create-session-modal': showCreateSessionModal,
       'download-conversation': downloadConversation,
       download_message: downloadMessage,
       'general-settings': updateGeneralSettingsView,
+      'gemini-tools-settings': updateGeminiToolsSettingsView,
+      'personality-settings': updatePersonalitySettingsView,
     };
 
     const exactHandler = exactHandlers[interaction.customId];

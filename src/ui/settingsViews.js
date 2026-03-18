@@ -11,6 +11,7 @@ import {
   getServerSettings,
   getUserGeminiToolPreferences,
   getUserResponsePreference,
+  getUserNanoBananaMode,
   getUserSessions,
   isChannelUserActive,
   isUserBlacklisted,
@@ -52,8 +53,8 @@ export async function showSettings(interaction, edit = false) {
   if (interaction.guild) {
     if (isUserBlacklisted(interaction.guild.id, interaction.user.id)) {
       return interaction.reply(applyEmbedFallback(interaction.channel, {
-          embeds: [createStatusEmbed({
-            variant: 'error',
+        embeds: [createStatusEmbed({
+          variant: 'error',
           title: 'Blacklisted',
           description: 'You are blacklisted and cannot use this interaction.',
         })],
@@ -61,6 +62,8 @@ export async function showSettings(interaction, edit = false) {
       }));
     }
   }
+
+  const nanoBananaMode = getUserNanoBananaMode(interaction.user.id);
 
   const rows = buildButtonRows([
     {
@@ -76,6 +79,24 @@ export async function showSettings(interaction, edit = false) {
       style: ButtonStyle.Primary,
     },
     {
+      customId: 'toggle-nano-banana',
+      label: `Nano Banana Mode: ${nanoBananaMode.enabled ? 'ON' : 'OFF'}`,
+      emoji: '🍌',
+      style: nanoBananaMode.enabled ? ButtonStyle.Success : ButtonStyle.Danger,
+    },
+    {
+      customId: 'gemini-tools-settings',
+      label: nanoBananaMode.enabled ? 'NB Tools' : 'Gemini Tools',
+      emoji: nanoBananaMode.enabled ? '🍌' : '🛠️',
+      style: ButtonStyle.Primary,
+    },
+    {
+      customId: 'personality-settings',
+      label: 'Personality',
+      emoji: '🤖',
+      style: ButtonStyle.Primary,
+    },
+    {
       customId: 'general-settings',
       label: 'General Settings',
       emoji: '⚙️',
@@ -84,15 +105,18 @@ export async function showSettings(interaction, edit = false) {
   ]);
 
   const payload = {
-      embeds: [createStatusEmbed({
-        variant: 'primary',
+    embeds: [createStatusEmbed({
+      variant: 'primary',
       title: 'Control Center',
       description:
         'Manage your personal AI experience from one place.\n\n'
         + '**Quick Actions**\n'
+        + `- 🍌 Nano Banana Mode is currently **${nanoBananaMode.enabled ? 'ON' : 'OFF'}**\n`
         + '- Clear active session history\n'
         + '- Open Session Manager\n'
-        + '- Configure general behavior',
+        + '- Configure general behavior\n'
+        + (nanoBananaMode.enabled ? '- Configure Nano Banana tools\n' : '- Configure Gemini tools\n')
+        + '- Configure personality',
     })],
     components: rows,
   };
@@ -112,7 +136,6 @@ export async function updateGeneralSettingsView(interaction) {
   const userId = interaction.user.id;
   const alwaysRespondEnabled = isChannelUserActive(channelId, userId);
   const responseMode = getUserResponsePreference(userId);
-  const toolPreferences = getUserGeminiToolPreferences(userId);
 
   const buttonConfigs = [
     {
@@ -128,24 +151,34 @@ export async function updateGeneralSettingsView(interaction) {
       style: ButtonStyle.Secondary,
     },
     {
-      customId: 'session-settings',
-      label: 'Session Manager',
-      emoji: '🗂️',
-      style: ButtonStyle.Primary,
-    },
-    {
       customId: 'download-conversation',
       label: 'Download Conversation',
       emoji: '🗃️',
       style: ButtonStyle.Secondary,
     },
-    ...GEMINI_TOOL_BUTTONS.map((toolConfig) => ({
-      customId: `toggle-gemini-tool-${toolConfig.key}`,
-      label: `${toolConfig.label}: ${toolPreferences[toolConfig.key] ? 'ON' : 'OFF'}`,
-      emoji: toolConfig.emoji,
-      style: toolPreferences[toolConfig.key] ? ButtonStyle.Success : ButtonStyle.Danger,
-    })),
   ];
+
+  buttonConfigs.push({
+    customId: 'back_to_main_settings',
+    label: 'Back',
+    emoji: '🔙',
+    style: ButtonStyle.Secondary,
+  });
+
+  return interaction.update(applyEmbedFallback(interaction.channel, {
+    embeds: [createStatusEmbed({
+      variant: 'primary',
+      title: 'General Settings',
+      description:
+        '**Personal Behavior**\n'
+        + 'Adjust how the bot responds to you and manage conversations.',
+    })],
+    components: buildButtonRows(buttonConfigs),
+  }));
+}
+
+export async function updatePersonalitySettingsView(interaction) {
+  const buttonConfigs = [];
 
   if (DISPLAY_PERSONALITY_BUTTONS) {
     buttonConfigs.push(
@@ -154,6 +187,12 @@ export async function updateGeneralSettingsView(interaction) {
         label: 'Custom Personality',
         emoji: '🙌',
         style: ButtonStyle.Primary,
+      },
+      {
+        customId: 'download-personality',
+        label: 'Download Personality',
+        emoji: '🗃️',
+        style: ButtonStyle.Secondary,
       },
       {
         customId: 'remove-personality',
@@ -174,12 +213,72 @@ export async function updateGeneralSettingsView(interaction) {
   return interaction.update(applyEmbedFallback(interaction.channel, {
     embeds: [createStatusEmbed({
       variant: 'primary',
-      title: 'General Settings',
+      title: 'Personality Settings',
       description:
-        '**Personal Behavior & Tools**\n'
-        + 'Adjust how the bot responds to you and which Gemini tools are active.\n\n'
-        + '**Recommended**\n'
-        + 'After changing Gemini tool toggles, clear your active session history so new settings take full effect.',
+        '**Bot Personality**\n'
+        + 'Configure custom instructions for how the bot should behave and respond.',
+    })],
+    components: buildButtonRows(buttonConfigs),
+  }));
+}
+
+export async function updateGeminiToolsSettingsView(interaction) {
+  const userId = interaction.user.id;
+  const nanoBananaMode = getUserNanoBananaMode(userId);
+
+  let buttonConfigs, title, description;
+
+  if (nanoBananaMode.enabled) {
+    buttonConfigs = [
+      {
+        customId: `toggle-nb-google-search`,
+        label: `Google Search: ${nanoBananaMode.googleSearch ? 'ON' : 'OFF'}`,
+        emoji: '🔎',
+        style: nanoBananaMode.googleSearch ? ButtonStyle.Success : ButtonStyle.Danger,
+      },
+      {
+        customId: `toggle-nb-image-search`,
+        label: `Image Search: ${nanoBananaMode.imageSearch ? 'ON' : 'OFF'}`,
+        emoji: '🖼️',
+        style: nanoBananaMode.imageSearch ? ButtonStyle.Success : ButtonStyle.Danger,
+        disabled: !nanoBananaMode.googleSearch,
+      },
+      {
+        customId: 'back_to_main_settings',
+        label: 'Back',
+        emoji: '🔙',
+        style: ButtonStyle.Secondary,
+      }
+    ];
+
+    title = 'Nano Banana Tools';
+    description = '**Tool Configuration**\nToggle individual Nano Banana tools on or off.\n*Note: Image Search requires Google Search to be enabled.*';
+  } else {
+    const toolPreferences = getUserGeminiToolPreferences(userId);
+
+    buttonConfigs = GEMINI_TOOL_BUTTONS.map((toolConfig) => ({
+      customId: `toggle-gemini-tool-${toolConfig.key}`,
+      label: `${toolConfig.label}: ${toolPreferences[toolConfig.key] ? 'ON' : 'OFF'}`,
+      emoji: toolConfig.emoji,
+      style: toolPreferences[toolConfig.key] ? ButtonStyle.Success : ButtonStyle.Danger,
+    }));
+
+    buttonConfigs.push({
+      customId: 'back_to_main_settings',
+      label: 'Back',
+      emoji: '🔙',
+      style: ButtonStyle.Secondary,
+    });
+
+    title = 'Gemini Tools Settings';
+    description = '**Tool Configuration**\nToggle individual Gemini tools on or off to customize your experience.\n\n**Recommended**\nAfter changing Gemini tool toggles, clear your active session history so new settings take full effect.';
+  }
+
+  return interaction.update(applyEmbedFallback(interaction.channel, {
+    embeds: [createStatusEmbed({
+      variant: 'primary',
+      title,
+      description,
     })],
     components: buildButtonRows(buttonConfigs),
   }));
@@ -218,6 +317,12 @@ function getServerSettingsButtonConfigs(guildId) {
       label: 'Custom Server Personality',
       emoji: '🙌',
       style: ButtonStyle.Primary,
+    },
+    {
+      customId: 'download-server-personality',
+      label: 'Download Server Personality',
+      emoji: '🗃️',
+      style: ButtonStyle.Secondary,
     },
     {
       customId: 'toggle-response-server-mode',
@@ -502,6 +607,12 @@ function getChannelSettingsButtonConfigs(channelId) {
       label: 'Custom Channel Personality',
       emoji: '🙌',
       style: ButtonStyle.Primary,
+    },
+    {
+      customId: 'download-channel-personality',
+      label: 'Download Channel Personality',
+      emoji: '🗃️',
+      style: ButtonStyle.Secondary,
     },
     {
       customId: 'channel-download-conversation',

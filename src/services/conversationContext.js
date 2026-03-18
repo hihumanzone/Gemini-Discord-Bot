@@ -3,6 +3,7 @@ import { DEFAULT_PERSONALITY } from '../constants.js';
 import {
   getActiveSessionHistoryId,
   getChannelSettings,
+  getCustomInstruction,
   getUserResponsePreference,
   state,
 } from '../state/botState.js';
@@ -22,22 +23,22 @@ export function resolveInstructions(message) {
   const channelSettings = getChannelSettings(channelId);
 
   if (!guildId) {
-    return state.customInstructions[userId] || DEFAULT_PERSONALITY;
+    return getCustomInstruction(userId) || DEFAULT_PERSONALITY;
   }
 
   if (
     channelSettings.channelWideChatHistory
     && channelSettings.customChannelPersonality
-    && state.customInstructions[channelId]
+    && getCustomInstruction(channelId)
   ) {
-    return state.customInstructions[channelId];
+    return getCustomInstruction(channelId);
   }
 
-  if (state.serverSettings[guildId]?.customServerPersonality && state.customInstructions[guildId]) {
-    return state.customInstructions[guildId];
+  if (state.serverSettings[guildId]?.customServerPersonality && getCustomInstruction(guildId)) {
+    return getCustomInstruction(guildId);
   }
 
-  return state.customInstructions[userId] || DEFAULT_PERSONALITY;
+  return getCustomInstruction(userId) || DEFAULT_PERSONALITY;
 }
 
 export function buildFinalSystemInstruction(personality, userToolPreferences) {

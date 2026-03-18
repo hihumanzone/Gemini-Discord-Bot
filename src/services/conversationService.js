@@ -9,6 +9,7 @@ import { genAI } from '../core/runtime.js';
 import {
   getHistory,
   getUserGeminiToolPreferences,
+  getUserNanoBananaMode,
 } from '../state/botState.js';
 import {
   buildGeminiToolsFromPreferences,
@@ -112,7 +113,19 @@ async function createChatSession(message) {
       safetySettings: SAFETY_SETTINGS,
     };
 
-    if (selectedTools.length > 0) {
+    let activeModel = MODEL;
+    const nanoBananaMode = getUserNanoBananaMode(message.author.id);
+
+    if (nanoBananaMode.enabled) {
+      activeModel = config.nanoBananaModel;
+
+      if (nanoBananaMode.googleSearch && nanoBananaMode.imageSearch) {
+        chatConfig.tools = [{ googleSearch: { searchTypes: { imageSearch: {} } } }];
+      } else if (nanoBananaMode.googleSearch) {
+        chatConfig.tools = [{ googleSearch: {} }];
+      }
+      // else: no tools — chatConfig.tools stays unset (empty)
+    } else if (selectedTools.length > 0) {
       chatConfig.tools = selectedTools;
     }
 
@@ -121,7 +134,7 @@ async function createChatSession(message) {
     const limit = config.chatHistoryLimits[category];
 
     return await genAI.chats.create({
-      model: MODEL,
+      model: activeModel,
       config: chatConfig,
       history: getHistory(historyId, limit),
     });

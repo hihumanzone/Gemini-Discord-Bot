@@ -34,6 +34,7 @@ const PERSISTED_STATE_KEYS = Object.freeze([
   'channelWideChatHistory',
   'blacklistedUsers',
   'userSessions',
+  'userNanoBananaMode',
 ]);
 
 export const state = {
@@ -48,6 +49,7 @@ export const state = {
   channelWideChatHistory: {},
   blacklistedUsers: {},
   userSessions: {},
+  userNanoBananaMode: {},
 };
 
 export const chatHistoryLock = new Mutex();
@@ -70,6 +72,7 @@ const FILE_PATHS = Object.freeze({
   channelWideChatHistory: path.join(CONFIG_DIR, 'channel_wide_chathistory.json'),
   blacklistedUsers: path.join(CONFIG_DIR, 'blacklisted_users.json'),
   userSessions: path.join(CONFIG_DIR, 'user_sessions.json'),
+  userNanoBananaMode: path.join(CONFIG_DIR, 'user_nano_banana_mode.json'),
 });
 
 let isSaving = false;
@@ -453,6 +456,10 @@ export function setChannelWideChatHistory(channelId, enabled, instructions) {
   delete state.chatHistories[channelId];
 }
 
+export function getCustomInstruction(targetId) {
+  return state.customInstructions[targetId];
+}
+
 export function setCustomInstruction(targetId, instructions) {
   state.customInstructions[targetId] = instructions;
 }
@@ -479,6 +486,34 @@ export function toggleUserResponseFormat(userId) {
   const nextPreference = getUserResponsePreference(userId) === 'Normal' ? 'Embedded' : 'Normal';
   state.userResponsePreference[userId] = nextPreference;
   return nextPreference;
+}
+
+export function getUserNanoBananaMode(userId) {
+  if (!state.userNanoBananaMode[userId]) {
+    state.userNanoBananaMode[userId] = { enabled: false, googleSearch: false, imageSearch: false };
+  }
+  return state.userNanoBananaMode[userId];
+}
+
+export function toggleNanoBananaModeState(userId) {
+  const mode = getUserNanoBananaMode(userId);
+  mode.enabled = !mode.enabled;
+  return mode.enabled;
+}
+
+export function toggleNanoBananaGoogleSearch(userId) {
+  const mode = getUserNanoBananaMode(userId);
+  mode.googleSearch = !mode.googleSearch;
+  if (!mode.googleSearch) {
+    mode.imageSearch = false;
+  }
+  return mode.googleSearch;
+}
+
+export function toggleNanoBananaImageSearch(userId) {
+  const mode = getUserNanoBananaMode(userId);
+  mode.imageSearch = !mode.imageSearch;
+  return mode.imageSearch;
 }
 
 export function setUserGeminiToolPreference(userId, toolName, enabled) {
