@@ -111,12 +111,12 @@ export async function showSettings(interaction, edit = false) {
       description:
         'Manage your personal AI experience from one place.\n\n'
         + '**Quick Actions**\n'
-        + `- 🍌 Nano Banana Mode is currently **${nanoBananaMode.enabled ? 'ON' : 'OFF'}**\n`
         + '- Clear active session history\n'
         + '- Open Session Manager\n'
-        + '- Configure general behavior\n'
+        + `- Nano Banana Mode is currently ${nanoBananaMode.enabled ? 'ON' : 'OFF'}\n`
         + (nanoBananaMode.enabled ? '- Configure Nano Banana tools\n' : '- Configure Gemini tools\n')
-        + '- Configure personality',
+        + '- Configure personality\n'
+        + '- Configure general behavior',
     })],
     components: rows,
   };
