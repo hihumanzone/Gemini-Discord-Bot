@@ -89,7 +89,10 @@ async function fetchRecentChannelMessages(message) {
     const formatted = recentMessages
       .map((msg) => {
         const author = msg.author.bot ? `[BOT] ${msg.author.username}` : msg.author.username;
-        let content = msg.content || (msg.attachments.size > 0 ? '[attachment]' : '[empty message]');
+        let content = msg.content
+          || (msg.embeds.length > 0
+            ? (msg.embeds[0].description || msg.embeds[0].title || '[embed]')
+            : (msg.attachments.size > 0 ? '[attachment]' : '[empty message]'));
         if (content.length > MAX_CHANNEL_MESSAGE_LENGTH) {
           content = `${content.slice(0, MAX_CHANNEL_MESSAGE_LENGTH)}... [truncated]`;
         }
