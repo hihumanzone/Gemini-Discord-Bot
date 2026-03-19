@@ -13,6 +13,7 @@ import { logServiceError } from '../utils/errorHandler.js';
 import { TEMP_DIR } from '../core/paths.js';
 import {
   chatHistoryLock,
+  getUserResponseActionButtons,
   saveStateToFile,
   state,
   updateChatHistory,
@@ -354,11 +355,23 @@ async function handleLargeOrFinalResponse(
     return updatedMessage;
   }
 
-  const shouldAddActionButtons = originalMessage.guild
-    ? state.serverSettings[originalMessage.guild.id]?.settingsSaveButton
-    : true;
+  const serverActionButtonSetting = originalMessage.guild
+    ? (state.serverSettings[originalMessage.guild.id]?.settingsSaveButton || 'decide')
+    : 'decide';
+  
+  const userButtonsEnabled = getUserResponseActionButtons(originalMessage.author.id);
 
-  if (!shouldAddActionButtons) {
+  let finalButtonsEnabled = true;
+  if (serverActionButtonSetting === 'on') {
+    finalButtonsEnabled = true;
+  } else if (serverActionButtonSetting === 'off') {
+    finalButtonsEnabled = false;
+  } else {
+    // 'decide'
+    finalButtonsEnabled = userButtonsEnabled;
+  }
+
+  if (!finalButtonsEnabled) {
     return clearMessageActionRows(updatedMessage);
   }
 

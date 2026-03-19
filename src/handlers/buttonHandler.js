@@ -23,6 +23,8 @@ import {
   toggleServerResponseStyle,
   toggleServerSetting,
   toggleUserResponseFormat,
+  toggleUserResponseActionButtons,
+  cycleServerResponseActionButtons,
   toggleNanoBananaModeState,
   toggleNanoBananaGoogleSearch,
   toggleNanoBananaImageSearch,
@@ -59,6 +61,10 @@ import {
   ensureInteractionNotBlacklisted,
   getClearMemoryDisabledReason,
   getCustomPersonalityDisabledReason,
+  getNanoBananaDisabledReason,
+  getResponseStyleDisabledReason,
+  getAlwaysRespondDisabledReason,
+  getResponseActionButtonsDisabledReason,
   persistStateChange,
   replyFeatureDisabled,
   requireGuildAdmin,
@@ -140,6 +146,11 @@ async function handleClearMemoryButton(interaction) {
 }
 
 async function alwaysRespond(interaction) {
+  const disabledReason = getAlwaysRespondDisabledReason(interaction);
+  if (disabledReason) {
+    return replyFeatureDisabled(interaction, disabledReason);
+  }
+
   if (interaction.channel.type === ChannelType.DM) {
     return replyWithEmbed(interaction, {
       variant: 'error',
@@ -246,24 +257,55 @@ async function downloadConversation(interaction) {
 }
 
 async function toggleUserResponsePreference(interaction) {
+  const disabledReason = getResponseStyleDisabledReason(interaction);
+  if (disabledReason) {
+    return replyFeatureDisabled(interaction, disabledReason);
+  }
+
   toggleUserResponseFormat(interaction.user.id);
   await persistStateChange();
   return updateGeneralSettingsView(interaction);
 }
 
+async function toggleActionButtons(interaction) {
+  const disabledReason = getResponseActionButtonsDisabledReason(interaction);
+  if (disabledReason) {
+    return replyFeatureDisabled(interaction, disabledReason);
+  }
+
+  toggleUserResponseActionButtons(interaction.user.id);
+  await persistStateChange();
+  return updateGeneralSettingsView(interaction);
+}
+
 async function toggleNanoBananaMode(interaction) {
+  const disabledReason = getNanoBananaDisabledReason(interaction);
+  if (disabledReason) {
+    return replyFeatureDisabled(interaction, disabledReason);
+  }
+
   toggleNanoBananaModeState(interaction.user.id);
   await persistStateChange();
   return showSettings(interaction, true);
 }
 
 async function handleNBGoogleSearch(interaction) {
+  const disabledReason = getNanoBananaDisabledReason(interaction);
+  if (disabledReason) {
+    return replyFeatureDisabled(interaction, disabledReason);
+  }
+
   toggleNanoBananaGoogleSearch(interaction.user.id);
   await persistStateChange();
   return updateGeminiToolsSettingsView(interaction);
 }
 
 async function handleNBImageSearch(interaction) {
+  const disabledReason = getNanoBananaDisabledReason(interaction);
+  if (disabledReason) {
+    return replyFeatureDisabled(interaction, disabledReason);
+  }
+
   toggleNanoBananaImageSearch(interaction.user.id);
   await persistStateChange();
   return updateGeminiToolsSettingsView(interaction);
@@ -513,6 +555,17 @@ async function toggleServerPreference(interaction) {
   return updateServerSettingsView(interaction);
 }
 
+async function cycleServerActionButtons(interaction) {
+  if (!(await ensureGuildInteraction(interaction))) {
+    return;
+  }
+
+  cycleServerResponseActionButtons(interaction.guild.id);
+  await persistStateChange();
+
+  return updateServerSettingsView(interaction);
+}
+
 // --- Channel admin button handlers ---
 
 async function toggleChannelAlwaysRespond(interaction) {
@@ -636,7 +689,7 @@ export async function handleButtonInteraction(interaction) {
     const exactHandlers = {
       'server-chat-history': createServerSettingToggle('serverChatHistory'),
       'clear-server': clearServerChatHistory,
-      'settings-save-buttons': createServerSettingToggle('settingsSaveButton'),
+      'settings-save-buttons': cycleServerActionButtons,
       'custom-server-personality': serverPersonality,
       'toggle-server-personality': createServerSettingToggle('customServerPersonality'),
       'download-server-conversation': downloadServerConversation,
@@ -658,6 +711,7 @@ export async function handleButtonInteraction(interaction) {
       'download-channel-personality': downloadChannelPersonality,
       'remove-personality': handleRemovePersonalityCommand,
       'toggle-response-mode': toggleUserResponsePreference,
+      'toggle-action-buttons': toggleActionButtons,
       'toggle-nano-banana': toggleNanoBananaMode,
       'toggle-nb-google-search': handleNBGoogleSearch,
       'toggle-nb-image-search': handleNBImageSearch,

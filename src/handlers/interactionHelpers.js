@@ -82,6 +82,48 @@ export function getCustomPersonalityDisabledReason(interaction) {
   return null;
 }
 
+export function getNanoBananaDisabledReason(interaction) {
+  if (getClearMemoryDisabledReason(interaction)) {
+    return 'Nano Banana mode is not available while server-wide or channel-wide chat history is active.';
+  }
+
+  if (getCustomPersonalityDisabledReason(interaction)) {
+    return 'Nano Banana mode is not available while server-wide or channel-wide personality instructions are active.';
+  }
+
+  return null;
+}
+
+export function getResponseStyleDisabledReason(interaction) {
+  const guildId = interaction.guild?.id;
+  if (guildId && getServerSettings(guildId).serverResponsePreference) {
+    return 'The response style is locked to the server-wide preference.';
+  }
+  return null;
+}
+
+export function getAlwaysRespondDisabledReason(interaction) {
+  const channelId = interaction.channelId ?? interaction.channel?.id;
+  if (channelId && getChannelSettings(channelId).alwaysRespond) {
+    return 'The bot is configured to always respond in this channel.';
+  }
+  return null;
+}
+
+export function getResponseActionButtonsDisabledReason(interaction) {
+  const guildId = interaction.guild?.id;
+  if (!guildId) return null;
+
+  const setting = getServerSettings(guildId).settingsSaveButton;
+  if (setting === 'on') {
+    return 'Response action buttons are forced ON by server settings.';
+  }
+  if (setting === 'off') {
+    return 'Response action buttons are disabled by server settings.';
+  }
+  return null;
+}
+
 /**
  * Ensures the interaction user is not blacklisted in the current guild.
  * Replies with an error embed if the user is blacklisted.

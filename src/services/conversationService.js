@@ -26,6 +26,7 @@ import {
   buildFinalSystemInstruction,
   getResponsePreference,
   isSharedConversation,
+  isSharedPersonality,
   resolveHistoryCategory,
   resolveHistoryId,
   resolveInstructions,
@@ -116,7 +117,10 @@ async function createChatSession(message) {
     let activeModel = MODEL;
     const nanoBananaMode = getUserNanoBananaMode(message.author.id);
 
-    if (nanoBananaMode.enabled) {
+    const isSharedHistory = isSharedConversation(message);
+    const isSharedPers = isSharedPersonality(message);
+
+    if (nanoBananaMode.enabled && !isSharedHistory && !isSharedPers) {
       activeModel = config.nanoBananaModel;
 
       if (nanoBananaMode.googleSearch && nanoBananaMode.imageSearch) {

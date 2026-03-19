@@ -35,6 +35,7 @@ const PERSISTED_STATE_KEYS = Object.freeze([
   'blacklistedUsers',
   'userSessions',
   'userNanoBananaMode',
+  'userResponseActionButtons',
 ]);
 
 export const state = {
@@ -50,6 +51,7 @@ export const state = {
   blacklistedUsers: {},
   userSessions: {},
   userNanoBananaMode: {},
+  userResponseActionButtons: {},
 };
 
 export const chatHistoryLock = new Mutex();
@@ -73,6 +75,7 @@ const FILE_PATHS = Object.freeze({
   blacklistedUsers: path.join(CONFIG_DIR, 'blacklisted_users.json'),
   userSessions: path.join(CONFIG_DIR, 'user_sessions.json'),
   userNanoBananaMode: path.join(CONFIG_DIR, 'user_nano_banana_mode.json'),
+  userResponseActionButtons: path.join(CONFIG_DIR, 'user_response_action_buttons.json'),
 });
 
 let isSaving = false;
@@ -488,6 +491,19 @@ export function toggleUserResponseFormat(userId) {
   return nextPreference;
 }
 
+export function getUserResponseActionButtons(userId) {
+  if (state.userResponseActionButtons[userId] === undefined) {
+    return config.defaultResponseActionButtons !== undefined ? config.defaultResponseActionButtons : true;
+  }
+  return state.userResponseActionButtons[userId];
+}
+
+export function toggleUserResponseActionButtons(userId) {
+  const current = getUserResponseActionButtons(userId);
+  state.userResponseActionButtons[userId] = !current;
+  return !current;
+}
+
 export function getUserNanoBananaMode(userId) {
   if (!state.userNanoBananaMode[userId]) {
     state.userNanoBananaMode[userId] = { enabled: false, googleSearch: false, imageSearch: false };
@@ -524,6 +540,15 @@ export function setUserGeminiToolPreference(userId, toolName, enabled) {
 
   normalizedToolPreferences.delete(userId);
   return state.userGeminiToolPreferences[userId];
+}
+
+export function cycleServerResponseActionButtons(guildId) {
+  const settings = getServerSettings(guildId);
+  const states = ['on', 'off', 'decide'];
+  const currentIndex = states.indexOf(settings.settingsSaveButton);
+  const nextIndex = (currentIndex + 1) % states.length;
+  settings.settingsSaveButton = states[nextIndex];
+  return settings.settingsSaveButton;
 }
 
 export function toggleServerSetting(guildId, settingName) {

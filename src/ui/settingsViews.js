@@ -12,13 +12,23 @@ import {
   getUserGeminiToolPreferences,
   getUserResponsePreference,
   getUserNanoBananaMode,
+  getUserResponseActionButtons,
   getUserSessions,
+  cycleServerResponseActionButtons,
   isChannelUserActive,
   isUserBlacklisted,
   state,
 } from '../state/botState.js';
 import { DISPLAY_PERSONALITY_BUTTONS } from '../constants.js';
 import { applyEmbedFallback, buildButtonRows, buildTextModal, createStatusEmbed } from '../utils/discord.js';
+import {
+  getClearMemoryDisabledReason,
+  getCustomPersonalityDisabledReason,
+  getNanoBananaDisabledReason,
+  getResponseStyleDisabledReason,
+  getAlwaysRespondDisabledReason,
+  getResponseActionButtonsDisabledReason,
+} from '../handlers/interactionHelpers.js';
 
 const MAX_BUTTON_LABEL_LENGTH = 80;
 const MAX_EMBED_FIELD_VALUE_LENGTH = 1024;
@@ -64,6 +74,9 @@ export async function showSettings(interaction, edit = false) {
   }
 
   const nanoBananaMode = getUserNanoBananaMode(interaction.user.id);
+  const clearMemoryDisabled = Boolean(getClearMemoryDisabledReason(interaction));
+  const personalityDisabled = Boolean(getCustomPersonalityDisabledReason(interaction));
+  const nanoBananaDisabled = Boolean(getNanoBananaDisabledReason(interaction));
 
   const rows = buildButtonRows([
     {
@@ -71,6 +84,7 @@ export async function showSettings(interaction, edit = false) {
       label: 'Clear Memory',
       emoji: '🧹',
       style: ButtonStyle.Danger,
+      disabled: clearMemoryDisabled,
     },
     {
       customId: 'session-settings',
@@ -83,6 +97,7 @@ export async function showSettings(interaction, edit = false) {
       label: `Nano Banana Mode: ${nanoBananaMode.enabled ? 'ON' : 'OFF'}`,
       emoji: '🍌',
       style: nanoBananaMode.enabled ? ButtonStyle.Success : ButtonStyle.Danger,
+      disabled: nanoBananaDisabled,
     },
     {
       customId: 'gemini-tools-settings',
@@ -95,6 +110,7 @@ export async function showSettings(interaction, edit = false) {
       label: 'Personality',
       emoji: '🤖',
       style: ButtonStyle.Primary,
+      disabled: personalityDisabled,
     },
     {
       customId: 'general-settings',
@@ -133,9 +149,24 @@ export async function showSettings(interaction, edit = false) {
 
 export async function updateGeneralSettingsView(interaction) {
   const channelId = interaction.channel.id;
+  const guildId = interaction.guild?.id;
   const userId = interaction.user.id;
-  const alwaysRespondEnabled = isChannelUserActive(channelId, userId);
-  const responseMode = getUserResponsePreference(userId);
+
+  const serverSettings = guildId ? getServerSettings(guildId) : null;
+
+  const alwaysRespondDisabledReason = getAlwaysRespondDisabledReason(interaction);
+  const responseStyleDisabledReason = getResponseStyleDisabledReason(interaction);
+  const responseActionButtonsDisabledReason = getResponseActionButtonsDisabledReason(interaction);
+
+  const alwaysRespondEnabled = alwaysRespondDisabledReason ? true : isChannelUserActive(channelId, userId);
+  const responseMode = responseStyleDisabledReason ? serverSettings.responseStyle : getUserResponsePreference(userId);
+
+  let responseActionButtonsEnabled;
+  if (responseActionButtonsDisabledReason) {
+    responseActionButtonsEnabled = serverSettings.settingsSaveButton === 'on';
+  } else {
+    responseActionButtonsEnabled = getUserResponseActionButtons(userId);
+  }
 
   const buttonConfigs = [
     {
@@ -143,12 +174,21 @@ export async function updateGeneralSettingsView(interaction) {
       label: `Always Respond: ${alwaysRespondEnabled ? 'ON' : 'OFF'}`,
       emoji: '↩️',
       style: alwaysRespondEnabled ? ButtonStyle.Success : ButtonStyle.Danger,
+      disabled: Boolean(alwaysRespondDisabledReason),
     },
     {
       customId: 'toggle-response-mode',
       label: `Toggle Response Mode: ${responseMode}`,
       emoji: '📝',
       style: ButtonStyle.Secondary,
+      disabled: Boolean(responseStyleDisabledReason),
+    },
+    {
+      customId: 'toggle-action-buttons',
+      label: `Settings, Save, Delete Buttons: ${responseActionButtonsEnabled ? 'ON' : 'OFF'}`,
+      emoji: '🔘',
+      style: responseActionButtonsEnabled ? ButtonStyle.Success : ButtonStyle.Danger,
+      disabled: Boolean(responseActionButtonsDisabledReason),
     },
     {
       customId: 'download-conversation',
@@ -178,6 +218,7 @@ export async function updateGeneralSettingsView(interaction) {
 }
 
 export async function updatePersonalitySettingsView(interaction) {
+  const personalityDisabled = Boolean(getCustomPersonalityDisabledReason(interaction));
   const buttonConfigs = [];
 
   if (DISPLAY_PERSONALITY_BUTTONS) {
@@ -187,6 +228,7 @@ export async function updatePersonalitySettingsView(interaction) {
         label: 'Custom Personality',
         emoji: '🙌',
         style: ButtonStyle.Primary,
+        disabled: personalityDisabled,
       },
       {
         customId: 'download-personality',
@@ -287,6 +329,12 @@ export async function updateGeminiToolsSettingsView(interaction) {
 function getServerSettingsButtonConfigs(guildId) {
   const settings = getServerSettings(guildId);
 
+  const actionButtonLabels = {
+    on: 'On',
+    off: 'Off',
+    decide: 'Let Individuals Decide',
+  };
+
   return [
     {
       customId: 'server-chat-history',
@@ -302,9 +350,9 @@ function getServerSettingsButtonConfigs(guildId) {
     },
     {
       customId: 'settings-save-buttons',
-      label: `Add Settings And Save Button: ${settings.settingsSaveButton ? 'ON' : 'OFF'}`,
+      label: `Settings, Save, Delete Buttons: ${actionButtonLabels[settings.settingsSaveButton] || 'Unknown'}`,
       emoji: '🔘',
-      style: settings.settingsSaveButton ? ButtonStyle.Success : ButtonStyle.Danger,
+      style: settings.settingsSaveButton === 'on' ? ButtonStyle.Success : (settings.settingsSaveButton === 'off' ? ButtonStyle.Danger : ButtonStyle.Secondary),
     },
     {
       customId: 'toggle-server-personality',

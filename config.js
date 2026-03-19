@@ -4,6 +4,7 @@ const config = Object.freeze({
   nanoBananaModel: 'gemini-2.5-flash-image',
   maxGenerationAttempts: 3,
   defaultResponseFormat: 'Embedded',
+  defaultResponseActionButtons: true,
   hexColour: '#505050',
   workInDMs: true,
   shouldDisplayPersonalityButtons: true,
@@ -27,7 +28,7 @@ const config = Object.freeze({
   ],
   defaultServerSettings: {
     serverChatHistory: false,
-    settingsSaveButton: true,
+    settingsSaveButton: 'decide',
     customServerPersonality: false,
     serverResponsePreference: false,
     responseStyle: 'Embedded',

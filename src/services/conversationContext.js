@@ -181,6 +181,28 @@ export function isSharedConversation(message) {
   return channelHistoryEnabled || serverHistoryEnabled;
 }
 
+export function isSharedPersonality(message) {
+  const guildId = message.guild?.id;
+  if (!guildId) return false;
+
+  const channelId = message.channel.id;
+  const channelSettings = getChannelSettings(channelId);
+
+  if (
+    channelSettings.channelWideChatHistory
+    && channelSettings.customChannelPersonality
+    && getCustomInstruction(channelId)
+  ) {
+    return true;
+  }
+
+  if (state.serverSettings[guildId]?.customServerPersonality && getCustomInstruction(guildId)) {
+    return true;
+  }
+
+  return false;
+}
+
 export function tagPartsWithUser(parts, message) {
   const tag = `[user:${message.author.username}|display:${message.author.displayName}]`;
   if (parts.length > 0 && parts[0].text !== undefined) {
