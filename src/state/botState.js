@@ -498,6 +498,22 @@ export function getUserResponseActionButtons(userId) {
   return state.userResponseActionButtons[userId];
 }
 
+export function shouldShowActionButtons(guildId, userId) {
+  const serverActionButtonSetting = guildId
+    ? (state.serverSettings[guildId]?.settingsSaveButton || 'decide')
+    : 'decide';
+
+  if (serverActionButtonSetting === 'on') {
+    return true;
+  }
+
+  if (serverActionButtonSetting === 'off') {
+    return false;
+  }
+
+  return getUserResponseActionButtons(userId);
+}
+
 export function toggleUserResponseActionButtons(userId) {
   const current = getUserResponseActionButtons(userId);
   state.userResponseActionButtons[userId] = !current;
@@ -564,9 +580,12 @@ export function toggleChannelSetting(channelId, settingName) {
   return settings[settingName];
 }
 
-export function toggleServerResponseStyle(guildId) {
+export function cycleServerResponseStyle(guildId) {
   const settings = getServerSettings(guildId);
-  settings.responseStyle = settings.responseStyle === 'Embedded' ? 'Normal' : 'Embedded';
+  const states = ['Embedded', 'Normal', 'decide'];
+  const currentIndex = states.indexOf(settings.responseStyle);
+  const nextIndex = (currentIndex + 1) % states.length;
+  settings.responseStyle = states[nextIndex];
   return settings.responseStyle;
 }
 

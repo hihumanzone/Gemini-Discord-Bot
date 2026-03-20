@@ -10,6 +10,7 @@ import {
   getHistory,
   getUserGeminiToolPreferences,
   getUserNanoBananaMode,
+  shouldShowActionButtons,
 } from '../state/botState.js';
 import {
   buildGeminiToolsFromPreferences,
@@ -82,9 +83,12 @@ async function sendUnsupportedAttachmentsWarning(unsupportedAttachments, message
       allowedMentions: { users: [message.author.id], repliedUser: false },
     }));
 
-    let updatedWarningMessage = await addSettingsButton(warningMessage);
-    updatedWarningMessage = await addDeleteButton(updatedWarningMessage, updatedWarningMessage.id, deleteHistoryRef);
-    return updatedWarningMessage;
+    if (shouldShowActionButtons(message.guild?.id, message.author.id)) {
+      let updatedWarningMessage = await addSettingsButton(warningMessage);
+      updatedWarningMessage = await addDeleteButton(updatedWarningMessage, updatedWarningMessage.id, deleteHistoryRef);
+      return updatedWarningMessage;
+    }
+    return warningMessage;
   } catch (error) {
     logServiceError('ConversationService', error, {
       operation: 'sendUnsupportedAttachmentsWarning',
@@ -222,7 +226,9 @@ export async function handleTextMessage(message) {
   if (!messageContent && !(message.attachments.size > 0 && hasSupportedAttachments(message))) {
 
     const response = await message.reply(applyEmbedFallback(message.channel, { embeds: [createEmptyMessageEmbed()] }));
-    await addSettingsButton(response);
+    if (shouldShowActionButtons(message.guild?.id, message.author.id)) {
+      await addSettingsButton(response);
+    }
     return;
   }
 
@@ -272,8 +278,10 @@ export async function handleTextMessage(message) {
         });
 
         await processingMessage.edit(applyEmbedFallback(message.channel, { embeds: [errorEmbed] }));
-        processingMessage = await addSettingsButton(processingMessage);
-        await addDeleteButton(processingMessage, processingMessage.id, deleteHistoryRef);
+        if (shouldShowActionButtons(message.guild?.id, message.author.id)) {
+          processingMessage = await addSettingsButton(processingMessage);
+          await addDeleteButton(processingMessage, processingMessage.id, deleteHistoryRef);
+        }
       } catch (replyError) {
         logServiceError('ConversationService', replyError, { operation: 'initializeMessageErrorReply' });
       }
@@ -311,12 +319,16 @@ export async function handleTextMessage(message) {
       });
       if (processingMessage) {
         await processingMessage.edit(applyEmbedFallback(message.channel, { embeds: [errorEmbed] }));
-        processingMessage = await addSettingsButton(processingMessage);
-        await addDeleteButton(processingMessage, processingMessage.id, deleteHistoryRef);
+        if (shouldShowActionButtons(message.guild?.id, message.author.id)) {
+          processingMessage = await addSettingsButton(processingMessage);
+          await addDeleteButton(processingMessage, processingMessage.id, deleteHistoryRef);
+        }
       } else {
         let errorMessage = await message.reply(applyEmbedFallback(message.channel, { embeds: [errorEmbed] }));
-        errorMessage = await addSettingsButton(errorMessage);
-        await addDeleteButton(errorMessage, errorMessage.id, deleteHistoryRef);
+        if (shouldShowActionButtons(message.guild?.id, message.author.id)) {
+          errorMessage = await addSettingsButton(errorMessage);
+          await addDeleteButton(errorMessage, errorMessage.id, deleteHistoryRef);
+        }
       }
     } catch (replyError) {
       logServiceError('StreamingService', replyError, { operation: 'errorReply' });

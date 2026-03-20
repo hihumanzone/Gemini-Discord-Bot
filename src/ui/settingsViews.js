@@ -335,6 +335,12 @@ function getServerSettingsButtonConfigs(guildId) {
     decide: 'Let Individuals Decide',
   };
 
+  const responseStyleLabels = {
+    Embedded: 'Embedded',
+    Normal: 'Normal',
+    decide: 'Let Individuals Decide',
+  };
+
   return [
     {
       customId: 'server-chat-history',
@@ -373,16 +379,10 @@ function getServerSettingsButtonConfigs(guildId) {
       style: ButtonStyle.Secondary,
     },
     {
-      customId: 'toggle-response-server-mode',
-      label: `Use Server-Wide Response Style: ${settings.serverResponsePreference ? 'ON' : 'OFF'}`,
-      emoji: '✏️',
-      style: settings.serverResponsePreference ? ButtonStyle.Success : ButtonStyle.Danger,
-    },
-    {
       customId: 'response-server-mode',
-      label: `Toggle Server Response Mode: ${settings.responseStyle}`,
+      label: `Response Style: ${responseStyleLabels[settings.responseStyle] || 'Unknown'}`,
       emoji: '📝',
-      style: ButtonStyle.Secondary,
+      style: settings.responseStyle === 'decide' ? ButtonStyle.Secondary : ButtonStyle.Success,
     },
     {
       customId: 'download-server-conversation',

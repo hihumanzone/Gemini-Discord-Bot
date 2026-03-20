@@ -9,10 +9,10 @@ import {
 } from '../state/botState.js';
 
 export function getResponsePreference(message) {
-  const guildPreferenceEnabled = message.guild && state.serverSettings[message.guild.id]?.serverResponsePreference;
+  const serverStyle = message.guild ? state.serverSettings[message.guild.id]?.responseStyle : null;
 
-  return guildPreferenceEnabled
-    ? state.serverSettings[message.guild.id].responseStyle
+  return serverStyle && serverStyle !== 'decide'
+    ? serverStyle
     : getUserResponsePreference(message.author.id);
 }
 

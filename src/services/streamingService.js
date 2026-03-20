@@ -15,6 +15,7 @@ import {
   chatHistoryLock,
   getUserResponseActionButtons,
   saveStateToFile,
+  shouldShowActionButtons,
   state,
   updateChatHistory,
 } from '../state/botState.js';
@@ -219,8 +220,10 @@ async function sendAsTextFile(text, originalMessage, historyId) {
       allowedMentions: { users: [originalMessage.author.id], repliedUser: false },
     }));
 
-    response = await addSettingsButton(response);
-    response = await addDeleteButton(response, response.id, historyId);
+    if (shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id)) {
+      response = await addSettingsButton(response);
+      response = await addDeleteButton(response, response.id, historyId);
+    }
     return response;
   } catch (error) {
     logStreamingOperationError('sendAsTextFile', error, {
@@ -342,37 +345,28 @@ async function handleLargeOrFinalResponse(
   historyId,
   extraMessageIds = [],
 ) {
+  const showButtons = shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id);
+
   let updatedMessage = await clearMessageActionRows(botMessage);
-  updatedMessage = await addSettingsButton(updatedMessage);
+
+  if (showButtons) {
+    updatedMessage = await addSettingsButton(updatedMessage);
+  }
 
   if (isLargeResponse) {
     const textFileMessage = await sendAsTextFile(responseText, originalMessage, historyId);
-    
-    const targets = [updatedMessage.id, ...extraMessageIds];
-    if (textFileMessage) targets.push(textFileMessage.id);
-    
-    updatedMessage = await addDeleteButton(updatedMessage, targets.join(','), historyId);
+
+    if (showButtons) {
+      const targets = [updatedMessage.id, ...extraMessageIds];
+      if (textFileMessage) targets.push(textFileMessage.id);
+
+      updatedMessage = await addDeleteButton(updatedMessage, targets.join(','), historyId);
+    }
     return updatedMessage;
   }
 
-  const serverActionButtonSetting = originalMessage.guild
-    ? (state.serverSettings[originalMessage.guild.id]?.settingsSaveButton || 'decide')
-    : 'decide';
-  
-  const userButtonsEnabled = getUserResponseActionButtons(originalMessage.author.id);
-
-  let finalButtonsEnabled = true;
-  if (serverActionButtonSetting === 'on') {
-    finalButtonsEnabled = true;
-  } else if (serverActionButtonSetting === 'off') {
-    finalButtonsEnabled = false;
-  } else {
-    // 'decide'
-    finalButtonsEnabled = userButtonsEnabled;
-  }
-
-  if (!finalButtonsEnabled) {
-    return clearMessageActionRows(updatedMessage);
+  if (!showButtons) {
+    return updatedMessage;
   }
 
   const targets = [updatedMessage.id, ...extraMessageIds];
@@ -415,9 +409,12 @@ async function sendCodeExecutionFiles(inlineDataFiles, originalMessage, historyI
       allowedMentions: { users: [originalMessage.author.id] },
     }));
 
-    let updated = await addSettingsButton(filesMessage);
-    updated = await addDeleteButton(updated, updated.id, historyId);
-    return updated;
+    if (shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id)) {
+      let updated = await addSettingsButton(filesMessage);
+      updated = await addDeleteButton(updated, updated.id, historyId);
+      return updated;
+    }
+    return filesMessage;
   } catch (error) {
     logServiceError('StreamingService', error, { operation: 'sendCodeExecutionFiles' });
     return null;
@@ -710,16 +707,20 @@ export async function streamModelResponse({
               ...extraMessageIds,
             ].filter(Boolean);
 
-            let updatedErrorMessage = await addSettingsButton(errorMessage);
-            updatedErrorMessage = await addDeleteButton(
-              updatedErrorMessage,
-              [updatedErrorMessage.id, ...linkedMessageIds].join(','),
-              deleteHistoryRef,
-            );
+            if (shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id)) {
+              let updatedErrorMessage = await addSettingsButton(errorMessage);
+              updatedErrorMessage = await addDeleteButton(
+                updatedErrorMessage,
+                [updatedErrorMessage.id, ...linkedMessageIds].join(','),
+                deleteHistoryRef,
+              );
 
-            botMessage = await clearMessageActionRows(botMessage);
-            botMessage = await addSettingsButton(botMessage);
-            botMessage = await addDeleteButton(botMessage, [botMessage.id, updatedErrorMessage.id, ...extraMessageIds].join(','), deleteHistoryRef);
+              botMessage = await clearMessageActionRows(botMessage);
+              botMessage = await addSettingsButton(botMessage);
+              botMessage = await addDeleteButton(botMessage, [botMessage.id, updatedErrorMessage.id, ...extraMessageIds].join(','), deleteHistoryRef);
+            } else {
+              botMessage = await clearMessageActionRows(botMessage);
+            }
             finalized = true;
           }
 

@@ -30,8 +30,7 @@ const config = Object.freeze({
     serverChatHistory: false,
     settingsSaveButton: 'decide',
     customServerPersonality: false,
-    serverResponsePreference: false,
-    responseStyle: 'Embedded',
+    responseStyle: 'decide',
   },
   defaultChannelSettings: {
     alwaysRespond: false,

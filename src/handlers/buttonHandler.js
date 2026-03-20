@@ -20,7 +20,7 @@ import {
   setUserGeminiToolPreference,
   toggleChannelUserActive,
   toggleChannelSetting,
-  toggleServerResponseStyle,
+  cycleServerResponseStyle,
   toggleServerSetting,
   toggleUserResponseFormat,
   toggleUserResponseActionButtons,
@@ -549,7 +549,7 @@ async function toggleServerPreference(interaction) {
     return;
   }
 
-  toggleServerResponseStyle(interaction.guild.id);
+  cycleServerResponseStyle(interaction.guild.id);
   await persistStateChange();
 
   return updateServerSettingsView(interaction);
@@ -694,7 +694,6 @@ export async function handleButtonInteraction(interaction) {
       'toggle-server-personality': createServerSettingToggle('customServerPersonality'),
       'download-server-conversation': downloadServerConversation,
       'response-server-mode': toggleServerPreference,
-      'toggle-response-server-mode': createServerSettingToggle('serverResponsePreference'),
       'channel-always-respond': toggleChannelAlwaysRespond,
       'channel-chat-history': toggleChannelChatHistory,
       'toggle-channel-personality': toggleChannelPersonality,

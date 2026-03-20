@@ -11,6 +11,7 @@ import {
   clearChatHistoryFor,
   getTimeUntilNextReset,
   removeBlacklistedUser,
+  shouldShowActionButtons,
 } from '../state/botState.js';
 import { getActiveSessionDetails } from '../services/sessionService.js';
 import {
@@ -106,7 +107,9 @@ async function handleStatusCommand(interaction) {
   try {
     await updateReply();
     const reply = await interaction.fetchReply();
-    await addSettingsButton(reply);
+    if (shouldShowActionButtons(interaction.guild?.id, interaction.user.id)) {
+      await addSettingsButton(reply);
+    }
     intervalId = setInterval(updateReply, STATUS_REFRESH_INTERVAL_MS);
     setTimeout(() => clearInterval(intervalId), STATUS_LIFETIME_MS);
   } catch (error) {

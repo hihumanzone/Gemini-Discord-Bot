@@ -96,7 +96,10 @@ export function getNanoBananaDisabledReason(interaction) {
 
 export function getResponseStyleDisabledReason(interaction) {
   const guildId = interaction.guild?.id;
-  if (guildId && getServerSettings(guildId).serverResponsePreference) {
+  if (!guildId) return null;
+
+  const setting = getServerSettings(guildId).responseStyle;
+  if (setting && setting !== 'decide') {
     return 'The response style is locked to the server-wide preference.';
   }
   return null;
