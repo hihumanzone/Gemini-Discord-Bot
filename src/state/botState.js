@@ -4,7 +4,7 @@ import path from 'path';
 import config from '../../config.js';
 import {
   CHAT_HISTORIES_DIR,
-  CONFIG_DIR,
+  DATA_DIR,
   TEMP_DIR,
 } from '../core/paths.js';
 import {
@@ -64,18 +64,18 @@ const deletedChatHistories = new Set();
 const SAVE_DEBOUNCE_MS = 2_000;
 
 const FILE_PATHS = Object.freeze({
-  activeUsersInChannels: path.join(CONFIG_DIR, 'active_users_in_channels.json'),
-  customInstructions: path.join(CONFIG_DIR, 'custom_instructions.json'),
-  serverSettings: path.join(CONFIG_DIR, 'server_settings.json'),
-  channelSettings: path.join(CONFIG_DIR, 'channel_settings.json'),
-  userResponsePreference: path.join(CONFIG_DIR, 'user_response_preference.json'),
-  userGeminiToolPreferences: path.join(CONFIG_DIR, 'user_gemini_tool_preferences.json'),
-  alwaysRespondChannels: path.join(CONFIG_DIR, 'always_respond_channels.json'),
-  channelWideChatHistory: path.join(CONFIG_DIR, 'channel_wide_chathistory.json'),
-  blacklistedUsers: path.join(CONFIG_DIR, 'blacklisted_users.json'),
-  userSessions: path.join(CONFIG_DIR, 'user_sessions.json'),
-  userNanoBananaMode: path.join(CONFIG_DIR, 'user_nano_banana_mode.json'),
-  userResponseActionButtons: path.join(CONFIG_DIR, 'user_response_action_buttons.json'),
+  activeUsersInChannels: path.join(DATA_DIR, 'active_users_in_channels.json'),
+  customInstructions: path.join(DATA_DIR, 'custom_instructions.json'),
+  serverSettings: path.join(DATA_DIR, 'server_settings.json'),
+  channelSettings: path.join(DATA_DIR, 'channel_settings.json'),
+  userResponsePreference: path.join(DATA_DIR, 'user_response_preference.json'),
+  userGeminiToolPreferences: path.join(DATA_DIR, 'user_gemini_tool_preferences.json'),
+  alwaysRespondChannels: path.join(DATA_DIR, 'always_respond_channels.json'),
+  channelWideChatHistory: path.join(DATA_DIR, 'channel_wide_chathistory.json'),
+  blacklistedUsers: path.join(DATA_DIR, 'blacklisted_users.json'),
+  userSessions: path.join(DATA_DIR, 'user_sessions.json'),
+  userNanoBananaMode: path.join(DATA_DIR, 'user_nano_banana_mode.json'),
+  userResponseActionButtons: path.join(DATA_DIR, 'user_response_action_buttons.json'),
 });
 
 let isSaving = false;
@@ -97,7 +97,7 @@ function getSerializableState() {
 }
 
 async function ensureDataDirectories() {
-  await fs.mkdir(CONFIG_DIR, { recursive: true });
+  await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.mkdir(CHAT_HISTORIES_DIR, { recursive: true });
   await fs.mkdir(TEMP_DIR, { recursive: true });
 }
