@@ -9,7 +9,14 @@ import {
 } from '../state/botState.js';
 
 export function getResponsePreference(message) {
-  const serverStyle = message.guild ? state.serverSettings[message.guild.id]?.responseStyle : null;
+  const guildId = message.guild?.id;
+  const channelId = message.channel.id;
+  const serverStyle = guildId ? state.serverSettings[guildId]?.responseStyle : null;
+  const channelStyle = getChannelSettings(channelId).responseStyle;
+
+  if (channelStyle && channelStyle !== 'decide') {
+    return channelStyle;
+  }
 
   return serverStyle && serverStyle !== 'decide'
     ? serverStyle
@@ -26,11 +33,7 @@ export function resolveInstructions(message) {
     return getCustomInstruction(userId) || DEFAULT_PERSONALITY;
   }
 
-  if (
-    channelSettings.channelWideChatHistory
-    && channelSettings.customChannelPersonality
-    && getCustomInstruction(channelId)
-  ) {
+  if (channelSettings.customChannelPersonality && getCustomInstruction(channelId)) {
     return getCustomInstruction(channelId);
   }
 
@@ -161,17 +164,22 @@ export function resolveHistoryId(message) {
   const channelId = message.channel.id;
   const userId = message.author.id;
   const channelHistoryEnabled = getChannelSettings(channelId).channelWideChatHistory;
+  const serverHistoryEnabled = guildId ? state.serverSettings[guildId]?.serverChatHistory : false;
   const userHistoryId = getActiveSessionHistoryId(userId);
 
   if (!guildId) {
     return userHistoryId;
   }
 
-  if (!channelHistoryEnabled) {
-    return userHistoryId;
+  if (channelHistoryEnabled) {
+    return channelId;
   }
 
-  return state.serverSettings[guildId]?.serverChatHistory ? guildId : channelId;
+  if (serverHistoryEnabled) {
+    return guildId;
+  }
+
+  return userHistoryId;
 }
 
 export function isSharedConversation(message) {
@@ -188,11 +196,7 @@ export function isSharedPersonality(message) {
   const channelId = message.channel.id;
   const channelSettings = getChannelSettings(channelId);
 
-  if (
-    channelSettings.channelWideChatHistory
-    && channelSettings.customChannelPersonality
-    && getCustomInstruction(channelId)
-  ) {
+  if (channelSettings.customChannelPersonality && getCustomInstruction(channelId)) {
     return true;
   }
 
@@ -215,8 +219,10 @@ export function resolveHistoryCategory(message) {
   const guildId = message.guild?.id;
   const channelId = message.channel.id;
   const channelHistoryEnabled = getChannelSettings(channelId).channelWideChatHistory;
+  const serverHistoryEnabled = guildId ? state.serverSettings[guildId]?.serverChatHistory : false;
 
   if (!guildId) return 'users';
-  if (!channelHistoryEnabled) return 'users';
-  return state.serverSettings[guildId]?.serverChatHistory ? 'servers' : 'channels';
+  if (channelHistoryEnabled) return 'channels';
+  if (serverHistoryEnabled) return 'servers';
+  return 'users';
 }

@@ -9,11 +9,15 @@ import {
 } from '../state/botState.js';
 import { WORK_IN_DMS } from '../constants.js';
 import { handleTextMessage } from '../services/conversationService.js';
-import { applyEmbedFallback, createStatusEmbed } from '../utils/discord.js';
+import { applyEmbedFallback, canSendMessages, createStatusEmbed } from '../utils/discord.js';
 import { logError } from '../utils/errorHandler.js';
 
 function shouldRespondToMessage(message) {
   const isDirectMessage = message.channel.type === ChannelType.DM;
+
+  if (message.mentions.everyone && !message.mentions.users.has(client.user.id)) {
+    return false;
+  }
 
   return (
     (WORK_IN_DMS && isDirectMessage) ||
@@ -59,6 +63,10 @@ async function replyRequestInProgress(message) {
 
 export async function handleMessageCreate(message) {
   if (message.author.bot || message.content.startsWith('!')) {
+    return;
+  }
+
+  if (!canSendMessages(message.channel)) {
     return;
   }
 

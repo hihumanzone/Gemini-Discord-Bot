@@ -107,7 +107,7 @@ async function handleStatusCommand(interaction) {
   try {
     await updateReply();
     const reply = await interaction.fetchReply();
-    if (shouldShowActionButtons(interaction.guild?.id, interaction.user.id)) {
+    if (shouldShowActionButtons(interaction.guild?.id, interaction.user.id, interaction.channelId)) {
       await addSettingsButton(reply);
     }
     intervalId = setInterval(updateReply, STATUS_REFRESH_INTERVAL_MS);

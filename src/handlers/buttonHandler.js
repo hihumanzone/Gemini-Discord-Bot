@@ -21,10 +21,12 @@ import {
   toggleChannelUserActive,
   toggleChannelSetting,
   cycleServerResponseStyle,
+  cycleChannelResponseStyle,
   toggleServerSetting,
   toggleUserResponseFormat,
   toggleUserResponseActionButtons,
   cycleServerResponseActionButtons,
+  cycleChannelResponseActionButtons,
   toggleNanoBananaModeState,
   toggleNanoBananaGoogleSearch,
   toggleNanoBananaImageSearch,
@@ -149,14 +151,6 @@ async function alwaysRespond(interaction) {
   const disabledReason = getAlwaysRespondDisabledReason(interaction);
   if (disabledReason) {
     return replyFeatureDisabled(interaction, disabledReason);
-  }
-
-  if (interaction.channel.type === ChannelType.DM) {
-    return replyWithEmbed(interaction, {
-      variant: 'error',
-      title: 'Feature Disabled in DMs',
-      description: 'This feature is disabled in direct messages.',
-    });
   }
 
   toggleChannelUserActive(interaction.channelId, interaction.user.id);
@@ -672,6 +666,24 @@ async function downloadChannelConversation(interaction) {
   });
 }
 
+async function toggleChannelPreference(interaction) {
+  if (!(await requireGuildAdmin(interaction))) return;
+
+  cycleChannelResponseStyle(interaction.channel.id);
+  await persistStateChange();
+
+  return updateChannelSettingsView(interaction);
+}
+
+async function cycleChannelActionButtons(interaction) {
+  if (!(await requireGuildAdmin(interaction))) return;
+
+  cycleChannelResponseActionButtons(interaction.channel.id);
+  await persistStateChange();
+
+  return updateChannelSettingsView(interaction);
+}
+
 /** Routes a button interaction to its handler based on customId. */
 export async function handleButtonInteraction(interaction) {
   try {
@@ -700,6 +712,8 @@ export async function handleButtonInteraction(interaction) {
       'clear-channel-history': clearChannelChatHistory,
       'channel-custom-personality': channelPersonality,
       'channel-download-conversation': downloadChannelConversation,
+      'channel-settings-save-buttons': cycleChannelActionButtons,
+      'response-channel-mode': toggleChannelPreference,
       settings: showSettings,
       back_to_main_settings: (btnInteraction) => showSettings(btnInteraction, true),
       'clear-memory': handleClearMemoryButton,

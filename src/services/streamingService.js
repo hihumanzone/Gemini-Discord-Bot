@@ -220,7 +220,7 @@ async function sendAsTextFile(text, originalMessage, historyId) {
       allowedMentions: { users: [originalMessage.author.id], repliedUser: false },
     }));
 
-    if (shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id)) {
+    if (shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id, originalMessage.channelId)) {
       response = await addSettingsButton(response);
       response = await addDeleteButton(response, response.id, historyId);
     }
@@ -345,7 +345,7 @@ async function handleLargeOrFinalResponse(
   historyId,
   extraMessageIds = [],
 ) {
-  const showButtons = shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id);
+  const showButtons = shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id, originalMessage.channelId);
 
   let updatedMessage = await clearMessageActionRows(botMessage);
 
@@ -409,7 +409,7 @@ async function sendCodeExecutionFiles(inlineDataFiles, originalMessage, historyI
       allowedMentions: { users: [originalMessage.author.id] },
     }));
 
-    if (shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id)) {
+    if (shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id, originalMessage.channelId)) {
       let updated = await addSettingsButton(filesMessage);
       updated = await addDeleteButton(updated, updated.id, historyId);
       return updated;
@@ -707,7 +707,7 @@ export async function streamModelResponse({
               ...extraMessageIds,
             ].filter(Boolean);
 
-            if (shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id)) {
+            if (shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id, originalMessage.channelId)) {
               let updatedErrorMessage = await addSettingsButton(errorMessage);
               updatedErrorMessage = await addDeleteButton(
                 updatedErrorMessage,

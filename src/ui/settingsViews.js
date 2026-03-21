@@ -153,17 +153,32 @@ export async function updateGeneralSettingsView(interaction) {
   const userId = interaction.user.id;
 
   const serverSettings = guildId ? getServerSettings(guildId) : null;
+  const channelSettings = getChannelSettings(channelId);
 
   const alwaysRespondDisabledReason = getAlwaysRespondDisabledReason(interaction);
   const responseStyleDisabledReason = getResponseStyleDisabledReason(interaction);
   const responseActionButtonsDisabledReason = getResponseActionButtonsDisabledReason(interaction);
 
   const alwaysRespondEnabled = alwaysRespondDisabledReason ? true : isChannelUserActive(channelId, userId);
-  const responseMode = responseStyleDisabledReason ? serverSettings.responseStyle : getUserResponsePreference(userId);
+
+  let responseMode;
+  if (responseStyleDisabledReason) {
+    if (channelSettings.responseStyle && channelSettings.responseStyle !== 'decide') {
+      responseMode = channelSettings.responseStyle;
+    } else {
+      responseMode = serverSettings.responseStyle;
+    }
+  } else {
+    responseMode = getUserResponsePreference(userId);
+  }
 
   let responseActionButtonsEnabled;
   if (responseActionButtonsDisabledReason) {
-    responseActionButtonsEnabled = serverSettings.settingsSaveButton === 'on';
+    if (channelSettings.settingsSaveButton && channelSettings.settingsSaveButton !== 'decide') {
+      responseActionButtonsEnabled = channelSettings.settingsSaveButton === 'on';
+    } else {
+      responseActionButtonsEnabled = serverSettings.settingsSaveButton === 'on';
+    }
   } else {
     responseActionButtonsEnabled = getUserResponseActionButtons(userId);
   }
@@ -185,7 +200,7 @@ export async function updateGeneralSettingsView(interaction) {
     },
     {
       customId: 'toggle-action-buttons',
-      label: `Settings, Save, Delete Buttons: ${responseActionButtonsEnabled ? 'ON' : 'OFF'}`,
+      label: `Settings, Save and Delete Buttons: ${responseActionButtonsEnabled ? 'ON' : 'OFF'}`,
       emoji: '🔘',
       style: responseActionButtonsEnabled ? ButtonStyle.Success : ButtonStyle.Danger,
       disabled: Boolean(responseActionButtonsDisabledReason),
@@ -326,37 +341,37 @@ export async function updateGeminiToolsSettingsView(interaction) {
   }));
 }
 
+const ACTION_BUTTON_LABELS = {
+  on: 'ON',
+  off: 'OFF',
+  decide: 'Let Individuals Decide',
+};
+
+const RESPONSE_STYLE_LABELS = {
+  Embedded: 'Embedded',
+  Normal: 'Normal',
+  decide: 'Let Individuals Decide',
+};
+
 function getServerSettingsButtonConfigs(guildId) {
   const settings = getServerSettings(guildId);
-
-  const actionButtonLabels = {
-    on: 'On',
-    off: 'Off',
-    decide: 'Let Individuals Decide',
-  };
-
-  const responseStyleLabels = {
-    Embedded: 'Embedded',
-    Normal: 'Normal',
-    decide: 'Let Individuals Decide',
-  };
 
   return [
     {
       customId: 'server-chat-history',
-      label: `Server-Wide Conversation History: ${settings.serverChatHistory ? 'ON' : 'OFF'}`,
+      label: `Server Chat History: ${settings.serverChatHistory ? 'ON' : 'OFF'}`,
       emoji: '📦',
       style: settings.serverChatHistory ? ButtonStyle.Success : ButtonStyle.Danger,
     },
     {
       customId: 'clear-server',
-      label: 'Clear Server-Wide Memory',
+      label: 'Clear Server Memory',
       emoji: '🧹',
       style: ButtonStyle.Danger,
     },
     {
       customId: 'settings-save-buttons',
-      label: `Settings, Save, Delete Buttons: ${actionButtonLabels[settings.settingsSaveButton] || 'Unknown'}`,
+      label: `Settings, Save and Delete Buttons: ${ACTION_BUTTON_LABELS[settings.settingsSaveButton] || 'Unknown'}`,
       emoji: '🔘',
       style: settings.settingsSaveButton === 'on' ? ButtonStyle.Success : (settings.settingsSaveButton === 'off' ? ButtonStyle.Danger : ButtonStyle.Secondary),
     },
@@ -380,7 +395,7 @@ function getServerSettingsButtonConfigs(guildId) {
     },
     {
       customId: 'response-server-mode',
-      label: `Response Style: ${responseStyleLabels[settings.responseStyle] || 'Unknown'}`,
+      label: `Response Style: ${RESPONSE_STYLE_LABELS[settings.responseStyle] || 'Unknown'}`,
       emoji: '📝',
       style: settings.responseStyle === 'decide' ? ButtonStyle.Secondary : ButtonStyle.Success,
     },
@@ -634,21 +649,27 @@ function getChannelSettingsButtonConfigs(channelId) {
     },
     {
       customId: 'channel-chat-history',
-      label: `Channel-Wide Chat History: ${settings.channelWideChatHistory ? 'ON' : 'OFF'}`,
+      label: `Channel Chat History: ${settings.channelWideChatHistory ? 'ON' : 'OFF'}`,
       emoji: '📦',
       style: settings.channelWideChatHistory ? ButtonStyle.Success : ButtonStyle.Danger,
-    },
-    {
-      customId: 'toggle-channel-personality',
-      label: `Channel Personality: ${settings.customChannelPersonality ? 'ON' : 'OFF'}`,
-      emoji: '🤖',
-      style: settings.customChannelPersonality ? ButtonStyle.Success : ButtonStyle.Danger,
     },
     {
       customId: 'clear-channel-history',
       label: 'Clear Channel Memory',
       emoji: '🧹',
       style: ButtonStyle.Danger,
+    },
+    {
+      customId: 'channel-settings-save-buttons',
+      label: `Settings, Save and Delete Buttons: ${ACTION_BUTTON_LABELS[settings.settingsSaveButton] || 'Unknown'}`,
+      emoji: '🔘',
+      style: settings.settingsSaveButton === 'on' ? ButtonStyle.Success : (settings.settingsSaveButton === 'off' ? ButtonStyle.Danger : ButtonStyle.Secondary),
+    },
+    {
+      customId: 'toggle-channel-personality',
+      label: `Channel Personality: ${settings.customChannelPersonality ? 'ON' : 'OFF'}`,
+      emoji: '🤖',
+      style: settings.customChannelPersonality ? ButtonStyle.Success : ButtonStyle.Danger,
     },
     {
       customId: 'channel-custom-personality',
@@ -661,6 +682,12 @@ function getChannelSettingsButtonConfigs(channelId) {
       label: 'Download Channel Personality',
       emoji: '🗃️',
       style: ButtonStyle.Secondary,
+    },
+    {
+      customId: 'response-channel-mode',
+      label: `Response Style: ${RESPONSE_STYLE_LABELS[settings.responseStyle] || 'Unknown'}`,
+      emoji: '📝',
+      style: settings.responseStyle === 'decide' ? ButtonStyle.Secondary : ButtonStyle.Success,
     },
     {
       customId: 'channel-download-conversation',

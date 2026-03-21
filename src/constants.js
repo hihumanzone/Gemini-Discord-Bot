@@ -118,7 +118,11 @@ export function normalizeChannelSettings(settings = {}) {
   const normalized = { ...DEFAULT_CHANNEL_SETTINGS };
   for (const key of Object.keys(normalized)) {
     if (settings[key] !== undefined) {
-      normalized[key] = Boolean(settings[key]);
+      if (typeof DEFAULT_CHANNEL_SETTINGS[key] === 'boolean') {
+        normalized[key] = Boolean(settings[key]);
+      } else {
+        normalized[key] = settings[key];
+      }
     }
   }
   return normalized;

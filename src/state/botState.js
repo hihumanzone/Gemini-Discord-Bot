@@ -498,7 +498,17 @@ export function getUserResponseActionButtons(userId) {
   return state.userResponseActionButtons[userId];
 }
 
-export function shouldShowActionButtons(guildId, userId) {
+export function shouldShowActionButtons(guildId, userId, channelId = null) {
+  if (channelId) {
+    const channelActionButtonSetting = getChannelSettings(channelId).settingsSaveButton || 'decide';
+    if (channelActionButtonSetting === 'on') {
+      return true;
+    }
+    if (channelActionButtonSetting === 'off') {
+      return false;
+    }
+  }
+
   const serverActionButtonSetting = guildId
     ? (state.serverSettings[guildId]?.settingsSaveButton || 'decide')
     : 'decide';
@@ -567,6 +577,16 @@ export function cycleServerResponseActionButtons(guildId) {
   return settings.settingsSaveButton;
 }
 
+export function cycleChannelResponseActionButtons(channelId) {
+  const settings = getChannelSettings(channelId);
+  const states = ['on', 'off', 'decide'];
+  const currentIndex = states.indexOf(settings.settingsSaveButton);
+  const nextIndex = (currentIndex + 1) % states.length;
+  settings.settingsSaveButton = states[nextIndex];
+  invalidateChannelState(channelId);
+  return settings.settingsSaveButton;
+}
+
 export function toggleServerSetting(guildId, settingName) {
   const settings = getServerSettings(guildId);
   settings[settingName] = !settings[settingName];
@@ -586,6 +606,16 @@ export function cycleServerResponseStyle(guildId) {
   const currentIndex = states.indexOf(settings.responseStyle);
   const nextIndex = (currentIndex + 1) % states.length;
   settings.responseStyle = states[nextIndex];
+  return settings.responseStyle;
+}
+
+export function cycleChannelResponseStyle(channelId) {
+  const settings = getChannelSettings(channelId);
+  const states = ['Embedded', 'Normal', 'decide'];
+  const currentIndex = states.indexOf(settings.responseStyle);
+  const nextIndex = (currentIndex + 1) % states.length;
+  settings.responseStyle = states[nextIndex];
+  invalidateChannelState(channelId);
   return settings.responseStyle;
 }
 

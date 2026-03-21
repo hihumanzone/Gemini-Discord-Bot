@@ -28,14 +28,16 @@ const config = Object.freeze({
   ],
   defaultServerSettings: {
     serverChatHistory: false,
-    settingsSaveButton: 'decide',
     customServerPersonality: false,
+    settingsSaveButton: 'decide',
     responseStyle: 'decide',
   },
   defaultChannelSettings: {
     alwaysRespond: false,
     channelWideChatHistory: false,
     customChannelPersonality: false,
+    settingsSaveButton: 'decide',
+    responseStyle: 'decide',
   },
   defaultGeminiToolPreferences: {
     googleSearch: true,

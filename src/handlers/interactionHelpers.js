@@ -98,6 +98,12 @@ export function getResponseStyleDisabledReason(interaction) {
   const guildId = interaction.guild?.id;
   if (!guildId) return null;
 
+  const channelId = interaction.channelId ?? interaction.channel?.id;
+  const channelSetting = channelId ? getChannelSettings(channelId).responseStyle : 'decide';
+  if (channelSetting && channelSetting !== 'decide') {
+    return 'The response style is locked to the channel-wide preference.';
+  }
+
   const setting = getServerSettings(guildId).responseStyle;
   if (setting && setting !== 'decide') {
     return 'The response style is locked to the server-wide preference.';
@@ -106,6 +112,9 @@ export function getResponseStyleDisabledReason(interaction) {
 }
 
 export function getAlwaysRespondDisabledReason(interaction) {
+  if (interaction.channel?.type === ChannelType.DM) {
+    return 'Always respond is always active in direct messages.';
+  }
   const channelId = interaction.channelId ?? interaction.channel?.id;
   if (channelId && getChannelSettings(channelId).alwaysRespond) {
     return 'The bot is configured to always respond in this channel.';
@@ -116,6 +125,15 @@ export function getAlwaysRespondDisabledReason(interaction) {
 export function getResponseActionButtonsDisabledReason(interaction) {
   const guildId = interaction.guild?.id;
   if (!guildId) return null;
+
+  const channelId = interaction.channelId ?? interaction.channel?.id;
+  const channelSetting = channelId ? getChannelSettings(channelId).settingsSaveButton : 'decide';
+  if (channelSetting === 'on') {
+    return 'Response action buttons are forced ON by channel settings.';
+  }
+  if (channelSetting === 'off') {
+    return 'Response action buttons are disabled by channel settings.';
+  }
 
   const setting = getServerSettings(guildId).settingsSaveButton;
   if (setting === 'on') {

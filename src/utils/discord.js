@@ -46,6 +46,14 @@ export function canSendEmbeds(channel) {
   return perms ? perms.has(PermissionsBitField.Flags.EmbedLinks) : true;
 }
 
+export function canSendMessages(channel) {
+  if (!channel?.guild) return true;
+  const me = channel.guild.members.me;
+  if (!me) return true;
+  const perms = channel.permissionsFor(me);
+  return perms ? perms.has(PermissionsBitField.Flags.SendMessages) : true;
+}
+
 export function embedToPlainText(embed) {
   const data = embed?.data ?? embed;
   const parts = [];

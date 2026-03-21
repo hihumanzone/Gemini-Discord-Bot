@@ -83,7 +83,7 @@ async function sendUnsupportedAttachmentsWarning(unsupportedAttachments, message
       allowedMentions: { users: [message.author.id], repliedUser: false },
     }));
 
-    if (shouldShowActionButtons(message.guild?.id, message.author.id)) {
+    if (shouldShowActionButtons(message.guild?.id, message.author.id, message.channelId)) {
       let updatedWarningMessage = await addSettingsButton(warningMessage);
       updatedWarningMessage = await addDeleteButton(updatedWarningMessage, updatedWarningMessage.id, deleteHistoryRef);
       return updatedWarningMessage;
@@ -226,7 +226,7 @@ export async function handleTextMessage(message) {
   if (!messageContent && !(message.attachments.size > 0 && hasSupportedAttachments(message))) {
 
     const response = await message.reply(applyEmbedFallback(message.channel, { embeds: [createEmptyMessageEmbed()] }));
-    if (shouldShowActionButtons(message.guild?.id, message.author.id)) {
+    if (shouldShowActionButtons(message.guild?.id, message.author.id, message.channelId)) {
       await addSettingsButton(response);
     }
     return;
@@ -278,7 +278,7 @@ export async function handleTextMessage(message) {
         });
 
         await processingMessage.edit(applyEmbedFallback(message.channel, { embeds: [errorEmbed] }));
-        if (shouldShowActionButtons(message.guild?.id, message.author.id)) {
+        if (shouldShowActionButtons(message.guild?.id, message.author.id, message.channelId)) {
           processingMessage = await addSettingsButton(processingMessage);
           await addDeleteButton(processingMessage, processingMessage.id, deleteHistoryRef);
         }
@@ -319,13 +319,13 @@ export async function handleTextMessage(message) {
       });
       if (processingMessage) {
         await processingMessage.edit(applyEmbedFallback(message.channel, { embeds: [errorEmbed] }));
-        if (shouldShowActionButtons(message.guild?.id, message.author.id)) {
+        if (shouldShowActionButtons(message.guild?.id, message.author.id, message.channelId)) {
           processingMessage = await addSettingsButton(processingMessage);
           await addDeleteButton(processingMessage, processingMessage.id, deleteHistoryRef);
         }
       } else {
         let errorMessage = await message.reply(applyEmbedFallback(message.channel, { embeds: [errorEmbed] }));
-        if (shouldShowActionButtons(message.guild?.id, message.author.id)) {
+        if (shouldShowActionButtons(message.guild?.id, message.author.id, message.channelId)) {
           errorMessage = await addSettingsButton(errorMessage);
           await addDeleteButton(errorMessage, errorMessage.id, deleteHistoryRef);
         }
