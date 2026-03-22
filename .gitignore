@@ -4,3 +4,4 @@ package-lock.json
 data/
 temp/
 logs/
+config.js
