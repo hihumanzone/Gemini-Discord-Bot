@@ -135,7 +135,7 @@ src/
   utils/       Discord and error formatting helpers
 ```
 
-Runtime data is stored in `data/` and temporary files in `temp/`.
+Runtime data is stored in `config/` and temporary files in `temp/`.
 
 ## Notes
 
