@@ -238,6 +238,7 @@ async function ensureInitialBotMessage(initialBotMessage, originalMessage) {
 
 function createCollector(message, originalMessage) {
   let stopped = false;
+  const abortController = new AbortController();
 
   const collector = message.createMessageComponentCollector({
     filter: (interaction) => interaction.customId === 'stopGenerating',
@@ -247,6 +248,7 @@ function createCollector(message, originalMessage) {
   collector.on('collect', async (interaction) => {
     if (interaction.user.id === originalMessage.author.id) {
       stopped = true;
+      abortController.abort();
       await interaction.reply(applyEmbedFallback(interaction.channel, {
         embeds: [createStatusEmbed({
           variant: 'warning',
@@ -275,6 +277,7 @@ function createCollector(message, originalMessage) {
   return {
     collector,
     wasStopped: () => stopped,
+    abortController,
   };
 }
 
@@ -430,7 +433,7 @@ export async function streamModelResponse({
   const responsePreference = getResponsePreference(originalMessage);
   const maxCharacterLimit = responsePreference === 'Embedded' ? EMBED_RESPONSE_LIMIT : PLAIN_RESPONSE_LIMIT;
   let botMessage = await ensureInitialBotMessage(initialBotMessage, originalMessage);
-  const { collector, wasStopped } = createCollector(botMessage, originalMessage);
+  const { collector, wasStopped, abortController } = createCollector(botMessage, originalMessage);
   let finalized = false;
   let bufferedText = '';
   let updateTimeout = null;
@@ -476,14 +479,17 @@ export async function streamModelResponse({
 
     while (attempts > 0 && !wasStopped()) {
       try {
-        const stream = await chat.sendMessageStream({ message: parts });
+        const stream = await chat.sendMessageStream({
+          message: parts,
+          config: { abortSignal: abortController.signal },
+        });
         let finalResponse = '';
         isLargeResponse = false;
         accumulator.inlineDataFiles = [];
         accumulator.rawAssistantParts = [];
 
         for await (const chunk of stream) {
-          if (wasStopped()) break;
+          if (wasStopped()) return;
 
           const chunkText = processStreamChunk(chunk, accumulator);
 
@@ -571,6 +577,12 @@ export async function streamModelResponse({
         collector.stop();
         return;
       } catch (error) {
+        if (wasStopped()) {
+          finalized = false;
+          collector.stop();
+          return;
+        }
+
         attempts -= 1;
         console.error(formatGeminiErrorForConsole(error, {
           attemptNumber: MAX_GENERATION_ATTEMPTS - attempts,
