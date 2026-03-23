@@ -215,9 +215,53 @@ export function getUnsupportedAttachments(message) {
   return Array.from(message.attachments.values()).filter((attachment) => !isSupportedAttachment(attachment));
 }
 
+// --- YouTube URL extraction ---
+
+/**
+ * Regex matching YouTube video URLs in common formats:
+ * - https://www.youtube.com/watch?v=VIDEO_ID
+ * - https://youtu.be/VIDEO_ID
+ * - https://www.youtube.com/embed/VIDEO_ID
+ * - https://www.youtube.com/shorts/VIDEO_ID
+ * - https://m.youtube.com/watch?v=VIDEO_ID
+ * Captures the full URL for use as a fileData.fileUri.
+ */
+const YOUTUBE_URL_RE = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?[^\s]*v=|embed\/|shorts\/)|youtu\.be\/)[^\s)>\]]+/gi;
+
+/**
+ * Extract all YouTube video URLs from message text.
+ * @param {string} text - The message text to scan.
+ * @returns {string[]} Deduplicated list of YouTube URLs found.
+ */
+export function extractYouTubeUrls(text) {
+  if (!text) return [];
+  const matches = text.match(YOUTUBE_URL_RE);
+  if (!matches) return [];
+  return [...new Set(matches)];
+}
+
+/**
+ * Build Gemini fileData parts from YouTube URLs.
+ * Each URL becomes a `{ fileData: { fileUri } }` part that Gemini
+ * can use for video understanding.
+ * @param {string[]} urls - YouTube video URLs.
+ * @returns {Array<{fileData: {fileUri: string}}>}
+ */
+function buildYouTubeFileParts(urls) {
+  return urls.map((url) => ({ fileData: { fileUri: url } }));
+}
+
 export async function processPromptAndMediaAttachments(prompt, message) {
   const attachments = Array.from(message.attachments.values());
-  const parts = [{ text: prompt.trim() }];
+  const trimmedPrompt = prompt.trim();
+  const parts = [{ text: trimmedPrompt }];
+
+  // Extract YouTube URLs from the message text and add as fileData parts
+  const youtubeUrls = extractYouTubeUrls(trimmedPrompt);
+  if (youtubeUrls.length > 0) {
+    parts.push(...buildYouTubeFileParts(youtubeUrls));
+  }
+
   const validAttachments = attachments.filter(isMediaAttachment);
 
   if (!validAttachments.length) {

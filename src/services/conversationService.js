@@ -35,6 +35,7 @@ import {
 } from './conversationContext.js';
 import {
   extractFileText,
+  extractYouTubeUrls,
   getUnsupportedAttachments,
   hasSupportedAttachments,
   processPromptAndMediaAttachments,
@@ -223,7 +224,9 @@ export async function handleTextMessage(message) {
     : message.content.trim();
   const unsupportedAttachments = getUnsupportedAttachments(message);
 
-  if (!messageContent && !(message.attachments.size > 0 && hasSupportedAttachments(message))) {
+  const hasYouTubeContent = extractYouTubeUrls(messageContent).length > 0;
+
+  if (!messageContent && !hasYouTubeContent && !(message.attachments.size > 0 && hasSupportedAttachments(message))) {
 
     const response = await message.reply(applyEmbedFallback(message.channel, { embeds: [createEmptyMessageEmbed()] }));
     if (shouldShowActionButtons(message.guild?.id, message.author.id, message.channelId)) {
