@@ -1,3 +1,9 @@
+/**
+ * Conversation context building utilities.
+ * Resolves personality, history, and system instructions based on the
+ * message's guild/channel/user context.
+ */
+
 import config from '../../config.js';
 import { DEFAULT_PERSONALITY } from '../constants.js';
 import {
@@ -7,7 +13,13 @@ import {
   getUserResponsePreference,
   state,
 } from '../state/botState.js';
+import { logServiceError } from '../utils/errorHandler.js';
 
+/**
+ * Resolve the effective response style for a message, checking channel -> server -> user preference.
+ * @param {import('discord.js').Message} message - The Discord message.
+ * @returns {string} "Embedded" or "Normal".
+ */
 export function getResponsePreference(message) {
   const guildId = message.guild?.id;
   const channelId = message.channel.id;
@@ -23,6 +35,11 @@ export function getResponsePreference(message) {
     : getUserResponsePreference(message.author.id);
 }
 
+/**
+ * Resolve the personality instructions for a message, checking channel -> server -> user custom instructions.
+ * @param {import('discord.js').Message} message - The Discord message.
+ * @returns {string} The personality instructions string.
+ */
 export function resolveInstructions(message) {
   const guildId = message.guild?.id;
   const channelId = message.channel.id;
@@ -44,6 +61,12 @@ export function resolveInstructions(message) {
   return getCustomInstruction(userId) || DEFAULT_PERSONALITY;
 }
 
+/**
+ * Combine personality text with tool-specific guidance into the final system instruction.
+ * @param {string} personality - The base personality instructions.
+ * @param {Object} userToolPreferences - The user's Gemini tool preferences.
+ * @returns {string} The assembled system instruction string.
+ */
 export function buildFinalSystemInstruction(personality, userToolPreferences) {
   const sections = [
     personality,
@@ -112,7 +135,7 @@ async function fetchRecentChannelMessages(message) {
       + '\n```'
     );
   } catch (error) {
-    console.error('Failed to fetch recent channel messages:', error);
+    logServiceError('ConversationContext', error, { operation: 'fetchRecentChannelMessages' });
     return '';
   }
 }

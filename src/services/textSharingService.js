@@ -9,10 +9,12 @@ import { EXTERNAL_TEXT_SHARE_URL, TEXT_FILE_TTL_MINUTES } from '../constants.js'
 import { logServiceError } from '../utils/errorHandler.js';
 
 /**
- * Uploads text to the external sharing service and returns the resulting URL string.
+ * Creates a shared text link by uploading the given text to the external sharing service.
  * Returns an error placeholder on failure.
+ * @param {string} text - The text content to share.
+ * @returns {Promise<string>} A URL string for the shared content.
  */
-async function uploadText(text) {
+export async function createSharedTextLink(text) {
   try {
     const response = await axios.post(
       `${EXTERNAL_TEXT_SHARE_URL}/api/text`,
@@ -22,18 +24,9 @@ async function uploadText(text) {
 
     return `\nURL: ${EXTERNAL_TEXT_SHARE_URL}/t/${response.data.tid}`;
   } catch (error) {
-    logServiceError('TextShare', error, { operation: 'uploadText' });
+    logServiceError('TextShare', error, { operation: 'createSharedTextLink' });
     return '\nURL Error :(';
   }
-}
-
-/**
- * Creates a shared text link by uploading the given text.
- * @param {string} text - The text content to share.
- * @returns {Promise<string>} A URL string for the shared content.
- */
-export async function createSharedTextLink(text) {
-  return uploadText(text);
 }
 
 /**
