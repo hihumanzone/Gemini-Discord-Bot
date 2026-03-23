@@ -38,7 +38,6 @@ import {
   processPromptAndMediaAttachments,
 } from './attachmentService.js';
 import { streamModelResponse } from './streamingService.js';
-import { addDeleteButton, addSettingsButton } from '../ui/messageActions.js';
 import { applyEmbedFallback, createStatusEmbed } from '../utils/discord.js';
 import { attachActionButtons, messageToActionContext } from '../utils/responseActions.js';
 import { toDeleteHistoryRef } from '../utils/historyRef.js';
