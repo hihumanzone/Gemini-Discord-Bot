@@ -1,12 +1,10 @@
-import fs from 'fs/promises';
-import path from 'path';
+/**
+ * Central bot state module.
+ * Owns the in-memory state object and exposes accessor/mutator functions.
+ * Persistence and session internals are delegated to focused submodules.
+ */
 
 import config from '../../config.js';
-import {
-  CHAT_HISTORIES_DIR,
-  DATA_DIR,
-  TEMP_DIR,
-} from '../core/paths.js';
 import {
   cloneDefaultChannelSettings,
   cloneDefaultGeminiToolPreferences,
@@ -16,27 +14,27 @@ import {
 } from '../constants.js';
 import { Mutex } from './mutex.js';
 import {
-  DEFAULT_SESSION_ID,
-  DEFAULT_SESSION_NAME,
-  MAX_SESSION_NAME_LENGTH,
-  SESSION_ID_PATTERN,
-  normalizeSessionName,
-} from '../utils/sessionConstants.js';
+  PERSISTED_STATE_KEYS,
+  clearDirtyTracking,
+  ensureDataDirectories,
+  loadChatHistories,
+  loadPersistedState,
+  markHistoryDeleted,
+  markHistoryDirty,
+  saveStateToFile as persistSave,
+  saveStateToFileImmediate as persistSaveImmediate,
+} from './persistence.js';
+import {
+  normalizeUserSessionState,
+  getUserSessionHistoryId,
+  createSession as createSessionInternal,
+  renameSession as renameSessionInternal,
+  deleteSession as deleteSessionInternal,
+} from './sessionState.js';
 
-const PERSISTED_STATE_KEYS = Object.freeze([
-  'activeUsersInChannels',
-  'customInstructions',
-  'serverSettings',
-  'channelSettings',
-  'userResponsePreference',
-  'userGeminiToolPreferences',
-  'alwaysRespondChannels',
-  'channelWideChatHistory',
-  'blacklistedUsers',
-  'userSessions',
-  'userNanoBananaMode',
-  'userResponseActionButtons',
-]);
+// ---------------------------------------------------------------------------
+// State object
+// ---------------------------------------------------------------------------
 
 export const state = {
   chatHistories: {},
@@ -56,147 +54,36 @@ export const state = {
 
 export const chatHistoryLock = new Mutex();
 
-// Track which chat histories have been modified since last save
-const dirtyChatHistories = new Set();
-// Track chat histories that have been deleted since last save
-const deletedChatHistories = new Set();
+// ---------------------------------------------------------------------------
+// Persistence wrappers (thin delegates to persistence.js)
+// ---------------------------------------------------------------------------
 
-const SAVE_DEBOUNCE_MS = 2_000;
+/** Schedule a debounced save of the current state. */
+export function saveStateToFile() {
+  persistSave(state);
+}
 
-const FILE_PATHS = Object.freeze({
-  activeUsersInChannels: path.join(DATA_DIR, 'active_users_in_channels.json'),
-  customInstructions: path.join(DATA_DIR, 'custom_instructions.json'),
-  serverSettings: path.join(DATA_DIR, 'server_settings.json'),
-  channelSettings: path.join(DATA_DIR, 'channel_settings.json'),
-  userResponsePreference: path.join(DATA_DIR, 'user_response_preference.json'),
-  userGeminiToolPreferences: path.join(DATA_DIR, 'user_gemini_tool_preferences.json'),
-  alwaysRespondChannels: path.join(DATA_DIR, 'always_respond_channels.json'),
-  channelWideChatHistory: path.join(DATA_DIR, 'channel_wide_chathistory.json'),
-  blacklistedUsers: path.join(DATA_DIR, 'blacklisted_users.json'),
-  userSessions: path.join(DATA_DIR, 'user_sessions.json'),
-  userNanoBananaMode: path.join(DATA_DIR, 'user_nano_banana_mode.json'),
-  userResponseActionButtons: path.join(DATA_DIR, 'user_response_action_buttons.json'),
-});
+/** Force an immediate save, bypassing debounce. */
+export async function saveStateToFileImmediate() {
+  await persistSaveImmediate(state);
+}
 
-let isSaving = false;
-let saveDebounceTimer = null;
+// ---------------------------------------------------------------------------
+// State initialization
+// ---------------------------------------------------------------------------
 
 function resetState() {
   state.chatHistories = {};
-
   for (const key of PERSISTED_STATE_KEYS) {
     state[key] = {};
   }
-
-  dirtyChatHistories.clear();
-  deletedChatHistories.clear();
+  clearDirtyTracking();
 }
 
-function getSerializableState() {
-  return Object.fromEntries(PERSISTED_STATE_KEYS.map((key) => [key, state[key]]));
-}
-
-async function ensureDataDirectories() {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.mkdir(CHAT_HISTORIES_DIR, { recursive: true });
-  await fs.mkdir(TEMP_DIR, { recursive: true });
-}
-
-async function syncChatHistoriesToDisk() {
-  // Only write histories that have been modified
-  const writeOperations = [...dirtyChatHistories].map((historyId) => {
-    const history = state.chatHistories[historyId];
-    if (!history) return Promise.resolve();
-    return fs.writeFile(
-      path.join(CHAT_HISTORIES_DIR, `${historyId}.json`),
-      JSON.stringify(history, null, 2),
-      'utf-8',
-    );
-  });
-
-  // Only delete histories that have been explicitly removed
-  const deleteOperations = [...deletedChatHistories].map((historyId) =>
-    fs.unlink(path.join(CHAT_HISTORIES_DIR, `${historyId}.json`)).catch(() => {}),
-  );
-
-  await Promise.all([...writeOperations, ...deleteOperations]);
-  dirtyChatHistories.clear();
-  deletedChatHistories.clear();
-}
-
-let directoriesEnsured = false;
-
-async function executeSave() {
-  if (isSaving) return;
-  isSaving = true;
-
-  try {
-    if (!directoriesEnsured) {
-      await ensureDataDirectories();
-      directoriesEnsured = true;
-    }
-    await syncChatHistoriesToDisk();
-
-    const serializableState = getSerializableState();
-    const fileWrites = Object.entries(FILE_PATHS).map(([key, filePath]) =>
-      fs.writeFile(filePath, JSON.stringify(serializableState[key], null, 2), 'utf-8'),
-    );
-
-    await Promise.all(fileWrites);
-  } catch (error) {
-    console.error('Error saving state to files:', error);
-  } finally {
-    isSaving = false;
-  }
-}
-
-export async function saveStateToFile() {
-  clearTimeout(saveDebounceTimer);
-  saveDebounceTimer = setTimeout(() => {
-    executeSave();
-  }, SAVE_DEBOUNCE_MS);
-}
-
-/** Force an immediate save, bypassing the debounce. Used for critical operations. */
-export async function saveStateToFileImmediate() {
-  clearTimeout(saveDebounceTimer);
-  await executeSave();
-}
-
-async function loadChatHistories() {
-  const files = await fs.readdir(CHAT_HISTORIES_DIR);
-
-  await Promise.all(
-    files
-      .filter((fileName) => fileName.endsWith('.json'))
-      .map(async (fileName) => {
-        const historyId = path.basename(fileName, '.json');
-
-        try {
-          const fileContents = await fs.readFile(path.join(CHAT_HISTORIES_DIR, fileName), 'utf-8');
-          state.chatHistories[historyId] = JSON.parse(fileContents);
-        } catch (error) {
-          console.error(`Error reading chat history for ${historyId}:`, error);
-        }
-      }),
-  );
-}
-
-async function loadPersistedState() {
-  await Promise.all(
-    Object.entries(FILE_PATHS).map(async ([key, filePath]) => {
-      try {
-        const fileContents = await fs.readFile(filePath, 'utf-8');
-        state[key] = JSON.parse(fileContents);
-      } catch (error) {
-        if (error.code !== 'ENOENT') {
-          console.error(`Error reading ${key} from ${filePath}:`, error);
-        }
-      }
-    }),
-  );
-}
-
+/**
+ * Strip binary `fileData` elements from all chat histories.
+ * Called during the daily cleanup to reduce disk usage.
+ */
 function removeFileDataFromHistories() {
   try {
     for (const messagesById of Object.values(state.chatHistories)) {
@@ -205,24 +92,26 @@ function removeFileDataFromHistories() {
           if (!Array.isArray(message.content)) {
             continue;
           }
-
           message.content = message.content.filter((contentItem) => {
             if (contentItem.fileData) {
               delete contentItem.fileData;
             }
-
             return Object.keys(contentItem).length > 0;
           });
         }
       }
     }
-
     console.log('fileData elements have been removed from chat histories.');
   } catch (error) {
     console.error('An error occurred while removing fileData elements:', error);
   }
 }
 
+// ---------------------------------------------------------------------------
+// Daily reset
+// ---------------------------------------------------------------------------
+
+/** Calculate the human-readable time until the next midnight UTC. */
 export function getTimeUntilNextReset() {
   const now = new Date();
   const nextReset = new Date();
@@ -253,36 +142,44 @@ function scheduleDailyReset() {
       nextReset.setDate(now.getDate() + 1);
     }
 
-    const timeUntilNextReset = nextReset - now;
-
     dailyResetTimer = setTimeout(async () => {
       console.log('Running daily cleanup task...');
 
       await chatHistoryLock.runExclusive(async () => {
         removeFileDataFromHistories();
-        // Mark all histories dirty after cleanup modifies them
         for (const historyId of Object.keys(state.chatHistories)) {
-          dirtyChatHistories.add(historyId);
+          markHistoryDirty(historyId);
         }
         await saveStateToFileImmediate();
       });
 
       console.log('Daily cleanup task finished.');
       scheduleDailyReset();
-    }, timeUntilNextReset);
+    }, nextReset - now);
   } catch (error) {
     console.error('An error occurred while scheduling the daily reset:', error);
   }
 }
 
+/** Load persisted data from disk and schedule the daily cleanup. */
 export async function initializeState() {
   resetState();
   await ensureDataDirectories();
-  await loadChatHistories();
-  await loadPersistedState();
+  await loadChatHistories(state);
+  await loadPersistedState(state);
   scheduleDailyReset();
 }
 
+// ---------------------------------------------------------------------------
+// Chat history accessors
+// ---------------------------------------------------------------------------
+
+/**
+ * Retrieve a flat history array suitable for passing to Gemini as context.
+ * @param {string} historyId - The history key.
+ * @param {number} [maxElements=0] - Max message groups to include (0 = unlimited).
+ * @returns {Array<{role: string, parts: *}>}
+ */
 export function getHistory(historyId, maxElements = 0) {
   const elements = Object.values(state.chatHistories[historyId] || {});
   const limited = maxElements > 0 ? elements.slice(-maxElements) : elements;
@@ -294,11 +191,16 @@ export function getHistory(historyId, maxElements = 0) {
     }));
 }
 
+/**
+ * Append messages to a chat history under a given message ID key.
+ * @param {string} historyId - The history key.
+ * @param {Array} newHistory - The entries to append.
+ * @param {string} messageId - The Discord message ID grouping key.
+ */
 export function updateChatHistory(historyId, newHistory, messageId) {
   if (!state.chatHistories[historyId]) {
     state.chatHistories[historyId] = {};
   }
-
   if (!state.chatHistories[historyId][messageId]) {
     state.chatHistories[historyId][messageId] = [];
   }
@@ -308,15 +210,66 @@ export function updateChatHistory(historyId, newHistory, messageId) {
     ...newHistory,
   ];
 
-  dirtyChatHistories.add(historyId);
+  markHistoryDirty(historyId);
 }
 
+/** Clear the chat history for a given target (user, channel, or guild). */
+export function clearChatHistoryFor(targetId) {
+  state.chatHistories[targetId] = {};
+  markHistoryDirty(targetId);
+}
+
+/**
+ * Delete a single message entry from a chat history.
+ * @returns {boolean} True if the entry existed and was removed.
+ */
+export function deleteChatHistoryEntry(historyId, messageId) {
+  if (state.chatHistories[historyId]?.[messageId]) {
+    delete state.chatHistories[historyId][messageId];
+    markHistoryDirty(historyId);
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// User preferences
+// ---------------------------------------------------------------------------
+
+/** Get a user's preferred response format ("Embedded" or "Normal"). */
 export function getUserResponsePreference(userId) {
   return state.userResponsePreference[userId] || config.defaultResponseFormat;
 }
 
+/** Toggle between "Embedded" and "Normal" response formats. */
+export function toggleUserResponseFormat(userId) {
+  const nextPreference = getUserResponsePreference(userId) === 'Normal' ? 'Embedded' : 'Normal';
+  state.userResponsePreference[userId] = nextPreference;
+  return nextPreference;
+}
+
+/** Get whether a user has action buttons enabled. */
+export function getUserResponseActionButtons(userId) {
+  if (state.userResponseActionButtons[userId] === undefined) {
+    return config.defaultResponseActionButtons !== undefined ? config.defaultResponseActionButtons : true;
+  }
+  return state.userResponseActionButtons[userId];
+}
+
+/** Toggle action buttons on/off for a user. */
+export function toggleUserResponseActionButtons(userId) {
+  const current = getUserResponseActionButtons(userId);
+  state.userResponseActionButtons[userId] = !current;
+  return !current;
+}
+
+// ---------------------------------------------------------------------------
+// Gemini tool preferences
+// ---------------------------------------------------------------------------
+
 const normalizedToolPreferences = new Set();
 
+/** Get a user's Gemini tool preferences, normalizing on first access. */
 export function getUserGeminiToolPreferences(userId) {
   if (!state.userGeminiToolPreferences[userId]) {
     state.userGeminiToolPreferences[userId] = cloneDefaultGeminiToolPreferences();
@@ -334,8 +287,59 @@ export function getUserGeminiToolPreferences(userId) {
   return state.userGeminiToolPreferences[userId];
 }
 
+/** Set a single Gemini tool preference for a user. */
+export function setUserGeminiToolPreference(userId, toolName, enabled) {
+  state.userGeminiToolPreferences[userId] = {
+    ...getUserGeminiToolPreferences(userId),
+    [toolName]: enabled,
+  };
+  normalizedToolPreferences.delete(userId);
+  return state.userGeminiToolPreferences[userId];
+}
+
+// ---------------------------------------------------------------------------
+// Nano Banana mode
+// ---------------------------------------------------------------------------
+
+/** Get a user's Nano Banana mode state, initializing defaults if needed. */
+export function getUserNanoBananaMode(userId) {
+  if (!state.userNanoBananaMode[userId]) {
+    state.userNanoBananaMode[userId] = { enabled: false, googleSearch: false, imageSearch: false };
+  }
+  return state.userNanoBananaMode[userId];
+}
+
+/** Toggle the main Nano Banana mode flag. */
+export function toggleNanoBananaModeState(userId) {
+  const mode = getUserNanoBananaMode(userId);
+  mode.enabled = !mode.enabled;
+  return mode.enabled;
+}
+
+/** Toggle Nano Banana Google Search. Disabling also disables image search. */
+export function toggleNanoBananaGoogleSearch(userId) {
+  const mode = getUserNanoBananaMode(userId);
+  mode.googleSearch = !mode.googleSearch;
+  if (!mode.googleSearch) {
+    mode.imageSearch = false;
+  }
+  return mode.googleSearch;
+}
+
+/** Toggle Nano Banana Image Search. */
+export function toggleNanoBananaImageSearch(userId) {
+  const mode = getUserNanoBananaMode(userId);
+  mode.imageSearch = !mode.imageSearch;
+  return mode.imageSearch;
+}
+
+// ---------------------------------------------------------------------------
+// Guild / server state
+// ---------------------------------------------------------------------------
+
 const initializedGuilds = new Set();
 
+/** Ensure a guild's state containers exist. */
 export function initializeGuildState(guildId) {
   if (!guildId || initializedGuilds.has(guildId)) {
     return;
@@ -352,20 +356,53 @@ export function initializeGuildState(guildId) {
   initializedGuilds.add(guildId);
 }
 
+/** Get server settings, initializing if needed. */
 export function getServerSettings(guildId) {
   initializeGuildState(guildId);
   return state.serverSettings[guildId];
 }
 
+/** Check whether a user is on a guild's blacklist. */
+export function isUserBlacklisted(guildId, userId) {
+  if (!guildId) return false;
+  initializeGuildState(guildId);
+  return state.blacklistedUsers[guildId].includes(userId);
+}
+
+/**
+ * Add a user to a guild's blacklist.
+ * @returns {boolean} True if the user was newly added.
+ */
+export function addBlacklistedUser(guildId, userId) {
+  initializeGuildState(guildId);
+  if (state.blacklistedUsers[guildId].includes(userId)) {
+    return false;
+  }
+  state.blacklistedUsers[guildId].push(userId);
+  return true;
+}
+
+/**
+ * Remove a user from a guild's blacklist.
+ * @returns {boolean} True if the user was found and removed.
+ */
+export function removeBlacklistedUser(guildId, userId) {
+  initializeGuildState(guildId);
+  const index = state.blacklistedUsers[guildId].indexOf(userId);
+  if (index === -1) return false;
+  state.blacklistedUsers[guildId].splice(index, 1);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Channel state
+// ---------------------------------------------------------------------------
+
 const initializedChannels = new Set();
 
+/** Normalize and cache channel settings on first access. */
 export function initializeChannelState(channelId) {
-  if (!channelId) {
-    return;
-  }
-
-  // Skip re-normalization for already-initialized channels
-  if (initializedChannels.has(channelId)) {
+  if (!channelId || initializedChannels.has(channelId)) {
     return;
   }
 
@@ -392,24 +429,25 @@ export function invalidateChannelState(channelId) {
   initializedChannels.delete(channelId);
 }
 
+/** Get channel settings, initializing/normalizing if needed. */
 export function getChannelSettings(channelId) {
   initializeChannelState(channelId);
   return state.channelSettings[channelId];
 }
 
-export function isUserBlacklisted(guildId, userId) {
-  if (!guildId) {
-    return false;
-  }
+// ---------------------------------------------------------------------------
+// Channel user tracking
+// ---------------------------------------------------------------------------
 
-  initializeGuildState(guildId);
-  return state.blacklistedUsers[guildId].includes(userId);
-}
-
+/** Check if a user is in "always respond" mode for a specific channel. */
 export function isChannelUserActive(channelId, userId) {
   return Boolean(state.activeUsersInChannels[channelId]?.[userId]);
 }
 
+/**
+ * Toggle a user's "always respond" mode in a channel.
+ * @returns {boolean} The new active state.
+ */
 export function toggleChannelUserActive(channelId, userId) {
   if (!state.activeUsersInChannels[channelId]) {
     state.activeUsersInChannels[channelId] = {};
@@ -424,6 +462,11 @@ export function toggleChannelUserActive(channelId, userId) {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Channel-level settings mutators
+// ---------------------------------------------------------------------------
+
+/** Set the "always respond" flag for a channel. */
 export function setAlwaysRespondChannel(channelId, enabled) {
   const settings = getChannelSettings(channelId);
   settings.alwaysRespond = enabled;
@@ -433,10 +476,13 @@ export function setAlwaysRespondChannel(channelId, enabled) {
     state.alwaysRespondChannels[channelId] = true;
     return;
   }
-
   delete state.alwaysRespondChannels[channelId];
 }
 
+/**
+ * Set the "channel-wide chat history" flag.
+ * Disabling also removes the channel's chat history from memory and marks it for deletion.
+ */
 export function setChannelWideChatHistory(channelId, enabled, instructions) {
   const settings = getChannelSettings(channelId);
   settings.channelWideChatHistory = enabled;
@@ -444,155 +490,80 @@ export function setChannelWideChatHistory(channelId, enabled, instructions) {
 
   if (enabled) {
     state.channelWideChatHistory[channelId] = true;
-
     if (instructions !== undefined) {
       state.customInstructions[channelId] = instructions;
     }
-
     return;
   }
 
   delete state.channelWideChatHistory[channelId];
   if (state.chatHistories[channelId]) {
-    deletedChatHistories.add(channelId);
+    markHistoryDeleted(channelId);
   }
   delete state.chatHistories[channelId];
 }
 
+// ---------------------------------------------------------------------------
+// Custom instructions
+// ---------------------------------------------------------------------------
+
+/** Get custom instructions for a target (user, channel, or guild). */
 export function getCustomInstruction(targetId) {
   return state.customInstructions[targetId];
 }
 
+/** Set custom instructions for a target. */
 export function setCustomInstruction(targetId, instructions) {
   state.customInstructions[targetId] = instructions;
 }
 
+/** Remove custom instructions for a target. */
 export function clearCustomInstruction(targetId) {
   delete state.customInstructions[targetId];
 }
 
-export function clearChatHistoryFor(targetId) {
-  state.chatHistories[targetId] = {};
-  dirtyChatHistories.add(targetId);
+// ---------------------------------------------------------------------------
+// Generic setting cycling utility
+// ---------------------------------------------------------------------------
+
+/**
+ * Cycle a setting through an ordered list of values.
+ * @param {Object} settingsObj - The settings object containing the key.
+ * @param {string} key - The property name to cycle.
+ * @param {string[]} values - The ordered list of valid values.
+ * @returns {string} The new value after cycling.
+ */
+function cycleSetting(settingsObj, key, values) {
+  const currentIndex = values.indexOf(settingsObj[key]);
+  settingsObj[key] = values[(currentIndex + 1) % values.length];
+  return settingsObj[key];
 }
 
-export function deleteChatHistoryEntry(historyId, messageId) {
-  if (state.chatHistories[historyId]?.[messageId]) {
-    delete state.chatHistories[historyId][messageId];
-    dirtyChatHistories.add(historyId);
-    return true;
-  }
-  return false;
-}
+const TRI_STATE_VALUES = ['on', 'off', 'decide'];
+const RESPONSE_STYLE_VALUES = ['Embedded', 'Normal', 'decide'];
 
-export function toggleUserResponseFormat(userId) {
-  const nextPreference = getUserResponsePreference(userId) === 'Normal' ? 'Embedded' : 'Normal';
-  state.userResponsePreference[userId] = nextPreference;
-  return nextPreference;
-}
+// ---------------------------------------------------------------------------
+// Server-level settings mutators
+// ---------------------------------------------------------------------------
 
-export function getUserResponseActionButtons(userId) {
-  if (state.userResponseActionButtons[userId] === undefined) {
-    return config.defaultResponseActionButtons !== undefined ? config.defaultResponseActionButtons : true;
-  }
-  return state.userResponseActionButtons[userId];
-}
-
-export function shouldShowActionButtons(guildId, userId, channelId = null) {
-  if (channelId) {
-    const channelActionButtonSetting = getChannelSettings(channelId).settingsSaveButton || 'decide';
-    if (channelActionButtonSetting === 'on') {
-      return true;
-    }
-    if (channelActionButtonSetting === 'off') {
-      return false;
-    }
-  }
-
-  const serverActionButtonSetting = guildId
-    ? (state.serverSettings[guildId]?.settingsSaveButton || 'decide')
-    : 'decide';
-
-  if (serverActionButtonSetting === 'on') {
-    return true;
-  }
-
-  if (serverActionButtonSetting === 'off') {
-    return false;
-  }
-
-  return getUserResponseActionButtons(userId);
-}
-
-export function toggleUserResponseActionButtons(userId) {
-  const current = getUserResponseActionButtons(userId);
-  state.userResponseActionButtons[userId] = !current;
-  return !current;
-}
-
-export function getUserNanoBananaMode(userId) {
-  if (!state.userNanoBananaMode[userId]) {
-    state.userNanoBananaMode[userId] = { enabled: false, googleSearch: false, imageSearch: false };
-  }
-  return state.userNanoBananaMode[userId];
-}
-
-export function toggleNanoBananaModeState(userId) {
-  const mode = getUserNanoBananaMode(userId);
-  mode.enabled = !mode.enabled;
-  return mode.enabled;
-}
-
-export function toggleNanoBananaGoogleSearch(userId) {
-  const mode = getUserNanoBananaMode(userId);
-  mode.googleSearch = !mode.googleSearch;
-  if (!mode.googleSearch) {
-    mode.imageSearch = false;
-  }
-  return mode.googleSearch;
-}
-
-export function toggleNanoBananaImageSearch(userId) {
-  const mode = getUserNanoBananaMode(userId);
-  mode.imageSearch = !mode.imageSearch;
-  return mode.imageSearch;
-}
-
-export function setUserGeminiToolPreference(userId, toolName, enabled) {
-  state.userGeminiToolPreferences[userId] = {
-    ...getUserGeminiToolPreferences(userId),
-    [toolName]: enabled,
-  };
-
-  normalizedToolPreferences.delete(userId);
-  return state.userGeminiToolPreferences[userId];
-}
-
-export function cycleServerResponseActionButtons(guildId) {
-  const settings = getServerSettings(guildId);
-  const states = ['on', 'off', 'decide'];
-  const currentIndex = states.indexOf(settings.settingsSaveButton);
-  const nextIndex = (currentIndex + 1) % states.length;
-  settings.settingsSaveButton = states[nextIndex];
-  return settings.settingsSaveButton;
-}
-
-export function cycleChannelResponseActionButtons(channelId) {
-  const settings = getChannelSettings(channelId);
-  const states = ['on', 'off', 'decide'];
-  const currentIndex = states.indexOf(settings.settingsSaveButton);
-  const nextIndex = (currentIndex + 1) % states.length;
-  settings.settingsSaveButton = states[nextIndex];
-  invalidateChannelState(channelId);
-  return settings.settingsSaveButton;
-}
-
+/** Toggle a boolean server setting. */
 export function toggleServerSetting(guildId, settingName) {
   const settings = getServerSettings(guildId);
   settings[settingName] = !settings[settingName];
   return settings[settingName];
 }
 
+/** Cycle the server response style through Embedded -> Normal -> decide. */
+export function cycleServerResponseStyle(guildId) {
+  return cycleSetting(getServerSettings(guildId), 'responseStyle', RESPONSE_STYLE_VALUES);
+}
+
+/** Cycle the server action buttons setting through on -> off -> decide. */
+export function cycleServerResponseActionButtons(guildId) {
+  return cycleSetting(getServerSettings(guildId), 'settingsSaveButton', TRI_STATE_VALUES);
+}
+
+/** Toggle a boolean channel setting. */
 export function toggleChannelSetting(channelId, settingName) {
   const settings = getChannelSettings(channelId);
   settings[settingName] = !settings[settingName];
@@ -600,182 +571,86 @@ export function toggleChannelSetting(channelId, settingName) {
   return settings[settingName];
 }
 
-export function cycleServerResponseStyle(guildId) {
-  const settings = getServerSettings(guildId);
-  const states = ['Embedded', 'Normal', 'decide'];
-  const currentIndex = states.indexOf(settings.responseStyle);
-  const nextIndex = (currentIndex + 1) % states.length;
-  settings.responseStyle = states[nextIndex];
-  return settings.responseStyle;
-}
-
+/** Cycle the channel response style through Embedded -> Normal -> decide. */
 export function cycleChannelResponseStyle(channelId) {
-  const settings = getChannelSettings(channelId);
-  const states = ['Embedded', 'Normal', 'decide'];
-  const currentIndex = states.indexOf(settings.responseStyle);
-  const nextIndex = (currentIndex + 1) % states.length;
-  settings.responseStyle = states[nextIndex];
+  const result = cycleSetting(getChannelSettings(channelId), 'responseStyle', RESPONSE_STYLE_VALUES);
   invalidateChannelState(channelId);
-  return settings.responseStyle;
+  return result;
 }
 
-export function addBlacklistedUser(guildId, userId) {
-  initializeGuildState(guildId);
-
-  if (state.blacklistedUsers[guildId].includes(userId)) {
-    return false;
-  }
-
-  state.blacklistedUsers[guildId].push(userId);
-  return true;
+/** Cycle the channel action buttons setting through on -> off -> decide. */
+export function cycleChannelResponseActionButtons(channelId) {
+  const result = cycleSetting(getChannelSettings(channelId), 'settingsSaveButton', TRI_STATE_VALUES);
+  invalidateChannelState(channelId);
+  return result;
 }
 
-export function removeBlacklistedUser(guildId, userId) {
-  initializeGuildState(guildId);
-  const index = state.blacklistedUsers[guildId].indexOf(userId);
+// ---------------------------------------------------------------------------
+// Action button visibility resolution
+// ---------------------------------------------------------------------------
 
-  if (index === -1) {
-    return false;
+/**
+ * Determine whether action buttons should be shown, checking channel -> server -> user preference.
+ * @param {string|null} guildId - The guild ID, or null for DMs.
+ * @param {string} userId - The user ID.
+ * @param {string|null} [channelId=null] - The channel ID.
+ * @returns {boolean}
+ */
+export function shouldShowActionButtons(guildId, userId, channelId = null) {
+  if (channelId) {
+    const channelSetting = getChannelSettings(channelId).settingsSaveButton || 'decide';
+    if (channelSetting === 'on') return true;
+    if (channelSetting === 'off') return false;
   }
 
-  state.blacklistedUsers[guildId].splice(index, 1);
-  return true;
+  const serverSetting = guildId
+    ? (state.serverSettings[guildId]?.settingsSaveButton || 'decide')
+    : 'decide';
+
+  if (serverSetting === 'on') return true;
+  if (serverSetting === 'off') return false;
+
+  return getUserResponseActionButtons(userId);
 }
 
-function createDefaultSessionState() {
-  return {
-    activeSessionId: DEFAULT_SESSION_ID,
-    sessions: {
-      [DEFAULT_SESSION_ID]: { name: DEFAULT_SESSION_NAME },
-    },
-  };
-}
+// ---------------------------------------------------------------------------
+// Session management (delegates to sessionState.js)
+// ---------------------------------------------------------------------------
 
-function normalizeSessionEntry(entry) {
-  if (typeof entry === 'string' && entry.trim()) {
-    return { name: entry.trim() };
-  }
+/** Re-export for external consumers. */
+export { getUserSessionHistoryId };
 
-  if (entry && typeof entry === 'object' && typeof entry.name === 'string' && entry.name.trim()) {
-    return { name: entry.name.trim() };
-  }
-
-  return null;
-}
-
-function normalizeUserSessionState(userId) {
-  const existing = state.userSessions[userId];
-
-  if (!existing || typeof existing !== 'object') {
-    state.userSessions[userId] = createDefaultSessionState();
-    return state.userSessions[userId];
-  }
-
-  const normalizedSessions = {};
-  if (existing.sessions && typeof existing.sessions === 'object') {
-    for (const [sessionId, entry] of Object.entries(existing.sessions)) {
-      if (!sessionId || typeof sessionId !== 'string') {
-        continue;
-      }
-
-      const normalized = normalizeSessionEntry(entry);
-      if (normalized) {
-        normalizedSessions[sessionId] = normalized;
-      }
-    }
-  }
-
-  if (!normalizedSessions[DEFAULT_SESSION_ID]) {
-    normalizedSessions[DEFAULT_SESSION_ID] = { name: DEFAULT_SESSION_NAME };
-  }
-
-  const activeSessionId =
-    typeof existing.activeSessionId === 'string' && normalizedSessions[existing.activeSessionId]
-      ? existing.activeSessionId
-      : DEFAULT_SESSION_ID;
-
-  state.userSessions[userId] = {
-    activeSessionId,
-    sessions: normalizedSessions,
-  };
-
-  return state.userSessions[userId];
-}
-
+/** Get normalized session state for a user. */
 export function getUserSessions(userId) {
-  return normalizeUserSessionState(userId);
+  return normalizeUserSessionState(state, userId);
 }
 
-export function getUserSessionHistoryId(userId, sessionId) {
-  return sessionId === DEFAULT_SESSION_ID ? userId : `${userId}_${sessionId}`;
-}
-
+/** Get the chat history ID for the user's currently active session. */
 export function getActiveSessionHistoryId(userId) {
   const userState = getUserSessions(userId);
   return getUserSessionHistoryId(userId, userState.activeSessionId);
 }
 
+/** Switch the user's active session. */
 export function setActiveSession(userId, sessionId) {
   const userState = getUserSessions(userId);
-
-  if (!userState.sessions[sessionId]) {
-    return false;
-  }
-
+  if (!userState.sessions[sessionId]) return false;
   userState.activeSessionId = sessionId;
   saveStateToFile();
   return true;
 }
 
+/** Create a new session for a user. */
 export function createSession(userId, sessionId, sessionName) {
-  const userState = getUserSessions(userId);
-  const normalizedName = normalizeSessionName(sessionName);
-
-  if (!SESSION_ID_PATTERN.test(sessionId) || !normalizedName) {
-    return false;
-  }
-
-  if (userState.sessions[sessionId]) {
-    return false;
-  }
-
-  userState.sessions[sessionId] = { name: normalizedName };
-  saveStateToFile();
-  return true;
+  return createSessionInternal(state, userId, sessionId, sessionName, getUserSessions, saveStateToFile);
 }
 
+/** Rename an existing session. */
 export function renameSession(userId, sessionId, newName) {
-  const userState = getUserSessions(userId);
-  const normalizedName = normalizeSessionName(newName);
-
-  if (!userState.sessions[sessionId] || sessionId === DEFAULT_SESSION_ID || !normalizedName) {
-    return false;
-  }
-
-  userState.sessions[sessionId].name = normalizedName;
-  saveStateToFile();
-  return true;
+  return renameSessionInternal(userId, sessionId, newName, getUserSessions, saveStateToFile);
 }
 
+/** Delete a session and its chat history. */
 export function deleteSession(userId, sessionId) {
-  if (sessionId === DEFAULT_SESSION_ID) {
-    return false;
-  }
-
-  const userState = getUserSessions(userId);
-  if (!userState.sessions[sessionId]) {
-    return false;
-  }
-
-  const historyId = getUserSessionHistoryId(userId, sessionId);
-
-  delete userState.sessions[sessionId];
-  if (userState.activeSessionId === sessionId) {
-    userState.activeSessionId = DEFAULT_SESSION_ID;
-  }
-
-  delete state.chatHistories[historyId];
-  deletedChatHistories.add(historyId);
-  saveStateToFile();
-  return true;
+  return deleteSessionInternal(state, userId, sessionId, getUserSessions, markHistoryDeleted, saveStateToFile);
 }
