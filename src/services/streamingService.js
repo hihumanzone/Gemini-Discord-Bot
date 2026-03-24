@@ -493,6 +493,56 @@ export async function streamModelResponse({
     clearPendingUpdate();
   };
 
+  const finalizeResponse = async (finalResponseText, responseWasLarge) => {
+    const trimmedFinalResponse = finalResponseText.trim();
+    const hasResponseText = trimmedFinalResponse.length > 0;
+    const normalizedFinalResponse = hasResponseText
+      ? trimmedFinalResponse
+      : '[Empty response]';
+
+    clearPendingUpdate();
+
+    if (!responseWasLarge) {
+      if (responsePreference === 'Embedded') {
+        await buildResponseEmbed(botMessage, normalizedFinalResponse, originalMessage, accumulator.groundingMetadata, accumulator.urlContextMetadata);
+      } else {
+        await botMessage.edit({ content: normalizedFinalResponse, embeds: [] }).catch((error) => {
+          logStreamError('finalPlainEdit', error, { messageId: botMessage.id });
+        });
+      }
+    }
+
+    let filesMessage = null;
+    if (accumulator.inlineDataFiles.length > 0) {
+      filesMessage = await sendCodeExecutionFiles(accumulator.inlineDataFiles, originalMessage, deleteHistoryRef);
+    }
+
+    const linkedMessageIds = [
+      filesMessage?.id,
+      ...extraMessageIds,
+    ].filter(Boolean);
+
+    botMessage = await handleLargeOrFinalResponse(
+      botMessage,
+      originalMessage,
+      normalizedFinalResponse,
+      responseWasLarge,
+      deleteHistoryRef,
+      linkedMessageIds,
+    );
+
+    if (hasResponseText) {
+      const assistantPartsForHistory = accumulator.rawAssistantParts.length > 0
+        ? accumulator.rawAssistantParts
+        : [{ text: normalizedFinalResponse }];
+      await persistConversation(historyId, botMessage.id, parts, assistantPartsForHistory);
+    }
+
+    finalized = true;
+    activeAbortController = null;
+    collector.stop('completed');
+  };
+
   try {
     let attempts = MAX_GENERATION_ATTEMPTS;
 
@@ -513,7 +563,7 @@ export async function streamModelResponse({
 
         for await (const chunk of stream) {
           if (wasStopped()) {
-            return;
+            break;
           }
 
           const chunkText = processStreamChunk(chunk, accumulator);
@@ -542,10 +592,6 @@ export async function streamModelResponse({
           }
         }
 
-        if (wasStopped()) {
-          return;
-        }
-
         // --- Post-stream processing ---
 
         // Determine file extensions from generated files and assign sandbox names
@@ -557,55 +603,12 @@ export async function streamModelResponse({
         const actualNames = assignFileNames(accumulator.inlineDataFiles, sandboxFilenames);
 
         finalResponse = cleanSandboxLinks(finalResponse, actualNames);
-        const fallbackFinalResponse = accumulator.inlineDataFiles.length > 0
-          ? 'No text response was returned, but generated files are attached below.'
-          : 'No response text was returned this time. Please try again.';
-        const normalizedFinalResponse = finalResponse.trim() || fallbackFinalResponse;
-
-        clearPendingUpdate();
-
-        if (!isLargeResponse) {
-          if (responsePreference === 'Embedded') {
-            await buildResponseEmbed(botMessage, normalizedFinalResponse, originalMessage, accumulator.groundingMetadata, accumulator.urlContextMetadata);
-          } else {
-            await botMessage.edit({ content: normalizedFinalResponse, embeds: [] }).catch((error) => {
-              logStreamError('finalPlainEdit', error, { messageId: botMessage.id });
-            });
-          }
-        }
-
-        let filesMessage = null;
-        if (accumulator.inlineDataFiles.length > 0) {
-          filesMessage = await sendCodeExecutionFiles(accumulator.inlineDataFiles, originalMessage, deleteHistoryRef);
-        }
-
-        const linkedMessageIds = [
-          filesMessage?.id,
-          ...extraMessageIds,
-        ].filter(Boolean);
-
-        botMessage = await handleLargeOrFinalResponse(
-          botMessage,
-          originalMessage,
-          normalizedFinalResponse,
-          isLargeResponse,
-          deleteHistoryRef,
-          linkedMessageIds,
-        );
-
-        const assistantPartsForHistory = accumulator.rawAssistantParts.length > 0
-          ? accumulator.rawAssistantParts
-          : [{ text: normalizedFinalResponse }];
-
-        await persistConversation(historyId, botMessage.id, parts, assistantPartsForHistory);
-        finalized = true;
-        activeAbortController = null;
-        collector.stop('completed');
+        await finalizeResponse(finalResponse, isLargeResponse);
         return;
       } catch (error) {
         const wasAborted = wasStopped() || activeAbortController?.signal.aborted;
         if (wasAborted && (isAbortError(error) || activeAbortController?.signal.aborted)) {
-          activeAbortController = null;
+          await finalizeResponse(bufferedText, bufferedText.length > maxCharacterLimit);
           return;
         }
 
