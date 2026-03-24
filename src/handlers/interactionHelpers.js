@@ -234,21 +234,27 @@ export async function sendSavedContentToUser(
       return;
     }
 
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     try {
       const dmMessage = await sendSavedContentDm(interaction.user, savedContentEmbed, file);
       void appendSharedLinkToDm(dmMessage, { title, description, text });
 
-      await replyWithEmbed(interaction, {
+      const successEmbed = createStatusEmbed({
         variant: 'success',
         title: successTitle,
         description: successDescription,
       });
+
+      await interaction.editReply(applyEmbedFallback(interaction.channel, {
+        embeds: [successEmbed],
+      }));
     } catch (error) {
       logError('SendSavedContentToUserDM', error, {
         userId: interaction.user?.id,
         interactionId: interaction.id,
       });
-      await interaction.reply(applyEmbedFallback(interaction.channel, {
+      await interaction.editReply(applyEmbedFallback(interaction.channel, {
         embeds: [
           createStatusEmbed({
             variant: 'warning',
