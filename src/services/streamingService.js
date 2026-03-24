@@ -454,7 +454,7 @@ export async function streamModelResponse({
       activeAbortController.abort();
     }
 
-    await clearMessageActionRows(botMessage);
+    await removeStopGeneratingButton(botMessage);
   };
 
   const { collector, wasStopped } = createCollector(botMessage, originalMessage, stopActiveGeneration);
