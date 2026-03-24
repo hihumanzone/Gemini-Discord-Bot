@@ -169,19 +169,43 @@ export async function ensureInteractionNotBlacklisted(interaction) {
 }
 
 /**
- * Creates an embed for saved/downloaded content with a shared text link.
+ * Creates an embed for saved/downloaded content.
  */
-export function createSavedContentEmbed(title, description, sharedTextLink) {
+export function createSavedContentEmbed(title, description, sharedTextLink = null) {
+  const urlLine = sharedTextLink ? `\n\n${sharedTextLink}` : '';
   return createStatusEmbed({
     variant: 'primary',
     title,
-    description: `${description}\n\n${sharedTextLink}`,
+    description: `${description}${urlLine}`,
   });
 }
 
 /**
- * Writes text to a temp file, uploads a shared link, and delivers the content
- * to the user via DM (or in-channel as a fallback).
+ * Appends a shared URL to an already-sent DM once URL generation completes.
+ */
+async function appendSharedLinkToDm(dmMessage, { title, description, text }) {
+  try {
+    const sharedTextLink = await createSharedTextLink(text);
+    const updatedEmbed = createSavedContentEmbed(title, description, sharedTextLink);
+    await dmMessage.edit({ embeds: [updatedEmbed] });
+  } catch (error) {
+    logError('SendSavedContentToUserUpdateDM', error, {
+      messageId: dmMessage?.id,
+      channelId: dmMessage?.channelId,
+    });
+  }
+}
+
+async function sendSavedContentDm(user, savedContentEmbed, file) {
+  return user.send({
+    embeds: [savedContentEmbed],
+    files: [file],
+  });
+}
+
+/**
+ * Writes text to a temp file and delivers it to the user via DM immediately.
+ * Shared URL generation is handled in the background and updates the DM later.
  */
 export async function sendSavedContentToUser(
   interaction,
@@ -195,29 +219,24 @@ export async function sendSavedContentToUser(
     failureDescription,
   },
 ) {
-  const filePath = path.join(TEMP_DIR, `${fileBaseName}_${interaction.id}.txt`);
-  const fileName = `${fileBaseName}.txt`;
+  const filePath = path.join(TEMP_DIR, `${fileBaseName}_${interaction.id}.md`);
+  const fileName = `${fileBaseName}.md`;
 
   try {
     await fs.writeFile(filePath, text, 'utf8');
     const file = new AttachmentBuilder(filePath, { name: fileName });
-    const sharedTextLink = await createSharedTextLink(text);
-    const savedContentEmbed = createSavedContentEmbed(title, description, sharedTextLink);
+    const savedContentEmbed = createSavedContentEmbed(title, description);
 
     if (interaction.channel.type === ChannelType.DM) {
       await interaction.deferUpdate();
-      await interaction.user.send({
-        embeds: [savedContentEmbed],
-        files: [file],
-      });
+      const dmMessage = await sendSavedContentDm(interaction.user, savedContentEmbed, file);
+      void appendSharedLinkToDm(dmMessage, { title, description, text });
       return;
     }
 
     try {
-      await interaction.user.send({
-        embeds: [savedContentEmbed],
-        files: [file],
-      });
+      const dmMessage = await sendSavedContentDm(interaction.user, savedContentEmbed, file);
+      void appendSharedLinkToDm(dmMessage, { title, description, text });
 
       await replyWithEmbed(interaction, {
         variant: 'success',
