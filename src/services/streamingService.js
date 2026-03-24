@@ -67,6 +67,10 @@ function truncateString(str, length = 1024) {
   return str.length > length ? str.slice(0, length - 3) + '...' : str;
 }
 
+function isAbortError(error) {
+  return error?.name === 'AbortError' || error?.code === 'ABORT_ERR';
+}
+
 // ---------------------------------------------------------------------------
 // Embed & response builders
 // ---------------------------------------------------------------------------
@@ -236,7 +240,7 @@ async function ensureInitialBotMessage(initialBotMessage, originalMessage) {
   }
 }
 
-function createCollector(message, originalMessage) {
+function createCollector(message, originalMessage, onStop = () => {}) {
   let stopped = false;
 
   const collector = message.createMessageComponentCollector({
@@ -247,6 +251,8 @@ function createCollector(message, originalMessage) {
   collector.on('collect', async (interaction) => {
     if (interaction.user.id === originalMessage.author.id) {
       stopped = true;
+      collector.stop('user-stopped');
+      await onStop(interaction);
       await interaction.reply(applyEmbedFallback(interaction.channel, {
         embeds: [createStatusEmbed({
           variant: 'warning',
@@ -430,11 +436,28 @@ export async function streamModelResponse({
   const responsePreference = getResponsePreference(originalMessage);
   const maxCharacterLimit = responsePreference === 'Embedded' ? EMBED_RESPONSE_LIMIT : PLAIN_RESPONSE_LIMIT;
   let botMessage = await ensureInitialBotMessage(initialBotMessage, originalMessage);
-  const { collector, wasStopped } = createCollector(botMessage, originalMessage);
   let finalized = false;
   let bufferedText = '';
   let updateTimeout = null;
   let isLargeResponse = false;
+  let activeAbortController = null;
+
+  const clearPendingUpdate = () => {
+    clearTimeout(updateTimeout);
+    updateTimeout = null;
+  };
+
+  const stopActiveGeneration = async () => {
+    clearPendingUpdate();
+
+    if (activeAbortController && !activeAbortController.signal.aborted) {
+      activeAbortController.abort();
+    }
+
+    await removeStopGeneratingButton(botMessage);
+  };
+
+  const { collector, wasStopped } = createCollector(botMessage, originalMessage, stopActiveGeneration);
 
   // Shared mutable accumulator updated by processStreamChunk
   const accumulator = {
@@ -467,8 +490,7 @@ export async function streamModelResponse({
       });
     }
 
-    clearTimeout(updateTimeout);
-    updateTimeout = null;
+    clearPendingUpdate();
   };
 
   try {
@@ -476,14 +498,23 @@ export async function streamModelResponse({
 
     while (attempts > 0 && !wasStopped()) {
       try {
-        const stream = await chat.sendMessageStream({ message: parts });
+        activeAbortController = new AbortController();
+        const stream = await chat.sendMessageStream({
+          message: parts,
+          config: {
+            ...(chat.config ?? {}),
+            abortSignal: activeAbortController.signal,
+          },
+        });
         let finalResponse = '';
         isLargeResponse = false;
         accumulator.inlineDataFiles = [];
         accumulator.rawAssistantParts = [];
 
         for await (const chunk of stream) {
-          if (wasStopped()) break;
+          if (wasStopped()) {
+            return;
+          }
 
           const chunkText = processStreamChunk(chunk, accumulator);
 
@@ -495,21 +526,24 @@ export async function streamModelResponse({
           if (finalResponse.length > maxCharacterLimit) {
             if (!isLargeResponse) {
               isLargeResponse = true;
-              if (updateTimeout) {
-                clearTimeout(updateTimeout);
-                updateTimeout = null;
-              }
-              await botMessage.edit(applyEmbedFallback(originalMessage.channel, {
+              clearPendingUpdate();
+              botMessage.edit(applyEmbedFallback(originalMessage.channel, {
                 embeds: [createStatusEmbed({
                   variant: 'warning',
                   title: 'Response Overflow',
                   description: 'This response is too long for a Discord message and will be delivered as an attached file.',
                 })],
-              }));
+              })).catch((error) => {
+                logStreamError('overflowWarningEdit', error, { messageId: botMessage.id });
+              });
             }
           } else if (!updateTimeout) {
             updateTimeout = setTimeout(flushBufferedText, STREAM_UPDATE_DEBOUNCE_MS);
           }
+        }
+
+        if (wasStopped()) {
+          return;
         }
 
         // --- Post-stream processing ---
@@ -528,10 +562,7 @@ export async function streamModelResponse({
           : 'No response text was returned this time. Please try again.';
         const normalizedFinalResponse = finalResponse.trim() || fallbackFinalResponse;
 
-        if (updateTimeout) {
-          clearTimeout(updateTimeout);
-          updateTimeout = null;
-        }
+        clearPendingUpdate();
 
         if (!isLargeResponse) {
           if (responsePreference === 'Embedded') {
@@ -568,9 +599,18 @@ export async function streamModelResponse({
 
         await persistConversation(historyId, botMessage.id, parts, assistantPartsForHistory);
         finalized = true;
-        collector.stop();
+        activeAbortController = null;
+        collector.stop('completed');
         return;
       } catch (error) {
+        const wasAborted = wasStopped() || activeAbortController?.signal.aborted;
+        if (wasAborted && (isAbortError(error) || activeAbortController?.signal.aborted)) {
+          activeAbortController = null;
+          return;
+        }
+
+        activeAbortController = null;
+
         attempts -= 1;
         console.error(formatGeminiErrorForConsole(error, {
           attemptNumber: MAX_GENERATION_ATTEMPTS - attempts,
@@ -637,11 +677,11 @@ export async function streamModelResponse({
       }
     }
   } finally {
-    clearTimeout(updateTimeout);
+    if (!finalized && !wasStopped()) {
+      clearPendingUpdate();
+    }
     if (finalized) {
       await removeStopGeneratingButton(botMessage);
-    } else if (wasStopped()) {
-      await clearMessageActionRows(botMessage);
     }
   }
 }
