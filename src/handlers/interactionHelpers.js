@@ -196,6 +196,13 @@ async function appendSharedLinkToDm(dmMessage, { title, description, text }) {
   }
 }
 
+async function sendSavedContentDm(user, savedContentEmbed, file) {
+  return user.send({
+    embeds: [savedContentEmbed],
+    files: [file],
+  });
+}
+
 /**
  * Writes text to a temp file and delivers it to the user via DM immediately.
  * Shared URL generation is handled in the background and updates the DM later.
@@ -222,19 +229,13 @@ export async function sendSavedContentToUser(
 
     if (interaction.channel.type === ChannelType.DM) {
       await interaction.deferUpdate();
-      const dmMessage = await interaction.user.send({
-        embeds: [savedContentEmbed],
-        files: [file],
-      });
+      const dmMessage = await sendSavedContentDm(interaction.user, savedContentEmbed, file);
       void appendSharedLinkToDm(dmMessage, { title, description, text });
       return;
     }
 
     try {
-      const dmMessage = await interaction.user.send({
-        embeds: [savedContentEmbed],
-        files: [file],
-      });
+      const dmMessage = await sendSavedContentDm(interaction.user, savedContentEmbed, file);
       void appendSharedLinkToDm(dmMessage, { title, description, text });
 
       await replyWithEmbed(interaction, {
