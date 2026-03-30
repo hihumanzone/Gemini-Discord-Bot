@@ -13,7 +13,8 @@ export const STATUS_LIFETIME_MS = 30_000;
 export const STREAM_UPDATE_DEBOUNCE_MS = 500;
 export const VIDEO_POLL_INTERVAL_MS = 10_000;
 export const TEXT_FILE_TTL_MINUTES = 10_080;
-export const EXTERNAL_TEXT_SHARE_URL = 'https://bin.mudfish.net';
+export const EXTERNAL_TEXT_SHARE_URL = 'https://pastes.dev';
+export const EXTERNAL_TEXT_SHARE_API_URL = 'https://api.pastes.dev';
 
 export const DEFAULT_RESPONSE_FORMAT = config.defaultResponseFormat;
 export const EMBED_COLOR = config.hexColour;
