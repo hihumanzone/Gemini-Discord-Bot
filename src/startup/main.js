@@ -1,10 +1,10 @@
-import { initialize } from './botManager.js';
-import { client, token } from './core/runtime.js';
-import { registerBotHandlers } from './bootstrap.js';
+import { initializeBot } from './initializeBot.js';
+import { client, token } from '../core/runtime.js';
+import { registerBotHandlers } from '../bootstrap.js';
 
 async function start() {
   try {
-    await initialize();
+    await initializeBot();
     registerBotHandlers();
     await client.login(token);
     console.log('Bot logged in successfully.');

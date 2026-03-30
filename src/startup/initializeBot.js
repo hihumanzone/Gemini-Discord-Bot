@@ -5,11 +5,11 @@
  * Import state functions directly from state/botState.js.
  */
 
-import { initializeRuntime } from './core/runtime.js';
-import { initializeState } from './state/botState.js';
+import { initializeRuntime } from '../core/runtime.js';
+import { initializeState } from '../state/botState.js';
 
 /** Validates environment variables and loads all persisted state from disk. */
-export async function initialize() {
+export async function initializeBot() {
   initializeRuntime();
   await initializeState();
   console.log('Bot state loaded and initialized.');
