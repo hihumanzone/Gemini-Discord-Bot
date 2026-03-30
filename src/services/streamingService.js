@@ -185,7 +185,6 @@ async function sendAsTextFile(text, originalMessage, historyId) {
 
     if (shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id, originalMessage.channelId)) {
       response = await addSettingsButton(response);
-      response = await addDeleteButton(response, response.id, historyId);
     }
     return response;
   } catch (error) {
@@ -324,6 +323,7 @@ async function handleLargeOrFinalResponse(
     if (showButtons && textFileMessage) {
       const overflowDownloadCustomId = `download_message_overflow-${textFileMessage.id}`;
       textFileMessage = await addDownloadButton(textFileMessage, overflowDownloadCustomId);
+      textFileMessage = await addDeleteButton(textFileMessage, textFileMessage.id, historyId);
       updatedMessage = await addDownloadButton(updatedMessage, overflowDownloadCustomId);
     }
 
