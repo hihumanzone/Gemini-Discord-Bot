@@ -1,6 +1,6 @@
 import { initialize } from './botManager.js';
-import { client, token } from './src/core/runtime.js';
-import { registerBotHandlers } from './src/bootstrap.js';
+import { client, token } from './core/runtime.js';
+import { registerBotHandlers } from './bootstrap.js';
 
 async function start() {
   try {

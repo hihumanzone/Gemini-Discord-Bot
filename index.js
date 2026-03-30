@@ -71,4 +71,4 @@ if (!fs.existsSync(configPath)) {
 }
 
 // Dynamically import the main application entry point
-await import('./main.js');
+await import('./src/main.js');
