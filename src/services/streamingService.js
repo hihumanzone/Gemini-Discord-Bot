@@ -44,7 +44,6 @@ import {
 import { applyEmbedFallback, createEmbed, createStatusEmbed } from '../utils/discord.js';
 import { buildRetryErrorEmbed, formatGeminiErrorForConsole } from '../utils/errorFormatter.js';
 import { toDeleteHistoryRef } from '../utils/historyRef.js';
-import { saveOverflowResponse } from '../utils/overflowResponseStore.js';
 
 // ---------------------------------------------------------------------------
 // Utility helpers
@@ -164,7 +163,7 @@ function buildResponseEmbed(botMessage, responseText, originalMessage, grounding
 // Text file fallback for oversized responses
 // ---------------------------------------------------------------------------
 
-async function sendAsTextFile(text, originalMessage, historyId, overflowDownloadCustomId = null) {
+async function sendAsTextFile(text, originalMessage, historyId) {
   const filename = `response-${Date.now()}.md`;
   const filePath = path.join(TEMP_DIR, filename);
 
@@ -186,9 +185,6 @@ async function sendAsTextFile(text, originalMessage, historyId, overflowDownload
 
     if (shouldShowActionButtons(originalMessage.guild?.id, originalMessage.author.id, originalMessage.channelId)) {
       response = await addSettingsButton(response);
-      if (overflowDownloadCustomId) {
-        response = await addDownloadButton(response, overflowDownloadCustomId);
-      }
       response = await addDeleteButton(response, response.id, historyId);
     }
     return response;
@@ -323,20 +319,13 @@ async function handleLargeOrFinalResponse(
   }
 
   if (isLargeResponse) {
-    const overflowSaveId = `overflow-${updatedMessage.id}`;
-    const overflowDownloadCustomId = `download_message_overflow-${overflowSaveId}`;
-    saveOverflowResponse(overflowSaveId, responseText);
+    let textFileMessage = await sendAsTextFile(responseText, originalMessage, historyId);
 
-    if (showButtons) {
+    if (showButtons && textFileMessage) {
+      const overflowDownloadCustomId = `download_message_overflow-${textFileMessage.id}`;
+      textFileMessage = await addDownloadButton(textFileMessage, overflowDownloadCustomId);
       updatedMessage = await addDownloadButton(updatedMessage, overflowDownloadCustomId);
     }
-
-    const textFileMessage = await sendAsTextFile(
-      responseText,
-      originalMessage,
-      historyId,
-      overflowDownloadCustomId,
-    );
 
     if (showButtons) {
       const targets = [updatedMessage.id, ...extraMessageIds];

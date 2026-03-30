@@ -32,7 +32,6 @@ import {
   toggleNanoBananaImageSearch,
 } from '../state/botState.js';
 import { serializeConversationHistory } from '../services/textSharingService.js';
-import { getOverflowResponse } from '../utils/overflowResponseStore.js';
 import {
   getActiveSessionDetails,
   getSessionDetails,
@@ -73,6 +72,78 @@ import {
   requireGuildAdmin,
   sendSavedContentToUser,
 } from './interactionHelpers.js';
+
+const OVERFLOW_DOWNLOAD_PREFIX = 'download_message_overflow-';
+
+function getOverflowSourceMessageId(customId) {
+  if (!customId?.startsWith(OVERFLOW_DOWNLOAD_PREFIX)) {
+    return null;
+  }
+
+  const sourceMessageId = customId.slice(OVERFLOW_DOWNLOAD_PREFIX.length);
+  return /^\d{16,22}$/.test(sourceMessageId) ? sourceMessageId : null;
+}
+
+async function resolveOverflowAttachmentMessage(interaction, sourceMessageId) {
+  if (!sourceMessageId) return null;
+  if (interaction.message?.id === sourceMessageId) return interaction.message;
+
+  try {
+    if (!interaction.channel?.messages?.fetch) {
+      return null;
+    }
+    return await interaction.channel.messages.fetch(sourceMessageId);
+  } catch (error) {
+    logError('OverflowAttachmentMessageFetch', error, {
+      sourceMessageId,
+      interactionId: interaction.id,
+      channelId: interaction.channelId,
+    });
+    return null;
+  }
+}
+
+async function readOverflowResponseFromAttachment(interaction, sourceMessageId) {
+  const sourceMessage = await resolveOverflowAttachmentMessage(interaction, sourceMessageId);
+  const attachment = sourceMessage?.attachments?.first?.();
+
+  if (!attachment?.url) {
+    return null;
+  }
+
+  const contentType = (attachment.contentType || '').toLowerCase();
+  const fileName = (attachment.name || '').toLowerCase();
+  const looksTextLike = contentType.startsWith('text/')
+    || fileName.endsWith('.md')
+    || fileName.endsWith('.txt');
+
+  if (!looksTextLike) {
+    logError('OverflowAttachmentInvalidType', new Error('Attachment is not a text file'), {
+      sourceMessageId,
+      interactionId: interaction.id,
+      attachmentName: attachment.name,
+      attachmentContentType: attachment.contentType,
+    });
+    return null;
+  }
+
+  try {
+    const response = await fetch(attachment.url);
+    if (!response.ok) {
+      throw new Error(`Failed to download attachment (status ${response.status})`);
+    }
+
+    const text = await response.text();
+    return text || null;
+  } catch (error) {
+    logError('OverflowAttachmentRead', error, {
+      sourceMessageId,
+      interactionId: interaction.id,
+      attachmentUrl: attachment.url,
+    });
+    return null;
+  }
+}
 
 async function handleDeleteMessageInteraction(interaction, messageIdStr) {
   const userId = interaction.user.id;
@@ -207,20 +278,19 @@ async function downloadPersonality(interaction) {
 
 async function downloadMessage(interaction) {
   const sourceMessage = interaction.message;
-  const overflowPrefix = 'download_message_overflow-';
-  const overflowSaveId = interaction.customId.startsWith(overflowPrefix)
-    ? interaction.customId.slice(overflowPrefix.length)
-    : null;
+  const overflowSourceMessageId = getOverflowSourceMessageId(interaction.customId);
 
-  const textContent = overflowSaveId
-    ? getOverflowResponse(overflowSaveId)
+  const textContent = overflowSourceMessageId
+    ? await readOverflowResponseFromAttachment(interaction, overflowSourceMessageId)
     : (sourceMessage.content || sourceMessage.embeds[0]?.description);
 
   if (!textContent) {
     return replyWithEmbed(interaction, {
       variant: 'error',
-      title: 'Empty Message',
-      description: 'The message is empty..?',
+      title: overflowSourceMessageId ? 'Overflow File Unavailable' : 'Empty Message',
+      description: overflowSourceMessageId
+        ? 'Could not retrieve the overflow response file. It may be missing, invalid, or no longer accessible.'
+        : 'The message is empty..?',
     });
   }
 
@@ -744,7 +814,7 @@ export async function handleButtonInteraction(interaction) {
       'personality-settings': updatePersonalitySettingsView,
     };
 
-    if (interaction.customId === 'download_message' || interaction.customId.startsWith('download_message_overflow-')) {
+    if (interaction.customId === 'download_message' || interaction.customId.startsWith(OVERFLOW_DOWNLOAD_PREFIX)) {
       await downloadMessage(interaction);
       return;
     }
