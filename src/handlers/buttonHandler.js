@@ -103,21 +103,25 @@ async function resolveOverflowAttachmentMessage(interaction, sourceMessageId) {
   }
 }
 
+function isTextLikeAttachment(attachment) {
+  const contentType = (attachment?.contentType || '').toLowerCase();
+  const fileName = (attachment?.name || '').toLowerCase();
+
+  return contentType.startsWith('text/')
+    || fileName.endsWith('.md')
+    || fileName.endsWith('.txt');
+}
+
 async function readOverflowResponseFromAttachment(interaction, sourceMessageId) {
   const sourceMessage = await resolveOverflowAttachmentMessage(interaction, sourceMessageId);
-  const attachment = sourceMessage?.attachments?.first?.();
+  const attachment = sourceMessage?.attachments?.find?.((candidate) => isTextLikeAttachment(candidate))
+    || sourceMessage?.attachments?.first?.();
 
   if (!attachment?.url) {
     return null;
   }
 
-  const contentType = (attachment.contentType || '').toLowerCase();
-  const fileName = (attachment.name || '').toLowerCase();
-  const looksTextLike = contentType.startsWith('text/')
-    || fileName.endsWith('.md')
-    || fileName.endsWith('.txt');
-
-  if (!looksTextLike) {
+  if (!isTextLikeAttachment(attachment)) {
     logError('OverflowAttachmentInvalidType', new Error('Attachment is not a text file'), {
       sourceMessageId,
       interactionId: interaction.id,
@@ -278,7 +282,16 @@ async function downloadPersonality(interaction) {
 
 async function downloadMessage(interaction) {
   const sourceMessage = interaction.message;
+  const isOverflowDownload = interaction.customId.startsWith(OVERFLOW_DOWNLOAD_PREFIX);
   const overflowSourceMessageId = getOverflowSourceMessageId(interaction.customId);
+
+  if (isOverflowDownload && !overflowSourceMessageId) {
+    return replyWithEmbed(interaction, {
+      variant: 'error',
+      title: 'Invalid Overflow Link',
+      description: 'This overflow save button is malformed or missing its file reference.',
+    });
+  }
 
   const textContent = overflowSourceMessageId
     ? await readOverflowResponseFromAttachment(interaction, overflowSourceMessageId)
