@@ -93,11 +93,11 @@ export async function addSettingsButton(message) {
   );
 }
 
-export async function addDownloadButton(message) {
+export async function addDownloadButton(message, customId = 'download_message') {
   return appendButton(
     message,
     new ButtonBuilder()
-      .setCustomId('download_message')
+      .setCustomId(customId)
       .setLabel('Save')
       .setEmoji('⬇️')
       .setStyle(ButtonStyle.Secondary),

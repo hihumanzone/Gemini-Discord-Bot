@@ -32,6 +32,7 @@ import {
   toggleNanoBananaImageSearch,
 } from '../state/botState.js';
 import { serializeConversationHistory } from '../services/textSharingService.js';
+import { getOverflowResponse } from '../utils/overflowResponseStore.js';
 import {
   getActiveSessionDetails,
   getSessionDetails,
@@ -206,7 +207,14 @@ async function downloadPersonality(interaction) {
 
 async function downloadMessage(interaction) {
   const sourceMessage = interaction.message;
-  const textContent = sourceMessage.content || sourceMessage.embeds[0]?.description;
+  const overflowPrefix = 'download_message_overflow-';
+  const overflowSaveId = interaction.customId.startsWith(overflowPrefix)
+    ? interaction.customId.slice(overflowPrefix.length)
+    : null;
+
+  const textContent = overflowSaveId
+    ? getOverflowResponse(overflowSaveId)
+    : (sourceMessage.content || sourceMessage.embeds[0]?.description);
 
   if (!textContent) {
     return replyWithEmbed(interaction, {
@@ -731,11 +739,15 @@ export async function handleButtonInteraction(interaction) {
       'session-settings': showSessionManager,
       'open-create-session-modal': showCreateSessionModal,
       'download-conversation': downloadConversation,
-      download_message: downloadMessage,
       'general-settings': updateGeneralSettingsView,
       'gemini-tools-settings': updateGeminiToolsSettingsView,
       'personality-settings': updatePersonalitySettingsView,
     };
+
+    if (interaction.customId === 'download_message' || interaction.customId.startsWith('download_message_overflow-')) {
+      await downloadMessage(interaction);
+      return;
+    }
 
     const exactHandler = exactHandlers[interaction.customId];
     if (exactHandler) {
