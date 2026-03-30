@@ -319,7 +319,13 @@ async function handleLargeOrFinalResponse(
   }
 
   if (isLargeResponse) {
-    const textFileMessage = await sendAsTextFile(responseText, originalMessage, historyId);
+    let textFileMessage = await sendAsTextFile(responseText, originalMessage, historyId);
+
+    if (showButtons && textFileMessage) {
+      const overflowDownloadCustomId = `download_message_overflow-${textFileMessage.id}`;
+      textFileMessage = await addDownloadButton(textFileMessage, overflowDownloadCustomId);
+      updatedMessage = await addDownloadButton(updatedMessage, overflowDownloadCustomId);
+    }
 
     if (showButtons) {
       const targets = [updatedMessage.id, ...extraMessageIds];
