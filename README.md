@@ -119,6 +119,7 @@ Core defaults live in `config.js`:
 
 - Default Model: `gemini-flash-lite-latest`
 - Nano Banana Model: `gemini-2.5-flash-image`
+- Enable Nano Banana Mode: `true`
 - Max generation attempts: `3`
 - Default response mode: `Embedded`
 - Tool defaults: Google Search = on, URL Context = on, Code Execution = off

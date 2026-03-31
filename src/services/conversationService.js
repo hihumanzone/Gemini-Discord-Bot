@@ -13,6 +13,7 @@ import {
 } from '../state/botState.js';
 import {
   buildGeminiToolsFromPreferences,
+  ENABLE_NANO_BANANA_MODE,
   GENERATION_CONFIG,
   MESSAGE_TYPING_INTERVAL_MS,
   MESSAGE_TYPING_TIMEOUT_MS,
@@ -126,7 +127,7 @@ async function createChatSession(message) {
     const isSharedHistory = isSharedConversation(message);
     const isSharedPers = isSharedPersonality(message);
 
-    if (nanoBananaMode.enabled && !isSharedHistory && !isSharedPers) {
+    if (ENABLE_NANO_BANANA_MODE && nanoBananaMode.enabled && !isSharedHistory && !isSharedPers) {
       activeModel = config.nanoBananaModel;
 
       if (nanoBananaMode.googleSearch && nanoBananaMode.imageSearch) {

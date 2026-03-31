@@ -9,6 +9,7 @@ import path from 'path';
 import { AttachmentBuilder, ChannelType, MessageFlags } from 'discord.js';
 
 import { TEMP_DIR } from '../core/paths.js';
+import { ENABLE_NANO_BANANA_MODE } from '../constants.js';
 import {
   getChannelSettings,
   getServerSettings,
@@ -83,6 +84,10 @@ export function getCustomPersonalityDisabledReason(interaction) {
 }
 
 export function getNanoBananaDisabledReason(interaction) {
+  if (!ENABLE_NANO_BANANA_MODE) {
+    return 'Nano Banana mode is disabled in this bot configuration.';
+  }
+
   if (getClearMemoryDisabledReason(interaction)) {
     return 'Nano Banana mode is not available while server-wide or channel-wide chat history is active.';
   }
