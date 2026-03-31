@@ -28,6 +28,7 @@ export const DEFAULT_CHANNEL_SETTINGS = Object.freeze({
 export const WORK_IN_DMS = config.workInDMs;
 export const DISPLAY_PERSONALITY_BUTTONS = config.shouldDisplayPersonalityButtons;
 export const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
+export const ENABLE_NANO_BANANA_MODE = config.enableNanoBananaMode !== false;
 
 export const DEFAULT_GEMINI_TOOL_PREFERENCES = Object.freeze({
   ...config.defaultGeminiToolPreferences,

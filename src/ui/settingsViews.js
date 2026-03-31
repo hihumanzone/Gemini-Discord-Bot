@@ -18,7 +18,7 @@ import {
   isUserBlacklisted,
   state,
 } from '../state/botState.js';
-import { DISPLAY_PERSONALITY_BUTTONS } from '../constants.js';
+import { DISPLAY_PERSONALITY_BUTTONS, ENABLE_NANO_BANANA_MODE } from '../constants.js';
 import { applyEmbedFallback, buildButtonRows, buildTextModal, createStatusEmbed } from '../utils/discord.js';
 import {
   getClearMemoryDisabledReason,
@@ -72,12 +72,16 @@ export async function showSettings(interaction, edit = false) {
     }
   }
 
-  const nanoBananaMode = getUserNanoBananaMode(interaction.user.id);
+  const nanoBananaMode = ENABLE_NANO_BANANA_MODE
+    ? getUserNanoBananaMode(interaction.user.id)
+    : { enabled: false, googleSearch: false, imageSearch: false };
   const clearMemoryDisabled = Boolean(getClearMemoryDisabledReason(interaction));
   const personalityDisabled = Boolean(getCustomPersonalityDisabledReason(interaction));
-  const nanoBananaDisabled = Boolean(getNanoBananaDisabledReason(interaction));
+  const nanoBananaDisabled = ENABLE_NANO_BANANA_MODE
+    ? Boolean(getNanoBananaDisabledReason(interaction))
+    : true;
 
-  const rows = buildButtonRows([
+  const buttonConfigs = [
     {
       customId: 'clear-memory',
       label: 'Clear Memory',
@@ -92,16 +96,9 @@ export async function showSettings(interaction, edit = false) {
       style: ButtonStyle.Primary,
     },
     {
-      customId: 'toggle-nano-banana',
-      label: `Nano Banana Mode: ${nanoBananaMode.enabled ? 'ON' : 'OFF'}`,
-      emoji: '🍌',
-      style: nanoBananaMode.enabled ? ButtonStyle.Success : ButtonStyle.Danger,
-      disabled: nanoBananaDisabled,
-    },
-    {
       customId: 'gemini-tools-settings',
-      label: nanoBananaMode.enabled ? 'NB Tools' : 'Gemini Tools',
-      emoji: nanoBananaMode.enabled ? '🍌' : '🛠️',
+      label: ENABLE_NANO_BANANA_MODE && nanoBananaMode.enabled ? 'NB Tools' : 'Gemini Tools',
+      emoji: ENABLE_NANO_BANANA_MODE && nanoBananaMode.enabled ? '🍌' : '🛠️',
       style: ButtonStyle.Primary,
     },
     {
@@ -117,7 +114,36 @@ export async function showSettings(interaction, edit = false) {
       emoji: '⚙️',
       style: ButtonStyle.Secondary,
     },
-  ]);
+  ];
+
+  if (ENABLE_NANO_BANANA_MODE) {
+    buttonConfigs.splice(2, 0, {
+      customId: 'toggle-nano-banana',
+      label: `Nano Banana Mode: ${nanoBananaMode.enabled ? 'ON' : 'OFF'}`,
+      emoji: '🍌',
+      style: nanoBananaMode.enabled ? ButtonStyle.Success : ButtonStyle.Danger,
+      disabled: nanoBananaDisabled,
+    });
+  }
+
+  const rows = buildButtonRows(buttonConfigs);
+
+  const quickActions = [
+    '- Clear active session history',
+    '- Open Session Manager',
+    '- Configure Gemini tools',
+    '- Configure personality',
+    '- Configure general behavior',
+  ];
+
+  if (ENABLE_NANO_BANANA_MODE) {
+    quickActions.splice(
+      2,
+      1,
+      `- Nano Banana Mode is currently ${nanoBananaMode.enabled ? 'ON' : 'OFF'}`,
+      nanoBananaMode.enabled ? '- Configure Nano Banana tools' : '- Configure Gemini tools',
+    );
+  }
 
   const payload = {
     embeds: [createStatusEmbed({
@@ -126,12 +152,7 @@ export async function showSettings(interaction, edit = false) {
       description:
         'Manage your personal AI experience from one place.\n\n'
         + '**Quick Actions**\n'
-        + '- Clear active session history\n'
-        + '- Open Session Manager\n'
-        + `- Nano Banana Mode is currently ${nanoBananaMode.enabled ? 'ON' : 'OFF'}\n`
-        + (nanoBananaMode.enabled ? '- Configure Nano Banana tools\n' : '- Configure Gemini tools\n')
-        + '- Configure personality\n'
-        + '- Configure general behavior',
+        + `${quickActions.join('\n')}`,
     })],
     components: rows,
   };
@@ -280,11 +301,13 @@ export async function updatePersonalitySettingsView(interaction) {
 
 export async function updateGeminiToolsSettingsView(interaction) {
   const userId = interaction.user.id;
-  const nanoBananaMode = getUserNanoBananaMode(userId);
+  const nanoBananaMode = ENABLE_NANO_BANANA_MODE
+    ? getUserNanoBananaMode(userId)
+    : { enabled: false, googleSearch: false, imageSearch: false };
 
   let buttonConfigs, title, description;
 
-  if (nanoBananaMode.enabled) {
+  if (ENABLE_NANO_BANANA_MODE && nanoBananaMode.enabled) {
     buttonConfigs = [
       {
         customId: `toggle-nb-google-search`,

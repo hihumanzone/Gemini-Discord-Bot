@@ -6,6 +6,7 @@
 
 import config from '../../config.js';
 import {
+  ENABLE_NANO_BANANA_MODE,
   cloneDefaultChannelSettings,
   cloneDefaultGeminiToolPreferences,
   cloneDefaultServerSettings,
@@ -303,6 +304,10 @@ export function setUserGeminiToolPreference(userId, toolName, enabled) {
 
 /** Get a user's Nano Banana mode state, initializing defaults if needed. */
 export function getUserNanoBananaMode(userId) {
+  if (!ENABLE_NANO_BANANA_MODE) {
+    return { enabled: false, googleSearch: false, imageSearch: false };
+  }
+
   if (!state.userNanoBananaMode[userId]) {
     state.userNanoBananaMode[userId] = { enabled: false, googleSearch: false, imageSearch: false };
   }
@@ -311,6 +316,10 @@ export function getUserNanoBananaMode(userId) {
 
 /** Toggle the main Nano Banana mode flag. */
 export function toggleNanoBananaModeState(userId) {
+  if (!ENABLE_NANO_BANANA_MODE) {
+    return false;
+  }
+
   const mode = getUserNanoBananaMode(userId);
   mode.enabled = !mode.enabled;
   return mode.enabled;
@@ -318,6 +327,10 @@ export function toggleNanoBananaModeState(userId) {
 
 /** Toggle Nano Banana Google Search. Disabling also disables image search. */
 export function toggleNanoBananaGoogleSearch(userId) {
+  if (!ENABLE_NANO_BANANA_MODE) {
+    return false;
+  }
+
   const mode = getUserNanoBananaMode(userId);
   mode.googleSearch = !mode.googleSearch;
   if (!mode.googleSearch) {
@@ -328,6 +341,10 @@ export function toggleNanoBananaGoogleSearch(userId) {
 
 /** Toggle Nano Banana Image Search. */
 export function toggleNanoBananaImageSearch(userId) {
+  if (!ENABLE_NANO_BANANA_MODE) {
+    return false;
+  }
+
   const mode = getUserNanoBananaMode(userId);
   mode.imageSearch = !mode.imageSearch;
   return mode.imageSearch;

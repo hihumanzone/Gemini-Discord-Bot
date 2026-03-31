@@ -38,6 +38,7 @@ import {
   parseDeleteMessagePayload,
   resolveDeleteHistoryId,
 } from '../services/sessionService.js';
+import { ENABLE_NANO_BANANA_MODE } from '../constants.js';
 import { addSettingsButton } from '../ui/messageActions.js';
 import {
   buildChannelPersonalityModal,
@@ -816,9 +817,6 @@ export async function handleButtonInteraction(interaction) {
       'remove-personality': handleRemovePersonalityCommand,
       'toggle-response-mode': toggleUserResponsePreference,
       'toggle-action-buttons': toggleActionButtons,
-      'toggle-nano-banana': toggleNanoBananaMode,
-      'toggle-nb-google-search': handleNBGoogleSearch,
-      'toggle-nb-image-search': handleNBImageSearch,
       'session-settings': showSessionManager,
       'open-create-session-modal': showCreateSessionModal,
       'download-conversation': downloadConversation,
@@ -826,6 +824,12 @@ export async function handleButtonInteraction(interaction) {
       'gemini-tools-settings': updateGeminiToolsSettingsView,
       'personality-settings': updatePersonalitySettingsView,
     };
+
+    if (ENABLE_NANO_BANANA_MODE) {
+      exactHandlers['toggle-nano-banana'] = toggleNanoBananaMode;
+      exactHandlers['toggle-nb-google-search'] = handleNBGoogleSearch;
+      exactHandlers['toggle-nb-image-search'] = handleNBImageSearch;
+    }
 
     if (interaction.customId === 'download_message' || interaction.customId.startsWith(OVERFLOW_DOWNLOAD_PREFIX)) {
       await downloadMessage(interaction);

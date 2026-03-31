@@ -11,6 +11,7 @@ const defaultConfig = `// For advanced configuration, edit \`constants.js\`.
 const config = Object.freeze({
   defaultModel: 'gemini-flash-lite-latest',
   nanoBananaModel: 'gemini-2.5-flash-image',
+  enableNanoBananaMode: true,
   maxGenerationAttempts: 3,
   defaultResponseFormat: 'Embedded',
   defaultResponseActionButtons: true,
