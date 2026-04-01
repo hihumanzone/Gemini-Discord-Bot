@@ -7,6 +7,8 @@
 
 AI Discord bot powered by Google Gemini with streaming responses, multimodal input, session-based memory, and rich settings UI.
 
+For voice-channel conversations with Gemini Live API, see [Gemini-Live-discord](https://github.com/hihumanzone/Gemini-Live-discord), a Discord bot for natural voice conversations with Gemini.
+
 ## What It Does
 
 - Chats in DMs or in servers (mention, always-respond mode, or personal active mode)
