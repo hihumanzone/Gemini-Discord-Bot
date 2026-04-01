@@ -14,6 +14,24 @@ import {
   state,
 } from '../state/botState.js';
 import { logServiceError } from '../utils/errorHandler.js';
+import {
+  resolveConversationScope,
+  resolveInstructionScope,
+  resolveResponseStyle,
+} from './scopeResolution.js';
+
+function getConversationScope(message) {
+  const guildId = message.guild?.id;
+  const channelId = message.channel.id;
+
+  return resolveConversationScope({
+    guildId,
+    channelId,
+    userHistoryId: getActiveSessionHistoryId(message.author.id),
+    channelWideChatHistory: getChannelSettings(channelId).channelWideChatHistory,
+    serverWideChatHistory: Boolean(guildId ? state.serverSettings[guildId]?.serverChatHistory : false),
+  });
+}
 
 /**
  * Resolve the effective response style for a message, checking channel -> server -> user preference.
@@ -26,13 +44,11 @@ export function getResponsePreference(message) {
   const serverStyle = guildId ? state.serverSettings[guildId]?.responseStyle : null;
   const channelStyle = getChannelSettings(channelId).responseStyle;
 
-  if (channelStyle && channelStyle !== 'decide') {
-    return channelStyle;
-  }
-
-  return serverStyle && serverStyle !== 'decide'
-    ? serverStyle
-    : getUserResponsePreference(message.author.id);
+  return resolveResponseStyle(
+    channelStyle,
+    serverStyle,
+    getUserResponsePreference(message.author.id),
+  );
 }
 
 /**
@@ -46,19 +62,15 @@ export function resolveInstructions(message) {
   const userId = message.author.id;
   const channelSettings = getChannelSettings(channelId);
 
-  if (!guildId) {
-    return getCustomInstruction(userId) || DEFAULT_PERSONALITY;
-  }
-
-  if (channelSettings.customChannelPersonality && getCustomInstruction(channelId)) {
-    return getCustomInstruction(channelId);
-  }
-
-  if (state.serverSettings[guildId]?.customServerPersonality && getCustomInstruction(guildId)) {
-    return getCustomInstruction(guildId);
-  }
-
-  return getCustomInstruction(userId) || DEFAULT_PERSONALITY;
+  return resolveInstructionScope({
+    guildId,
+    channelId,
+    userId,
+    channelCustomEnabled: Boolean(channelSettings.customChannelPersonality),
+    serverCustomEnabled: Boolean(guildId ? state.serverSettings[guildId]?.customServerPersonality : false),
+    getInstruction: getCustomInstruction,
+    defaultInstruction: DEFAULT_PERSONALITY,
+  });
 }
 
 /**
@@ -183,33 +195,11 @@ export async function buildConversationContext(message, instructions) {
 }
 
 export function resolveHistoryId(message) {
-  const guildId = message.guild?.id;
-  const channelId = message.channel.id;
-  const userId = message.author.id;
-  const channelHistoryEnabled = getChannelSettings(channelId).channelWideChatHistory;
-  const serverHistoryEnabled = guildId ? state.serverSettings[guildId]?.serverChatHistory : false;
-  const userHistoryId = getActiveSessionHistoryId(userId);
-
-  if (!guildId) {
-    return userHistoryId;
-  }
-
-  if (channelHistoryEnabled) {
-    return channelId;
-  }
-
-  if (serverHistoryEnabled) {
-    return guildId;
-  }
-
-  return userHistoryId;
+  return getConversationScope(message).historyId;
 }
 
 export function isSharedConversation(message) {
-  if (!message.guild) return false;
-  const channelHistoryEnabled = getChannelSettings(message.channel.id).channelWideChatHistory;
-  const serverHistoryEnabled = state.serverSettings[message.guild.id]?.serverChatHistory;
-  return channelHistoryEnabled || serverHistoryEnabled;
+  return getConversationScope(message).shared;
 }
 
 export function isSharedPersonality(message) {
@@ -239,13 +229,5 @@ export function tagPartsWithUser(parts, message) {
 }
 
 export function resolveHistoryCategory(message) {
-  const guildId = message.guild?.id;
-  const channelId = message.channel.id;
-  const channelHistoryEnabled = getChannelSettings(channelId).channelWideChatHistory;
-  const serverHistoryEnabled = guildId ? state.serverSettings[guildId]?.serverChatHistory : false;
-
-  if (!guildId) return 'users';
-  if (channelHistoryEnabled) return 'channels';
-  if (serverHistoryEnabled) return 'servers';
-  return 'users';
+  return getConversationScope(message).category;
 }

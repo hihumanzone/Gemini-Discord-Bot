@@ -17,6 +17,7 @@ import {
   isUserBlacklisted,
 } from '../state/botState.js';
 import { createSharedTextLink } from '../services/textSharingService.js';
+import { resolveLockScope } from '../services/scopeResolution.js';
 import { logError } from '../utils/errorHandler.js';
 import {
   applyEmbedFallback,
@@ -57,12 +58,22 @@ export async function replyFeatureDisabled(interaction, description) {
 
 export function getClearMemoryDisabledReason(interaction) {
   const channelId = interaction.channelId ?? interaction.channel?.id;
-  if (channelId && getChannelSettings(channelId).channelWideChatHistory) {
+  const channelLock = channelId
+    ? getChannelSettings(channelId).channelWideChatHistory
+    : false;
+
+  const guildId = interaction.guild?.id;
+  const serverLock = guildId
+    ? getServerSettings(guildId).serverChatHistory
+    : false;
+
+  const lockScope = resolveLockScope(channelLock, serverLock);
+
+  if (lockScope === 'channel') {
     return 'Clearing chat history is not enabled for this channel, channel-wide chat history is active.';
   }
 
-  const guildId = interaction.guild?.id;
-  if (guildId && getServerSettings(guildId).serverChatHistory) {
+  if (lockScope === 'server') {
     return 'Clearing chat history is not enabled for this server, server-wide chat history is active.';
   }
 
@@ -71,12 +82,22 @@ export function getClearMemoryDisabledReason(interaction) {
 
 export function getCustomPersonalityDisabledReason(interaction) {
   const channelId = interaction.channelId ?? interaction.channel?.id;
-  if (channelId && getChannelSettings(channelId).customChannelPersonality) {
+  const channelLock = channelId
+    ? getChannelSettings(channelId).customChannelPersonality
+    : false;
+
+  const guildId = interaction.guild?.id;
+  const serverLock = guildId
+    ? getServerSettings(guildId).customServerPersonality
+    : false;
+
+  const lockScope = resolveLockScope(channelLock, serverLock);
+
+  if (lockScope === 'channel') {
     return 'Custom personality is not enabled for this channel, channel-wide personality is active.';
   }
 
-  const guildId = interaction.guild?.id;
-  if (guildId && getServerSettings(guildId).customServerPersonality) {
+  if (lockScope === 'server') {
     return 'Custom personality is not enabled for this server, server-wide personality is active.';
   }
 
@@ -105,14 +126,22 @@ export function getResponseStyleDisabledReason(interaction) {
 
   const channelId = interaction.channelId ?? interaction.channel?.id;
   const channelSetting = channelId ? getChannelSettings(channelId).responseStyle : 'decide';
-  if (channelSetting && channelSetting !== 'decide') {
+
+  const setting = getServerSettings(guildId).responseStyle;
+  const lockScope = resolveLockScope(
+    channelSetting,
+    setting,
+    (value) => Boolean(value && value !== 'decide'),
+  );
+
+  if (lockScope === 'channel') {
     return 'The response style is locked to the channel-wide preference.';
   }
 
-  const setting = getServerSettings(guildId).responseStyle;
-  if (setting && setting !== 'decide') {
+  if (lockScope === 'server') {
     return 'The response style is locked to the server-wide preference.';
   }
+
   return null;
 }
 
@@ -133,20 +162,25 @@ export function getResponseActionButtonsDisabledReason(interaction) {
 
   const channelId = interaction.channelId ?? interaction.channel?.id;
   const channelSetting = channelId ? getChannelSettings(channelId).settingsSaveButton : 'decide';
-  if (channelSetting === 'on') {
-    return 'Response action buttons are forced ON by channel settings.';
-  }
-  if (channelSetting === 'off') {
-    return 'Response action buttons are disabled by channel settings.';
+  const setting = getServerSettings(guildId).settingsSaveButton;
+  const lockScope = resolveLockScope(
+    channelSetting,
+    setting,
+    (value) => value === 'on' || value === 'off',
+  );
+
+  if (lockScope === 'channel') {
+    return channelSetting === 'on'
+      ? 'Response action buttons are forced ON by channel settings.'
+      : 'Response action buttons are disabled by channel settings.';
   }
 
-  const setting = getServerSettings(guildId).settingsSaveButton;
-  if (setting === 'on') {
-    return 'Response action buttons are forced ON by server settings.';
+  if (lockScope === 'server') {
+    return setting === 'on'
+      ? 'Response action buttons are forced ON by server settings.'
+      : 'Response action buttons are disabled by server settings.';
   }
-  if (setting === 'off') {
-    return 'Response action buttons are disabled by server settings.';
-  }
+
   return null;
 }
 

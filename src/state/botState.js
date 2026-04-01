@@ -32,6 +32,7 @@ import {
   renameSession as renameSessionInternal,
   deleteSession as deleteSessionInternal,
 } from './sessionState.js';
+import { resolveActionButtonVisibility } from '../services/scopeResolution.js';
 
 // ---------------------------------------------------------------------------
 // State object
@@ -614,20 +615,18 @@ export function cycleChannelResponseActionButtons(channelId) {
  * @returns {boolean}
  */
 export function shouldShowActionButtons(guildId, userId, channelId = null) {
-  if (channelId) {
-    const channelSetting = getChannelSettings(channelId).settingsSaveButton || 'decide';
-    if (channelSetting === 'on') return true;
-    if (channelSetting === 'off') return false;
-  }
-
+  const channelSetting = channelId
+    ? (getChannelSettings(channelId).settingsSaveButton || 'decide')
+    : 'decide';
   const serverSetting = guildId
     ? (state.serverSettings[guildId]?.settingsSaveButton || 'decide')
     : 'decide';
 
-  if (serverSetting === 'on') return true;
-  if (serverSetting === 'off') return false;
-
-  return getUserResponseActionButtons(userId);
+  return resolveActionButtonVisibility(
+    channelSetting,
+    serverSetting,
+    getUserResponseActionButtons(userId),
+  );
 }
 
 // ---------------------------------------------------------------------------

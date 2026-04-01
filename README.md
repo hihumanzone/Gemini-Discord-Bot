@@ -79,7 +79,7 @@ Recommended bot permissions:
 | `/block user:@user` | Admin | Block a user in this server |
 | `/unblock user:@user` | Admin | Remove user block |
 
-Slash commands are auto-registered when the bot starts.
+Slash commands are checked on startup and auto-synced when changes are detected.
 
 ## How Memory Works
 

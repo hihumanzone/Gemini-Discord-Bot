@@ -19,6 +19,10 @@ import {
   state,
 } from '../state/botState.js';
 import { DISPLAY_PERSONALITY_BUTTONS, ENABLE_NANO_BANANA_MODE } from '../constants.js';
+import {
+  resolveActionButtonVisibility,
+  resolveResponseStyle,
+} from '../services/scopeResolution.js';
 import { applyEmbedFallback, buildButtonRows, buildTextModal, createStatusEmbed } from '../utils/discord.js';
 import {
   getClearMemoryDisabledReason,
@@ -180,28 +184,16 @@ export async function updateGeneralSettingsView(interaction) {
   const responseActionButtonsDisabledReason = getResponseActionButtonsDisabledReason(interaction);
 
   const alwaysRespondEnabled = alwaysRespondDisabledReason ? true : isChannelUserActive(channelId, userId);
-
-  let responseMode;
-  if (responseStyleDisabledReason) {
-    if (channelSettings.responseStyle && channelSettings.responseStyle !== 'decide') {
-      responseMode = channelSettings.responseStyle;
-    } else {
-      responseMode = serverSettings.responseStyle;
-    }
-  } else {
-    responseMode = getUserResponsePreference(userId);
-  }
-
-  let responseActionButtonsEnabled;
-  if (responseActionButtonsDisabledReason) {
-    if (channelSettings.settingsSaveButton && channelSettings.settingsSaveButton !== 'decide') {
-      responseActionButtonsEnabled = channelSettings.settingsSaveButton === 'on';
-    } else {
-      responseActionButtonsEnabled = serverSettings.settingsSaveButton === 'on';
-    }
-  } else {
-    responseActionButtonsEnabled = getUserResponseActionButtons(userId);
-  }
+  const responseMode = resolveResponseStyle(
+    channelSettings.responseStyle,
+    serverSettings?.responseStyle,
+    getUserResponsePreference(userId),
+  );
+  const responseActionButtonsEnabled = resolveActionButtonVisibility(
+    channelSettings.settingsSaveButton,
+    serverSettings?.settingsSaveButton,
+    getUserResponseActionButtons(userId),
+  );
 
   const buttonConfigs = [
     {

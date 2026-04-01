@@ -12,9 +12,15 @@ export const STATUS_REFRESH_INTERVAL_MS = 2_000;
 export const STATUS_LIFETIME_MS = 30_000;
 export const STREAM_UPDATE_DEBOUNCE_MS = 500;
 export const VIDEO_POLL_INTERVAL_MS = 10_000;
+export const VIDEO_PROCESSING_TIMEOUT_MS = 300_000;
+export const ATTACHMENT_DOWNLOAD_TIMEOUT_MS = 120_000;
+export const GIF_CONVERSION_TIMEOUT_MS = 45_000;
 export const TEXT_FILE_TTL_MINUTES = 10_080;
 export const EXTERNAL_TEXT_SHARE_URL = 'https://pastes.dev';
 export const EXTERNAL_TEXT_SHARE_API_URL = 'https://api.pastes.dev';
+export const GENERATION_ATTEMPT_TIMEOUT_MS = 180_000;
+export const STREAM_RETRY_BASE_DELAY_MS = 1_000;
+export const STREAM_RETRY_MAX_DELAY_MS = 10_000;
 
 export const DEFAULT_RESPONSE_FORMAT = config.defaultResponseFormat;
 export const EMBED_COLOR = config.hexColour;

@@ -10,7 +10,13 @@ import ffmpegPath from 'ffmpeg-static';
 
 import { genAI } from '../core/runtime.js';
 import { TEMP_DIR } from '../core/paths.js';
-import { TEXT_ATTACHMENT_EXTENSIONS, VIDEO_POLL_INTERVAL_MS } from '../constants.js';
+import {
+  ATTACHMENT_DOWNLOAD_TIMEOUT_MS,
+  GIF_CONVERSION_TIMEOUT_MS,
+  TEXT_ATTACHMENT_EXTENSIONS,
+  VIDEO_POLL_INTERVAL_MS,
+  VIDEO_PROCESSING_TIMEOUT_MS,
+} from '../constants.js';
 import { logServiceError } from '../utils/errorHandler.js';
 
 const UPLOADABLE_MIME_TYPES = new Set([
@@ -66,6 +72,7 @@ async function downloadFile(url, filePath) {
       url,
       method: 'GET',
       responseType: 'stream',
+      timeout: ATTACHMENT_DOWNLOAD_TIMEOUT_MS,
     });
 
     response.data.pipe(writer);
@@ -84,9 +91,14 @@ async function downloadFile(url, filePath) {
 }
 
 async function waitForFileProcessing(fileName, displayName) {
+  const startedAt = Date.now();
   let file = await genAI.files.get({ name: fileName });
 
   while (file.state === 'PROCESSING') {
+    if (Date.now() - startedAt > VIDEO_PROCESSING_TIMEOUT_MS) {
+      throw new Error(`Video processing timed out for ${displayName}.`);
+    }
+
     await new Promise((resolve) => setTimeout(resolve, VIDEO_POLL_INTERVAL_MS));
     file = await genAI.files.get({ name: fileName });
   }
@@ -102,7 +114,8 @@ function convertGifToVideo(inputPath, outputPath, options = {}) {
     width = 240,
     crf = 42,
     threads = 1,
-    preset = 'ultrafast'
+    preset = 'ultrafast',
+    timeoutMs = GIF_CONVERSION_TIMEOUT_MS,
   } = options;
 
   return new Promise((resolve, reject) => {
@@ -130,14 +143,30 @@ function convertGifToVideo(inputPath, outputPath, options = {}) {
     });
 
     let stderr = '';
+    let timedOut = false;
+
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      proc.kill('SIGKILL');
+    }, timeoutMs);
 
     proc.stderr.on('data', (chunk) => {
       stderr += chunk.toString();
     });
 
-    proc.on('error', reject);
+    proc.on('error', (error) => {
+      clearTimeout(timeoutId);
+      reject(error);
+    });
 
     proc.on('close', (code) => {
+      clearTimeout(timeoutId);
+
+      if (timedOut) {
+        reject(new Error(`ffmpeg conversion timed out after ${timeoutMs} ms`));
+        return;
+      }
+
       if (code === 0) {
         resolve(outputPath);
       } else {
