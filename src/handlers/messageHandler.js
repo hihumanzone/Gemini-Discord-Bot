@@ -7,10 +7,12 @@ import {
   isUserBlacklisted,
   state,
 } from '../state/botState.js';
-import { WORK_IN_DMS } from '../constants.js';
+import { USER_REQUEST_COOLDOWN_MS, WORK_IN_DMS } from '../constants.js';
 import { handleTextMessage } from '../services/conversationService.js';
 import { applyEmbedFallback, canSendMessages, createStatusEmbed } from '../utils/discord.js';
 import { logError } from '../utils/errorHandler.js';
+
+const lastRequestTimestamps = new Map();
 
 function shouldRespondToMessage(message) {
   const isDirectMessage = message.channel.type === ChannelType.DM;
@@ -61,6 +63,23 @@ async function replyRequestInProgress(message) {
   }
 }
 
+async function replyRateLimited(message) {
+  try {
+    return await message.reply(applyEmbedFallback(message.channel, {
+      embeds: [createStatusEmbed({
+        variant: 'warning',
+        title: 'Slow Down',
+        description: 'You are sending requests too quickly. Please wait a moment before trying again.',
+      })],
+    }));
+  } catch (error) {
+    logError('ReplyRateLimited', error, {
+      messageId: message.id,
+      userId: message.author?.id,
+    });
+  }
+}
+
 export async function handleMessageCreate(message) {
   if (message.author.bot || message.content.startsWith('!')) {
     return;
@@ -87,6 +106,14 @@ export async function handleMessageCreate(message) {
       await replyRequestInProgress(message);
       return;
     }
+
+    const now = Date.now();
+    const lastRequestAt = lastRequestTimestamps.get(message.author.id) ?? 0;
+    if (now - lastRequestAt < USER_REQUEST_COOLDOWN_MS) {
+      await replyRateLimited(message);
+      return;
+    }
+    lastRequestTimestamps.set(message.author.id, now);
 
     activeRequests.add(message.author.id);
     await handleTextMessage(message);
