@@ -124,7 +124,7 @@ Core defaults live in `config.js`:
 - Enable Nano Banana Mode: `true`
 - Max generation attempts: `3`
 - Default response mode: `Embedded`
-- Tool defaults: Google Search = on, URL Context = on, Code Execution = off
+- Tool defaults: Google Search = off, URL Context = pff, Code Execution = off
 
 ## Project Structure
 
